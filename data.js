@@ -1,15 +1,15 @@
 /* ข้อมูลตัวอย่างสำหรับ Preview เท่านั้น (ไม่ใช่ข้อมูลจริง) */
 (function () {
   const reps = [
-    { id: 'r1', name: 'อาทิตยา คชสร', initials: 'อค' },
-    { id: 'r2', name: 'กมลชนก ใจดี', initials: 'กจ' },
-    { id: 'r3', name: 'ปรีชา วงศ์ทอง', initials: 'ปว' },
-    { id: 'r4', name: 'Dev MPD', initials: 'DM' },
+    { id: 'r1', name: 'อาทิตยา คชสร', initials: 'อค', role: 'sales' },
+    { id: 'r2', name: 'กมลชนก ใจดี', initials: 'กจ', role: 'sales' },
+    { id: 'r3', name: 'ปรีชา วงศ์ทอง', initials: 'ปว', role: 'sales' },
+    { id: 'r4', name: 'Dev MPD', initials: 'DM', role: 'admin' },
   ];
   const campaigns = [
-    { id: 'c-bebe-nov', brand: 'bebeplay', name: 'Bebeplay · ลูกค้าเก่า 6 เดือน', start: '2026-11-01', end: '2026-11-30', note: 'โปรเตียงเด็กและแผ่นรองคลาน ลด 10% สำหรับลูกค้าเดิม' },
-    { id: 'c-host-nov', brand: 'hosttail', name: 'Hosttail · ทาสแมวกลับมาซื้อ', start: '2026-11-01', end: '2026-11-30', note: 'ห้องน้ำแมวอัจฉริยะ + ทรายแมว แถมถุงขยะ' },
-    { id: 'c-bebe-oct', brand: 'bebeplay', name: 'Bebeplay · Double Date 10.10', start: '2026-10-05', end: '2026-10-20', note: 'แคมเปญที่ปิดแล้ว' },
+    { id: 'c-bebe-nov', brand: 'bebeplay', claimMode: 'self', name: 'Bebeplay · ลูกค้าเก่า 6 เดือน', start: '2026-11-01', end: '2026-11-30', note: 'โปรเตียงเด็กและแผ่นรองคลาน ลด 10% สำหรับลูกค้าเดิม' },
+    { id: 'c-host-nov', brand: 'hosttail', claimMode: 'auto', name: 'Hosttail · ทาสแมวกลับมาซื้อ', start: '2026-11-01', end: '2026-11-30', note: 'ห้องน้ำแมวอัจฉริยะ + ทรายแมว แถมถุงขยะ' },
+    { id: 'c-bebe-oct', brand: 'bebeplay', claimMode: 'assign', name: 'Bebeplay · Double Date 10.10', start: '2026-10-05', end: '2026-10-20', note: 'แคมเปญที่ปิดแล้ว' },
   ];
   const first = ['สุภาพร','วีรวัฒน์','นภัสสร','ธนากร','พิมพ์ชนก','ณัฐวุฒิ','ชลธิชา','อนุชา','กานต์ธิดา','ปิยะนุช','รัชนี','สมศักดิ์','ศิริพร','ภาคิน','จิราพร','เมธัส','อรอนงค์','พีรพัฒน์','ขวัญใจ','ธีรเดช'];
   const last = ['ใจดี','รุ่งเรือง','แสงทอง','สุขสวัสดิ์','มั่นคง','พงษ์ไทย','ศรีสุข','วัฒนา','เจริญผล','บุญมา'];
@@ -39,15 +39,17 @@
     const purchases = [];
     for (let k = 0; k < nPurch; k++) {
       const p = pick(products.filter(x => isHost ? x[0].startsWith('HST') : x[0].startsWith('BBP')));
-      purchases.push({ date: addDays(-30 - Math.floor(rnd() * 400)), bill: String(100000 + Math.floor(rnd() * 899999)), sku: p[0], product: p[1], amount: p[2] });
+      purchases.push({ date: addDays(-30 - Math.floor(rnd() * 400)), bill: String(100000 + Math.floor(rnd() * 899999)), seller: pick(reps).id, sku: p[0], product: p[1], amount: p[2] });
     }
     purchases.sort((a, b) => b.date.localeCompare(a.date));
-    const status = i < 8 ? 'new' : pick(statuses);
-    const owner = pick(reps).id;
+    const status = i < 10 ? 'new' : pick(statuses);
+    let owner = pick(reps).id;
+    const fromCampaign = i % 5 !== 0;
+    if (status === 'new' && fromCampaign && (i % 2 === 1 || i % 3 === 2)) owner = null; // ยังไม่มีผู้ดูแล (กองกลางแคมเปญ)
     const phone = '0' + pick(['81','86','89','92','95','64']) + String(1000000 + Math.floor(rnd() * 8999999));
     const interactions = [];
     if (status !== 'new') {
-      interactions.push({ id: 'i' + i + 'a', type: i % 2 ? 'chat' : 'call', date: addDays(-1 - Math.floor(rnd() * 6)) + 'T1' + (i % 10) + ':20', rep: owner, result: status === 'unreachable' ? 'ไม่รับสาย' : 'คุยแล้ว', note: status === 'won' ? 'สนใจโปร ตกลงสั่งซื้อ' : status === 'lost' ? 'ยังไม่สะดวกซื้อ' : status === 'unreachable' ? 'โทรสองครั้งไม่รับ' : 'ขอดูโปรก่อน นัดคุยอีกครั้ง' });
+      interactions.push({ id: 'i' + i + 'a', type: i % 2 ? 'chat' : 'call', date: addDays(-1 - Math.floor(rnd() * 6)) + 'T1' + (i % 10) + ':20', rep: owner || 'r4', result: status === 'unreachable' ? 'ไม่รับสาย' : 'คุยแล้ว', note: status === 'won' ? 'สนใจโปร ตกลงสั่งซื้อ' : status === 'lost' ? 'ยังไม่สะดวกซื้อ' : status === 'unreachable' ? 'โทรสองครั้งไม่รับ' : 'ขอดูโปรก่อน นัดคุยอีกครั้ง' });
     }
     leads.push({
       id: 'L' + (1000 + i),
@@ -63,6 +65,9 @@
       callback: status === 'callback' ? addDays(Math.floor(rnd() * 5) - 1) : null,
       purchases,
       interactions,
+      interest: status === 'new' ? '' : pick(['เตียงนอนเด็ก','แผ่นรองคลาน','ห้องน้ำแมว','ทรายแมว']),
+      closedBills: status === 'won' ? ['3' + String(10000 + Math.floor(rnd() * 89999))] : [],
+      closedAmount: status === 'won' ? purchases[0].amount : null,
     });
   }
   window.DS_DATA = { reps, campaigns, leads, today: iso(today) };

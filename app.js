@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const KEY = 'mpd-directsale-preview-v1';
+  const KEY = 'mpd-directsale-preview-v2';
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const baht = (n) => Number(n || 0).toLocaleString('th-TH') + '.-';
@@ -25,6 +25,32 @@
   const camp = (id) => state.campaigns.find(c => c.id === id);
   const lead = (id) => state.leads.find(l => l.id === id);
   const total = (l) => l.purchases.reduce((s, p) => s + p.amount, 0);
+  const me = () => rep(state.meId);
+  const isAdmin = () => me()?.role === 'admin';
+  const MODES = { self: 'เซลล์จองเอง', assign: 'หัวหน้ามอบหมาย', auto: 'เด้งเข้าเซลล์ที่ขายล่าสุด' };
+  const lastSeller = (l) => l.purchases.find(p => p.seller && rep(p.seller))?.seller || null;
+  function applyAuto(campId, quiet) {
+    let n = 0;
+    state.leads.filter(l => l.campaignId === campId && !l.owner).forEach(l => { const s = lastSeller(l); if (s) { l.owner = s; n++; } });
+    if (n) { save(); if (!quiet || n) toast(`จัดสรรอัตโนมัติ ${n} ลีด ไปยังเซลล์ที่ขายล่าสุด`); }
+    return n;
+  }
+  function claimCell(l, opts) {
+    if (!opts.mode || l.owner) return '';
+    const repOpts = state.reps.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
+    const assign = isAdmin() ? `<select class="select" data-assign="${l.id}" aria-label="มอบหมายให้"><option value="">มอบหมายให้…</option>${repOpts}</select>` : '';
+    if (opts.mode === 'self') return `<button class="btn sm outline" data-act="claim" data-id="${l.id}">จองลีด</button>${assign}`;
+    if (opts.mode === 'assign') return assign || '<span class="sub">รอหัวหน้ามอบหมาย</span>';
+    return assign || '<span class="sub">ไม่มียอดขายเดิมให้อ้างอิง</span>';
+  }
+  function noteCell(l) {
+    const last = l.interactions[l.interactions.length - 1]?.note;
+    const bits = [];
+    if (l.interest) bits.push(`<div><span class="sub">สนใจ:</span> ${esc(l.interest)}</div>`);
+    if (l.status === 'won' && l.closedBills?.length) bits.push(`<div><span class="sub">บิลที่ปิด:</span> ${l.closedBills.map(b => `<span class="bill">${esc(b)}</span>`).join(' ')}</div>`);
+    bits.push(`<div>${esc(last || '—')}</div>`);
+    return bits.join('');
+  }
   const bills = (l) => [...new Set(l.purchases.map(p => p.bill))];
 
   function toast(msg) {
@@ -86,8 +112,7 @@
     if (!list.length) return `<tr><td colspan="7" class="empty">ไม่พบรายการที่ตรงกับตัวกรอง</td></tr>`;
     return list.map(l => {
       const o = rep(l.owner);
-      const claim = opts.claim && l.owner !== state.meId && l.status === 'new'
-        ? `<button class="btn sm outline" data-act="claim" data-id="${l.id}">จองลีด</button>` : '';
+      const claim = claimCell(l, opts);
       return `<tr>
         <td><button class="cust-name" data-act="open" data-id="${l.id}">${esc(l.name)}</button>
           <div class="sub mono">${esc(l.phone)}</div></td>
@@ -96,7 +121,7 @@
         <td class="r num">${baht(total(l))}</td>
         <td><span class="badge s-${l.status}">${STATUS[l.status]}</span>${dueHtml(l)}
           <div class="sub">${esc(o ? o.name : 'ยังไม่มีผู้ดูแล')}</div></td>
-        <td class="note-cell">${esc(l.interactions[l.interactions.length - 1]?.note || '—')}</td>
+        <td class="note-cell">${noteCell(l)}</td>
         <td><div class="actions">
           <button class="btn sm primary" data-act="log" data-type="call" data-id="${l.id}">บันทึกโทร</button>
           <button class="btn sm" data-act="log" data-type="chat" data-id="${l.id}">บันทึกแชต</button>${claim}
@@ -148,7 +173,10 @@
     const cs = state.campaigns.filter(c => c.brand === brand);
     if (!ui.selCamp || camp(ui.selCamp)?.brand !== brand) ui.selCamp = cs[0]?.id;
     $('#page-sub').textContent = `${cs.length} แคมเปญ`;
+    if (isAdmin()) { $('#topbar-actions').innerHTML = `<button class="btn" id="auto-run">จัดสรรให้เซลล์ที่ขายล่าสุด</button>`; $('#auto-run').onclick = () => { const n = applyAuto(ui.selCamp); if (!n) toast('ไม่มีลีดที่ต้องจัดสรร'); route(); }; }
     const draw = (keepFocus) => {
+      const mode = camp(ui.selCamp)?.claimMode || 'self';
+      if (mode === 'auto') applyAuto(ui.selCamp, true);
       const base = state.leads.filter(l => l.campaignId === ui.selCamp);
       const list = filtered(base);
       const cards = cs.map(c => {
@@ -166,8 +194,8 @@
       }).join('') || '<div class="empty">ยังไม่มีแคมเปญ — เพิ่มได้ที่เมนู ตั้งค่า</div>';
       const mineN = base.filter(l => l.owner === state.meId).length;
       $('#view').innerHTML = `<div class="camp-grid">${cards}</div>
-        <div class="quota card" style="padding:10px 14px">ลีดในแคมเปญนี้ <b>${base.length}</b> รายการ · ที่ฉันจองไว้ <b>${mineN}</b> · กด "จองลีด" เพื่อรับลูกค้าที่ยังไม่ติดต่อมาเป็นของตัวเอง</div>
-        ${toolbar(base, false)}${tableHtml(list, { claim: true })}`;
+        <div class="quota card" style="padding:10px 14px">ลีดในแคมเปญนี้ <b>${base.length}</b> รายการ · ที่ฉันดูแล <b>${mineN}</b> · ยังไม่มีผู้ดูแล <b>${base.filter(l => !l.owner).length}</b> · วิธีจอง: <b>${MODES[mode]}</b></div>
+        ${toolbar(base, false)}${tableHtml(list, { mode })}`;
       document.querySelectorAll('[data-camp]').forEach(b => b.onclick = () => { ui.selCamp = b.dataset.camp; ui.status = 'all'; draw(); });
       bindToolbar(draw);
       if (keepFocus) { const q = $('#q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
@@ -180,7 +208,7 @@
     const L = state.leads;
     const won = L.filter(l => l.status === 'won');
     const contacted = L.filter(l => l.status !== 'new').length;
-    const wonValue = won.reduce((s, l) => s + (l.purchases[0]?.amount || 0), 0);
+    const wonValue = won.reduce((s, l) => s + (l.closedAmount ?? l.purchases[0]?.amount ?? 0), 0);
     const overdue = L.filter(l => l.callback && l.callback < today).length;
     const kpi = (label, val, foot) => `<div class="kpi"><div class="kpi-label">${label}</div><div class="kpi-value">${val}</div><div class="kpi-foot">${foot}</div></div>`;
     const maxN = Math.max(1, ...state.reps.map(r => L.filter(l => l.owner === r.id).length));
@@ -197,7 +225,7 @@
       ${kpi('ลีดทั้งหมด', L.length, 'จากทุกแคมเปญและที่ขุดเอง')}
       ${kpi('ติดต่อแล้ว', contacted + ' <span class="sub">/ ' + L.length + '</span>', Math.round(contacted / L.length * 100) + '% ของลีดทั้งหมด')}
       ${kpi('ปิดการขาย', won.length, 'อัตราปิด ' + (contacted ? Math.round(won.length / contacted * 100) : 0) + '% ของที่ติดต่อแล้ว')}
-      ${kpi('ยอดที่ปิดได้ (ประมาณ)', baht(wonValue), 'นับจากยอดซื้อล่าสุดของลูกค้า')}
+      ${kpi('ยอดที่ปิดได้', baht(wonValue), 'จากยอดที่เซลล์บันทึกตอนปิดการขาย')}
       ${kpi('โทรกลับเลยกำหนด', overdue, overdue ? 'ควรติดตามวันนี้' : 'ไม่มีค้าง')}</div>
       <div class="grid-2">
         <div class="panel"><div class="panel-h"><h2>ผลงานรายเซลล์</h2><div class="legend"><span><i style="background:var(--accent)"></i>ลีดที่ดูแล</span><span><i style="background:var(--ok)"></i>ปิดการขาย</span></div></div><div class="panel-b">${repRows}</div></div>
@@ -209,19 +237,19 @@
   function renderSetup() {
     $('#view').innerHTML = `<div class="settings">
       <div class="panel"><div class="panel-h"><h2>ทีมเซลล์</h2></div><div class="panel-b">
-        ${state.reps.map(r => `<div class="list-row"><div><b>${esc(r.name)}</b></div><span class="sub">${state.leads.filter(l => l.owner === r.id).length} ลีด</span></div>`).join('')}
-        <form class="inline-form" id="rep-form"><input class="input" id="rep-name" placeholder="ชื่อเซลล์ใหม่" required><button class="btn primary">เพิ่ม</button></form></div></div>
+        ${state.reps.map(r => `<div class="list-row"><div><b>${esc(r.name)}</b></div><span class="tag">${r.role === 'admin' ? 'หัวหน้า' : 'เซลล์'}</span><span class="sub">${state.leads.filter(l => l.owner === r.id).length} ลีด</span></div>`).join('')}
+        <form class="inline-form" id="rep-form"><input class="input" id="rep-name" placeholder="ชื่อเซลล์ใหม่" required><select class="select" id="rep-role"><option value="sales">เซลล์</option><option value="admin">หัวหน้า</option></select><button class="btn primary">เพิ่ม</button></form></div></div>
       <div class="panel"><div class="panel-h"><h2>แคมเปญ</h2></div><div class="panel-b">
-        ${state.campaigns.map(c => `<div class="list-row"><div><b>${esc(c.name)}</b><div class="sub">${fmtDate(c.start)} – ${fmtDate(c.end)}</div></div><span class="tag ${c.brand === 'bebeplay' ? 'bebe' : 'host'}">${BRAND[c.brand]}</span></div>`).join('')}
+        ${state.campaigns.map(c => `<div class="list-row"><div><b>${esc(c.name)}</b><div class="sub">${fmtDate(c.start)} – ${fmtDate(c.end)}</div></div><span class="tag ${c.brand === 'bebeplay' ? 'bebe' : 'host'}">${BRAND[c.brand]}</span><select class="select" data-claimmode="${c.id}" aria-label="วิธีจองลีด">${Object.entries(MODES).map(([k, v]) => `<option value="${k}" ${(c.claimMode || 'self') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>`).join('')}
         <form class="inline-form" id="camp-form"><input class="input" id="camp-name" placeholder="ชื่อแคมเปญใหม่" required>
           <select class="select" id="camp-brand"><option value="bebeplay">Bebeplay</option><option value="hosttail">Hosttail</option></select>
           <button class="btn primary">เพิ่ม</button></form></div></div>
       <div class="panel"><div class="panel-h"><h2>ข้อมูลตัวอย่าง</h2></div><div class="panel-b">
         <p class="help">ล้างสิ่งที่บันทึกไว้ในเบราว์เซอร์นี้ แล้วกลับไปใช้ข้อมูลตัวอย่างตั้งต้น</p><br><button class="btn danger" id="reset">รีเซ็ตข้อมูลตัวอย่าง</button></div></div></div>`;
     $('#rep-form').onsubmit = (e) => { e.preventDefault(); const n = $('#rep-name').value.trim(); if (!n) return;
-      state.reps.push({ id: 'r' + Date.now(), name: n, initials: n.slice(0, 2) }); save(); fillMe(); renderSetup(); toast('เพิ่มเซลล์แล้ว'); };
+      state.reps.push({ id: 'r' + Date.now(), name: n, initials: n.slice(0, 2), role: $('#rep-role').value }); save(); fillMe(); renderSetup(); toast('เพิ่มเซลล์แล้ว'); };
     $('#camp-form').onsubmit = (e) => { e.preventDefault(); const n = $('#camp-name').value.trim(); if (!n) return;
-      state.campaigns.push({ id: 'c' + Date.now(), brand: $('#camp-brand').value, name: n, start: today, end: today.slice(0, 8) + '30', note: '' }); save(); renderSetup(); toast('เพิ่มแคมเปญแล้ว'); };
+      state.campaigns.push({ id: 'c' + Date.now(), brand: $('#camp-brand').value, name: n, start: today, end: today.slice(0, 8) + '30', note: '', claimMode: 'self' }); save(); renderSetup(); toast('เพิ่มแคมเปญแล้ว'); };
     $('#reset').onclick = () => { try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); };
   }
 
@@ -239,7 +267,7 @@
   function customerModal(id, tab = 'buy') {
     const l = lead(id); if (!l) return;
     const lastBuy = l.purchases[0]?.date;
-    const buyRows = l.purchases.map(p => `<tr><td>${fmtDate(p.date)}</td><td class="mono">${esc(p.sku)}</td><td>${esc(p.product)}</td><td class="r num">${baht(p.amount)}</td></tr>`).join('');
+    const buyRows = l.purchases.map(p => `<tr><td>${fmtDate(p.date)}</td><td class="mono">${esc(p.sku)}</td><td>${esc(p.product)}<div class="sub">บิล ${esc(p.bill)} · ขายโดย ${esc(rep(p.seller)?.name || '—')}</div></td><td class="r num">${baht(p.amount)}</td></tr>`).join('');
     const hist = [...l.interactions].sort((a, b) => b.date.localeCompare(a.date)).map(i => `<li>
       <span class="feed-ic ${i.type}"><svg viewBox="0 0 24 24"><path d="${i.type === 'call' ? 'M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z' : 'M4 4h16v12H7l-3 3z'}"/></svg></span>
       <div style="flex:1;min-width:0"><div class="tl-head"><b>${i.type === 'call' ? 'โทร' : 'แชต'}</b><span class="sub">${fmtDT(i.date)} · ${esc(rep(i.rep)?.name || '')}</span><span class="tag">${esc(i.result)}</span></div><div class="tl-note">${esc(i.note)}</div></div></li>`).join('');
@@ -254,7 +282,9 @@
           <div><dt>วันที่ซื้อล่าสุด</dt><dd>${fmtDate(lastBuy)}</dd></div>
           <div><dt>ยอดซื้อรวม</dt><dd class="num">${baht(total(l))}</dd></div>
           <div><dt>ร้านค้า</dt><dd>${esc(l.shop)}</dd></div>
-          <div><dt>ผู้ดูแล</dt><dd>${esc(rep(l.owner)?.name || '—')}</dd></div></dl>
+          <div><dt>ผู้ดูแล</dt><dd>${esc(rep(l.owner)?.name || '—')}</dd></div>
+          <div><dt>สินค้าที่สนใจ</dt><dd>${esc(l.interest || '—')}</dd></div>
+          <div><dt>เลขบิลที่ปิดได้</dt><dd class="mono">${l.closedBills?.length ? esc(l.closedBills.join(', ')) : '—'}</dd></div></dl>
         <div class="tabs" role="tablist"><button class="tab ${tab === 'buy' ? 'active' : ''}" data-tab="buy">ประวัติการซื้อ (${l.purchases.length})</button>
           <button class="tab ${tab === 'talk' ? 'active' : ''}" data-tab="talk">ประวัติการโทร/แชต (${l.interactions.length})</button></div>
         ${tab === 'buy'
@@ -282,12 +312,15 @@
           <div class="field"><label for="f-status">สถานะลูกค้าหลังบันทึก</label><select class="select" id="f-status">
             ${Object.entries(STATUS).filter(([k]) => k !== 'new').map(([k, v]) => `<option value="${k}" ${k === (l.status === 'new' ? 'following' : l.status) ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
           <div class="field wide" id="cb-wrap"><label for="f-cb">วันนัดโทรกลับ</label><input class="input" type="date" id="f-cb" min="${today}" value="${l.callback || ''}"></div>
+          <div class="field wide"><label for="f-interest">สินค้าที่ลูกค้าสนใจ</label><input class="input" id="f-interest" value="${esc(l.interest || '')}" placeholder="เช่น เตียงนอนเด็ก, ทรายแมว"></div>
+          <div class="field wide" id="won-wrap"><label for="f-bills">เลขบิลที่ขายได้ (อ้างอิงตอนผูกข้อมูล คั่นหลายบิลด้วยจุลภาค)</label><input class="input" id="f-bills" value="${esc((l.closedBills || []).join(', '))}" placeholder="เช่น 312345, 312399">
+            <label for="f-amount" style="margin-top:8px">ยอดที่ปิดได้ (บาท)</label><input class="input" id="f-amount" type="number" min="0" step="1" value="${l.closedAmount ?? ''}"></div>
           <div class="field wide"><label for="f-note">หมายเหตุ</label><textarea class="textarea" id="f-note" placeholder="สรุปสิ่งที่คุยกับลูกค้า"></textarea></div>
         </div></div>
         <div class="modal-f"><button type="button" class="btn" data-close>ยกเลิก</button><button class="btn primary">บันทึก</button></div></form>`, 'sm');
     let cur = type;
     const fillRes = () => { $('#f-res').innerHTML = RES[cur].map(r => `<option>${r}</option>`).join(''); };
-    const cbToggle = () => { $('#cb-wrap').hidden = $('#f-status').value !== 'callback'; };
+    const cbToggle = () => { $('#cb-wrap').hidden = $('#f-status').value !== 'callback'; $('#won-wrap').hidden = $('#f-status').value !== 'won'; };
     fillRes(); cbToggle();
     $('#f-status').onchange = cbToggle;
     document.querySelectorAll('#seg button').forEach(b => b.onclick = () => {
@@ -295,10 +328,14 @@
     });
     $('#log-form').onsubmit = (e) => {
       e.preventDefault();
+      const billList = $('#f-bills').value.split(/[,\s]+/).map(x => x.trim()).filter(Boolean);
+      if ($('#f-status').value === 'won' && !billList.length) { toast('ใส่เลขบิลที่ขายได้ก่อนปิดการขาย'); $('#f-bills').focus(); return; }
       const now = new Date(); const pad = (n) => String(n).padStart(2, '0');
       l.interactions.push({ id: 'i' + Date.now(), type: cur, date: `${today}T${pad(now.getHours())}:${pad(now.getMinutes())}`, rep: state.meId,
         result: $('#f-res').value, note: $('#f-note').value.trim() || '(ไม่มีหมายเหตุ)' });
       l.status = $('#f-status').value;
+      l.interest = $('#f-interest').value.trim();
+      if (l.status === 'won') { l.closedBills = billList; l.closedAmount = $('#f-amount').value === '' ? null : Number($('#f-amount').value); }
       l.callback = l.status === 'callback' ? ($('#f-cb').value || null) : null;
       if (!l.owner) l.owner = state.meId;
       save(); closeModal(); route(); toast('บันทึกแล้ว');
@@ -334,17 +371,73 @@
     if (t.dataset.act === 'log') logModal(id, t.dataset.type);
     if (t.dataset.act === 'claim') { lead(id).owner = state.meId; save(); route(); toast('จองลีดแล้ว'); }
   });
+  document.addEventListener('change', (e) => {
+    const a = e.target.closest('[data-assign]');
+    if (a && a.value) { const l = lead(a.dataset.assign); l.owner = a.value; save(); route(); toast('มอบหมายแล้ว: ' + (rep(a.value)?.name || '')); }
+    const m = e.target.closest('[data-claimmode]');
+    if (m) { camp(m.dataset.claimmode).claimMode = m.value; save(); toast('บันทึกวิธีจองลีดแล้ว'); }
+  });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
   $('#menu-btn').onclick = openMenu;
   $('#scrim').onclick = closeMenu;
 
+  /* ---------- auth + boot ---------- */
+  const cfg = window.DS_CONFIG || {};
+  const wantAuth = !!(cfg.url && cfg.key);
+  const sb = wantAuth && window.supabase ? window.supabase.createClient(cfg.url, cfg.key) : null;
+  let authUser = null, started = false;
+
   function fillMe() {
     const sel = $('#me-select');
-    sel.innerHTML = state.reps.map(r => `<option value="${r.id}" ${r.id === state.meId ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
-    const r = rep(state.meId); $('#me-avatar').textContent = (r?.initials || '?').slice(0, 2);
+    if (authUser) {
+      sel.innerHTML = `<option>${esc(me()?.name || authUser)}</option>`; sel.disabled = true;
+      $('#me-label').textContent = 'เข้าสู่ระบบแล้ว';
+    } else {
+      sel.disabled = false; $('#me-label').textContent = 'โหมดตัวอย่าง · ใช้งานในชื่อ';
+      sel.innerHTML = state.reps.map(r => `<option value="${r.id}" ${r.id === state.meId ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
+    }
+    $('#me-avatar').textContent = (me()?.initials || '?').slice(0, 2);
   }
   $('#me-select').onchange = (e) => { state.meId = e.target.value; save(); fillMe(); route(); };
-  fillMe();
-  window.addEventListener('hashchange', route);
-  route();
+  function start() {
+    $('#login').hidden = true;
+    fillMe();
+    if (!started) { started = true; window.addEventListener('hashchange', route); }
+    route();
+  }
+  function showLogin(msg) {
+    $('#login').hidden = false;
+    const err = $('#l-err'); err.hidden = !msg; err.textContent = msg || '';
+  }
+  function enterAuth(user) {
+    authUser = user.email;
+    let r = state.reps.find(x => x.email === user.email);
+    if (!r) {
+      const nm = user.email.split('@')[0];
+      r = { id: 'u' + user.id.slice(0, 8), name: nm, initials: nm.slice(0, 2).toUpperCase(), email: user.email, role: 'sales' };
+      state.reps.push(r); save();
+    }
+    state.meId = r.id;
+  }
+  $('#login-form').onsubmit = async (e) => {
+    e.preventDefault();
+    if (!sb) return showLogin('โหลดระบบล็อกอินไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่ หรือเลือกดูตัวอย่าง');
+    $('#l-submit').disabled = true;
+    const { data, error } = await sb.auth.signInWithPassword({ email: $('#l-email').value.trim(), password: $('#l-pass').value });
+    $('#l-submit').disabled = false;
+    if (error || !data?.user) return showLogin('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+    enterAuth(data.user); start();
+  };
+  $('#l-demo').onclick = () => { authUser = null; start(); };
+  $('#logout').onclick = async () => { if (sb && authUser) await sb.auth.signOut(); authUser = null; $('#l-pass').value = ''; showLogin(''); };
+
+  (async function boot() {
+    if (!wantAuth) return start();
+    if (!sb) return showLogin('โหลดระบบล็อกอินไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่ หรือเลือกดูตัวอย่าง');
+    try {
+      const { data } = await sb.auth.getSession();
+      if (data?.session?.user) { enterAuth(data.session.user); return start(); }
+    } catch (e) {}
+    showLogin('');
+  })();
 })();

@@ -323,3 +323,13 @@ th.r, td.r { text-align: right; }
   .form-grid, .info-grid { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* ---------- login ---------- */
+.login { position: fixed; inset: 0; z-index: 70; background: var(--bg); display: grid; place-items: center; padding: 24px 16px; }
+.login-card { width: min(380px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px 24px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow); }
+.login-card .brand-name { color: var(--fg); font-size: 20px; }
+.login-err { color: var(--bad); background: var(--bad-soft); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+.logout { color: var(--side-muted); flex: none; }
+.logout:hover { background: var(--side-bg-2); color: #fff; }
+.list-row .select { max-width: 190px; }
+td .select { margin-top: 6px; max-width: 170px; font-size: 12.5px; padding: 4px 8px; }
