@@ -362,3 +362,7 @@ td .select { margin-top: 6px; max-width: 170px; font-size: 12.5px; padding: 4px 
 .crit-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .rep-name { font-weight: 600; }
 .camp-cell { font-size: 13px; }
+
+.camp.all { background: var(--accent-soft); }
+.camp.all.active { background: var(--accent-soft); }
+.toolbar .btn:disabled { opacity: .45; }
