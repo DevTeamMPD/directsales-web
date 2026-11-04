@@ -8,7 +8,7 @@
   const fmtDT = (s) => fmtDate(s) + (s.length > 10 ? ' ' + s.slice(11, 16) : '');
 
   const STATUS = {
-    new: 'ยังไม่ติดต่อ', following: 'กำลังติดตาม', callback: 'รอโทรกลับ',
+    new: 'ยังไม่ติดต่อ', following: 'กำลังติดตาม', callback: 'รอติดต่อ',
     won: 'ปิดการขายแล้ว', lost: 'ไม่สนใจ', unreachable: 'ติดต่อไม่ได้',
   };
   const BRAND = { bebeplay: 'Bebeplay', hosttail: 'Hosttail' };
@@ -108,7 +108,7 @@
   function dueHtml(l) {
     if (!l.callback) return '';
     const cls = l.callback < today ? 'overdue' : l.callback === today ? 'today' : '';
-    const lbl = l.callback < today ? 'เลยกำหนด ' : l.callback === today ? 'วันนี้ ' : 'โทรกลับ ';
+    const lbl = l.callback < today ? 'เลยนัด ' : l.callback === today ? 'นัดวันนี้ ' : 'นัดติดต่อ ';
     return `<div class="due ${cls}">${lbl}${fmtDate(l.callback)}</div>`;
   }
   function leadRows(list, opts = {}) {
@@ -127,8 +127,7 @@
         <td><span class="badge s-${l.status}">${STATUS[l.status]}</span>${dueHtml(l)}</td>
         <td class="note-cell">${noteCell(l)}</td>
         <td><div class="actions">
-          <button class="btn sm primary" data-act="log" data-type="call" data-id="${l.id}">บันทึกโทร</button>
-          <button class="btn sm" data-act="log" data-type="chat" data-id="${l.id}">บันทึกแชต</button>${claim}
+          <button class="btn sm primary" data-act="log" data-type="call" data-id="${l.id}">บันทึก</button>${claim}
         </div></td></tr>`;
     }).join('');
   }
@@ -166,7 +165,7 @@
     const draw = (keepFocus) => {
       const base = state.leads.filter(mineOrAll);
       const list = filtered(base);
-      $('#view').innerHTML = `<div class="demo-note">ข้อมูลทั้งหมดเป็นตัวอย่างสำหรับ Preview — กดบันทึกโทร/แชตได้จริง ข้อมูลเก็บในเบราว์เซอร์นี้เท่านั้น</div>${toolbar(base, true)}${tableHtml(list)}`;
+      $('#view').innerHTML = `<div class="demo-note">ข้อมูลทั้งหมดเป็นตัวอย่างสำหรับ Preview — กดบันทึกได้จริง ข้อมูลเก็บในเบราว์เซอร์นี้เท่านั้น</div>${toolbar(base, true)}${tableHtml(list)}`;
       bindToolbar(draw);
       if (keepFocus) { const q = $('#q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
     };
@@ -232,7 +231,7 @@
       ${kpi('ติดต่อแล้ว', contacted + ' <span class="sub">/ ' + L.length + '</span>', Math.round(contacted / L.length * 100) + '% ของลีดทั้งหมด')}
       ${kpi('ปิดการขาย', won.length, 'อัตราปิด ' + (contacted ? Math.round(won.length / contacted * 100) : 0) + '% ของที่ติดต่อแล้ว')}
       ${kpi('ยอดที่ปิดได้', baht(wonValue), 'จากยอดที่เซลล์บันทึกตอนปิดการขาย')}
-      ${kpi('โทรกลับเลยกำหนด', overdue, overdue ? 'ควรติดตามวันนี้' : 'ไม่มีค้าง')}</div>
+      ${kpi('นัดติดต่อเลยกำหนด', overdue, overdue ? 'ควรติดตามวันนี้' : 'ไม่มีค้าง')}</div>
       <div class="grid-2">
         <div class="panel"><div class="panel-h"><h2>ผลงานรายเซลล์</h2><div class="legend"><span><i style="background:var(--accent)"></i>ลีดที่ดูแล</span><span><i style="background:var(--ok)"></i>ปิดการขาย</span></div></div><div class="panel-b">${repRows}</div></div>
         <div class="panel"><div class="panel-h"><h2>กิจกรรมล่าสุด</h2></div><div class="panel-b"><ul class="feed">${feed}</ul></div></div>
@@ -272,7 +271,7 @@
     const buyRows = l.purchases.map(p => `<tr><td>${fmtDate(p.date)}</td><td class="mono">${esc(p.sku)}</td><td>${esc(p.product)}<div class="sub">บิล ${esc(p.bill)} · ขายโดย ${esc(rep(p.seller)?.name || '—')}</div></td><td class="r num">${baht(p.amount)}</td></tr>`).join('');
     const hist = [...l.interactions].sort((a, b) => b.date.localeCompare(a.date)).map(i => `<li>
       <span class="feed-ic ${i.type}"><svg viewBox="0 0 24 24"><path d="${i.type === 'call' ? 'M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z' : 'M4 4h16v12H7l-3 3z'}"/></svg></span>
-      <div style="flex:1;min-width:0"><div class="tl-head"><b>${i.type === 'call' ? 'โทร' : 'แชต'}</b><span class="sub">${fmtDT(i.date)} · ${esc(rep(i.rep)?.name || '')}</span><span class="tag">${esc(i.result)}</span></div><div class="tl-note">${esc(i.note)}</div></div></li>`).join('');
+      <div style="flex:1;min-width:0"><div class="tl-head"><b>${i.type === 'call' ? 'โทร' : 'แชต'}</b><span class="sub">${fmtDT(i.date)} · ${esc(rep(i.rep)?.name || '')}</span><span class="tag">${esc(i.result)}</span>${i.due ? `<span class="tag s-callback">นัดติดต่อ ${fmtDate(i.due)}</span>` : ''}</div><div class="tl-note">${esc(i.note)}</div></div></li>`).join('');
     openModal(`
       <div class="modal-h"><h3>${esc(l.name)}</h3><span class="badge s-${l.status}">${STATUS[l.status]}</span>
         <span class="tag ${l.brand === 'bebeplay' ? 'bebe' : 'host'}">${BRAND[l.brand]}</span>${X}</div>
@@ -293,7 +292,7 @@
           ? `<div class="mini-table table-wrap"><table><thead><tr><th>วัน/เดือน/ปี</th><th>SKU</th><th>ชื่อสินค้า</th><th class="r">ยอดซื้อ</th></tr></thead><tbody>${buyRows}</tbody></table></div>`
           : (hist ? `<ul class="timeline">${hist}</ul>` : '<div class="empty">ยังไม่เคยติดต่อลูกค้ารายนี้</div>')}
       </div>
-      <div class="modal-f"><button class="btn" data-log="chat">บันทึกแชต</button><button class="btn primary" data-log="call">บันทึกโทร</button></div>`);
+      <div class="modal-f"><button class="btn primary" data-log="call">บันทึก</button></div>`);
     const m = $('.modal');
     m.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => customerModal(id, b.dataset.tab));
     m.querySelectorAll('[data-log]').forEach(b => b.onclick = () => logModal(id, b.dataset.log));
@@ -306,14 +305,14 @@
     const l = lead(id); if (!l) return;
     const RES = { call: ['คุยแล้ว', 'ไม่รับสาย', 'สายไม่ว่าง', 'เบอร์ผิด'], chat: ['ตอบกลับแล้ว', 'อ่านแล้วไม่ตอบ', 'ส่งโปรโมชันแล้ว'] };
     openModal(`
-      <div class="modal-h"><h3>บันทึก${type === 'call' ? 'โทร' : 'แชต'} · ${esc(l.name)}</h3>${X}</div>
+      <div class="modal-h"><h3>บันทึก · ${esc(l.name)}</h3>${X}</div>
       <form id="log-form"><div class="modal-b">
         <div class="field"><label>ช่องทาง</label><div class="seg" id="seg"><button type="button" data-t="call" class="${type === 'call' ? 'active' : ''}">โทร</button><button type="button" data-t="chat" class="${type === 'chat' ? 'active' : ''}">แชต</button></div></div>
         <div class="form-grid">
           <div class="field"><label for="f-res">ผลการติดต่อ</label><select class="select" id="f-res"></select></div>
           <div class="field"><label for="f-status">สถานะลูกค้าหลังบันทึก</label><select class="select" id="f-status">
             ${Object.entries(STATUS).filter(([k]) => k !== 'new').map(([k, v]) => `<option value="${k}" ${k === (l.status === 'new' ? 'following' : l.status) ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-          <div class="field wide" id="cb-wrap"><label for="f-cb">วันนัดโทรกลับ</label><input class="input" type="date" id="f-cb" min="${today}" value="${l.callback || ''}"></div>
+          <div class="field wide" id="cb-wrap"><label for="f-cb">วันที่นัดติดต่อ <span class="req">*</span></label><input class="input" type="date" id="f-cb" min="${today}" value="${l.callback || ''}"></div>
           <div class="field wide"><label for="f-interest">สินค้าที่ลูกค้าสนใจ</label><input class="input" id="f-interest" value="${esc(l.interest || '')}" placeholder="เช่น เตียงนอนเด็ก, ทรายแมว"></div>
           <div class="field wide" id="won-wrap"><label for="f-bills">เลขบิลที่ขายได้ (อ้างอิงตอนผูกข้อมูล คั่นหลายบิลด้วยจุลภาค)</label><input class="input" id="f-bills" value="${esc((l.closedBills || []).join(', '))}" placeholder="เช่น 312345, 312399">
             <label for="f-amount" style="margin-top:8px">ยอดที่ปิดได้ (บาท)</label><input class="input" id="f-amount" type="number" min="0" step="1" value="${l.closedAmount ?? ''}"></div>
@@ -330,11 +329,12 @@
     });
     $('#log-form').onsubmit = (e) => {
       e.preventDefault();
+      if ($('#f-status').value === 'callback' && !$('#f-cb').value) { toast('เลือกวันที่นัดติดต่อก่อนบันทึก'); $('#f-cb').focus(); return; }
       const billList = $('#f-bills').value.split(/[,\s]+/).map(x => x.trim()).filter(Boolean);
       if ($('#f-status').value === 'won' && !billList.length) { toast('ใส่เลขบิลที่ขายได้ก่อนปิดการขาย'); $('#f-bills').focus(); return; }
       const now = new Date(); const pad = (n) => String(n).padStart(2, '0');
       l.interactions.push({ id: 'i' + Date.now(), type: cur, date: `${today}T${pad(now.getHours())}:${pad(now.getMinutes())}`, rep: state.meId,
-        result: $('#f-res').value, note: $('#f-note').value.trim() || '(ไม่มีหมายเหตุ)' });
+        result: $('#f-res').value, due: $('#f-status').value === 'callback' ? $('#f-cb').value : null, note: $('#f-note').value.trim() || '(ไม่มีหมายเหตุ)' });
       l.status = $('#f-status').value;
       l.interest = $('#f-interest').value.trim();
       if (l.status === 'won') { l.closedBills = billList; l.closedAmount = $('#f-amount').value === '' ? null : Number($('#f-amount').value); }
