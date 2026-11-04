@@ -502,8 +502,7 @@
       <td class="r num">${r.ltv == null ? '—' : baht(Math.round(r.ltv))}</td><td class="r num">${r.orders ?? '—'}</td>
       <td>${r.last ? fmtDate(r.last) : '—'}</td>
       <td>${r.brands.length ? r.brands.map(b => `<span class="tag ${b === 'bebeplay' ? 'bebe' : b === 'hosttail' ? 'host' : ''}">${esc(BRAND[b] || b)}</span>`).join(' ') : '<span class="sub">—</span>'}</td></tr>`).join('');
-    return `<div class="quota card" style="padding:10px 14px">ถังนี้เหมือนกันทั้ง Bebeplay และ Hosttail · ลูกค้าที่มีเบอร์โทร <b>${P.total === null ? '…' : P.total.toLocaleString('th-TH')}</b> ราย · เรียงตามยอดซื้อสะสมมากไปน้อย${hasPeriod() ? ' · กรองตามวันที่ซื้อล่าสุดในช่วงที่เลือก' : ''}${P.live ? '' : ' · <b>ข้อมูลตัวอย่าง</b>'}</div>
-      <div class="toolbar"><label class="search" for="pool-q">${SEARCH_SVG}<input id="pool-q" type="search" placeholder="ค้นหา ชื่อ หรือเบอร์โทร" value="${esc(P.q)}"></label>
+    return `<div class="toolbar"><label class="search" for="pool-q">${SEARCH_SVG}<input id="pool-q" type="search" placeholder="ค้นหา ชื่อ หรือเบอร์โทร" value="${esc(P.q)}"></label>
         ${P.loading ? '<span class="sub">กำลังโหลด…</span>' : ''}</div>
       ${P.err ? `<div class="login-err">${esc(P.err)}</div>` : ''}
       <div class="card table-wrap"><table><thead><tr><th>ชื่อ / เบอร์</th><th>กลุ่มลูกค้า</th><th class="r">ยอดซื้อสะสม</th><th class="r">ออเดอร์</th><th>ซื้อล่าสุด</th><th>แบรนด์</th></tr></thead>
