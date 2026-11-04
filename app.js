@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const KEY = 'mpd-directsale-preview-v3';
+  const KEY = 'mpd-directsale-preview-v4';
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const baht = (n) => Number(n || 0).toLocaleString('th-TH') + '.-';
@@ -19,9 +19,10 @@
   state.meId = state.meId || 'r4';
   state.customers = state.customers || JSON.parse(JSON.stringify(window.DS_DATA.customers));
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
+  save();
   const today = state.today;
 
-  const ui = { q: '', status: 'all', camp: 'all', rep: 'all', selCamp: null };
+  const ui = { q: '', status: 'all', camp: 'all', rep: 'all', selCamp: null, sort: 'due', dashBrand: 'all', period: { from: '', to: '', key: 'all' } };
   const rep = (id) => state.reps.find(r => r.id === id);
   const camp = (id) => state.campaigns.find(c => c.id === id);
   const lead = (id) => state.leads.find(l => l.id === id);
@@ -30,12 +31,52 @@
   const isAdmin = () => me()?.role === 'admin';
   const visible = (l) => isAdmin() || !l.owner || l.owner === state.meId; // เซลล์เห็นเฉพาะลีดว่างกับของตัวเอง
   const mineOrAll = (l) => isAdmin() || l.owner === state.meId;
+  /* ---------- ตัวกรองช่วงวันที่ (ใช้ร่วมทุกหน้า) ---------- */
+  const hasPeriod = () => !!(ui.period.from || ui.period.to);
+  const inPeriod = (d) => !!d && (!ui.period.from || d.slice(0, 10) >= ui.period.from) && (!ui.period.to || d.slice(0, 10) <= ui.period.to);
+  // ลีดที่ยังไม่มีผู้ดูแลแสดงเสมอ (ให้เซลล์จองได้) ส่วนลีดอื่นแสดงเมื่อมีการติดต่อ นัด หรือปิดการขายในช่วงนั้น
+  const periodOk = (l) => !hasPeriod() || !l.owner || l.interactions.some(i => inPeriod(i.date)) || inPeriod(l.callback) || inPeriod(l.closedAt);
+  const contactedIn = (l) => hasPeriod() ? l.interactions.some(i => inPeriod(i.date)) : l.status !== 'new';
+  const wonIn = (l) => l.status === 'won' && (!hasPeriod() || inPeriod(l.closedAt));
+  const ymd = (d) => d.toISOString().slice(0, 10);
+  function presetRange(k) {
+    const t = new Date(today + 'T00:00:00Z'), y = t.getUTCFullYear(), m = t.getUTCMonth();
+    const D = (yy, mm, dd) => ymd(new Date(Date.UTC(yy, mm, dd)));
+    if (k === 'today') return [today, today];
+    if (k === '7d') return [ymd(new Date(t.getTime() - 6 * 864e5)), today];
+    if (k === 'm0') return [D(y, m, 1), D(y, m + 1, 0)];
+    if (k === 'm1') return [D(y, m - 1, 1), D(y, m, 0)];
+    if (k === 'y0') return [D(y, 0, 1), D(y, 11, 31)];
+    return ['', ''];
+  }
+  function periodHtml() {
+    const P = ui.period, y = +today.slice(0, 4);
+    const chip = (k, t) => `<button type="button" class="chip ${P.key === k ? 'active' : ''}" data-pk="${k}">${t}</button>`;
+    return `<div class="period card"><div class="period-row"><b class="sub">ช่วงวันที่</b>
+      ${chip('all', 'ทั้งหมด')}${chip('today', 'วันนี้')}${chip('7d', '7 วันล่าสุด')}${chip('m0', 'เดือนนี้')}${chip('m1', 'เดือนก่อน')}${chip('y0', 'ปีนี้')}
+      <input type="month" id="p-month" class="input pin" aria-label="เลือกเดือน" value="${P.key === 'month' ? P.from.slice(0, 7) : ''}">
+      <select id="p-year" class="select" aria-label="เลือกปี"><option value="">ปี…</option>${[y, y - 1, y - 2].map(v => `<option value="${v}" ${P.key === 'year' && P.from.startsWith(String(v)) ? 'selected' : ''}>${v}</option>`).join('')}</select>
+      <input type="date" id="p-from" class="input pin" aria-label="ตั้งแต่วันที่" value="${P.from}"><span class="sub">ถึง</span><input type="date" id="p-to" class="input pin" aria-label="ถึงวันที่" value="${P.to}"></div>
+      <div class="sub">${hasPeriod() ? `กรอง ${P.from ? fmtDate(P.from) : '…'} – ${P.to ? fmtDate(P.to) : '…'} · แสดงลีดที่มีการติดต่อ นัด หรือปิดการขายในช่วงนี้ (ลีดที่ยังไม่มีผู้ดูแลแสดงเสมอ)` : 'ยังไม่ได้กรองช่วงวันที่'}</div></div>`;
+  }
+  function bindPeriod(redraw) {
+    const apply = (from, to, key) => { Object.assign(ui.period, { from, to, key }); ui.pool.page = 0; ui.pool.loaded = false; redraw(); };
+    document.querySelectorAll('[data-pk]').forEach(b => b.onclick = () => { const [f, t] = presetRange(b.dataset.pk); apply(f, t, b.dataset.pk); });
+    const mo = $('#p-month'); if (mo) mo.onchange = () => {
+      if (!mo.value) return apply('', '', 'all');
+      const [yy, mm] = mo.value.split('-').map(Number); apply(`${mo.value}-01`, ymd(new Date(Date.UTC(yy, mm, 0))), 'month');
+    };
+    const yr = $('#p-year'); if (yr) yr.onchange = () => { if (yr.value) apply(`${yr.value}-01-01`, `${yr.value}-12-31`, 'year'); };
+    const fr = $('#p-from'), to = $('#p-to');
+    const custom = () => apply(fr.value, to.value, (fr.value || to.value) ? 'custom' : 'all');
+    if (fr) fr.onchange = custom; if (to) to.onchange = custom;
+  }
   const MODES = { self: 'เซลล์จองเอง', assign: 'หัวหน้ามอบหมาย', auto: 'เด้งเข้าเซลล์ที่ขายล่าสุด' };
   const lastSeller = (l) => l.purchases.find(p => p.seller && rep(p.seller))?.seller || null;
   function applyAuto(campId, quiet) {
     let n = 0;
     state.leads.filter(l => l.campaignId === campId && !l.owner).forEach(l => { const s = lastSeller(l); if (s) { l.owner = s; n++; } });
-    if (n) { save(); if (!quiet || n) toast(`จัดสรรอัตโนมัติ ${n} ลีด ไปยังเซลล์ที่ขายล่าสุด`); }
+    if (n) { save(); if (!quiet) toast(`จัดสรรอัตโนมัติ ${n} ลีด ไปยังเซลล์ที่ขายล่าสุด`); }
     return n;
   }
   function claimCell(l, opts) {
@@ -70,6 +111,7 @@
     setup: { title: 'ตั้งค่า', sub: '', render: renderSetup },
   };
   function route() {
+    state.campaigns.filter(c => c.claimMode === 'auto').forEach(c => applyAuto(c.id, true)); // แคมเปญแบบ auto เด้งเข้าถังเซลล์ทันทีที่มีข้อมูล
     const name = (location.hash || '#leads').slice(1);
     const r = routes[name] || routes.leads;
     $('#page-title').textContent = r.title;
@@ -96,14 +138,23 @@
   /* ---------- lead table ---------- */
   function filtered(base) {
     const q = ui.q.trim().toLowerCase();
-    return base.filter(l => {
-      if (ui.status !== 'all' && l.status !== ui.status) return false;
+    const out = base.filter(l => {
+      if (!periodOk(l)) return false;
+      if (ui.status === 'today') { if (l.callback !== today) return false; }
+      else if (ui.status === 'overdue') { if (!(l.callback && l.callback < today)) return false; }
+      else if (ui.status !== 'all' && l.status !== ui.status) return false;
       if (ui.rep === 'me' && l.owner !== state.meId) return false;
       if (ui.camp !== 'all' && (ui.camp === 'self' ? l.source !== 'self' : l.campaignId !== ui.camp)) return false;
       if (!q) return true;
       return l.name.toLowerCase().includes(q) || l.phone.includes(q.replace(/-/g, '')) ||
         bills(l).some(b => b.includes(q)) || l.shop.toLowerCase().includes(q);
     });
+    return sortLeads(out);
+  }
+  function sortLeads(a) {
+    if (ui.sort === 'due') return [...a].sort((x, y) => (x.callback || '9999').localeCompare(y.callback || '9999')); // วันนัดใกล้สุดก่อน ไม่มีนัดไว้ท้าย
+    if (ui.sort === 'spend') return [...a].sort((x, y) => total(y) - total(x));
+    return a;
   }
   function dueHtml(l) {
     if (!l.callback) return '';
@@ -139,23 +190,28 @@
   const SEARCH_SVG = '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>';
 
   function toolbar(base, withCampSelect) {
-    const count = (s) => base.filter(l => s === 'all' || l.status === s).length;
-    const dots = { new: 'var(--grey)', following: 'var(--info)', callback: 'var(--warn)', won: 'var(--ok)', lost: 'var(--bad)', unreachable: 'var(--violet)' };
-    const chips = ['all', 'new', 'following', 'callback', 'won', 'unreachable', 'lost'].map(s =>
-      `<button class="chip ${ui.status === s ? 'active' : ''}" data-chip="${s}">${s === 'all' ? '' : `<i class="dot" style="background:${dots[s]}"></i>`}${s === 'all' ? 'ทั้งหมด' : STATUS[s]} (${count(s)})</button>`).join('');
+    const match = (l, s) => s === 'all' ? true : s === 'today' ? l.callback === today : s === 'overdue' ? !!(l.callback && l.callback < today) : l.status === s;
+    const count = (s) => base.filter(l => periodOk(l) && match(l, s)).length;
+    const EXTRA = { overdue: 'เลยนัด', today: 'นัดวันนี้' };
+    const dots = { new: 'var(--grey)', following: 'var(--info)', callback: 'var(--warn)', won: 'var(--ok)', lost: 'var(--bad)', unreachable: 'var(--violet)', overdue: 'var(--bad)', today: 'var(--warn)' };
+    const chips = ['all', 'overdue', 'today', 'new', 'following', 'callback', 'won', 'unreachable', 'lost'].map(s =>
+      `<button class="chip ${ui.status === s ? 'active' : ''}" data-chip="${s}">${s === 'all' ? '' : `<i class="dot" style="background:${dots[s]}"></i>`}${s === 'all' ? 'ทั้งหมด' : (EXTRA[s] || STATUS[s])} (${count(s)})</button>`).join('');
     const campOpts = `<option value="all">แคมเปญทั้งหมด</option><option value="self" ${ui.camp === 'self' ? 'selected' : ''}>เซลล์ขุดเอง</option>` +
       state.campaigns.map(c => `<option value="${c.id}" ${ui.camp === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
     return `<div class="toolbar">
       <label class="search" for="q">${SEARCH_SVG}<input id="q" type="search" placeholder="ค้นหา ชื่อ, เบอร์, เลขบิล, ร้านค้า" value="${esc(ui.q)}"></label>
       ${chips}
       ${withCampSelect ? `<select id="camp-sel" class="select" aria-label="แคมเปญ">${campOpts}</select>` : ''}
+      <select id="sort-sel" class="select" aria-label="เรียงตาม"><option value="due" ${ui.sort === 'due' ? 'selected' : ''}>เรียง: วันนัดใกล้สุด</option><option value="spend" ${ui.sort === 'spend' ? 'selected' : ''}>เรียง: ยอดซื้อสูงสุด</option><option value="none" ${ui.sort === 'none' ? 'selected' : ''}>เรียง: ตามเดิม</option></select>
       ${isAdmin() ? `<select id="rep-sel" class="select" aria-label="ผู้ดูแล"><option value="all">ทุกคน</option><option value="me" ${ui.rep === 'me' ? 'selected' : ''}>ของฉัน</option></select>` : ''}
     </div>`;
   }
   function bindToolbar(redraw) {
+    bindPeriod(redraw);
     const q = $('#q'); if (q) q.addEventListener('input', () => { ui.q = q.value; redraw(true); });
     document.querySelectorAll('[data-chip]').forEach(b => b.onclick = () => { ui.status = b.dataset.chip; redraw(); });
     const cs = $('#camp-sel'); if (cs) cs.onchange = () => { ui.camp = cs.value; redraw(); };
+    const ss = $('#sort-sel'); if (ss) ss.onchange = () => { ui.sort = ss.value; redraw(); };
     const rs = $('#rep-sel'); if (rs) rs.onchange = () => { ui.rep = rs.value; redraw(); };
   }
 
@@ -165,7 +221,7 @@
     const draw = (keepFocus) => {
       const base = state.leads.filter(mineOrAll);
       const list = filtered(base);
-      $('#view').innerHTML = `<div class="demo-note">ข้อมูลทั้งหมดเป็นตัวอย่างสำหรับ Preview — กดบันทึกได้จริง ข้อมูลเก็บในเบราว์เซอร์นี้เท่านั้น</div>${toolbar(base, true)}${tableHtml(list)}`;
+      $('#view').innerHTML = `<div class="demo-note">ข้อมูลทั้งหมดเป็นตัวอย่างสำหรับ Preview — กดบันทึกได้จริง ข้อมูลเก็บในเบราว์เซอร์นี้เท่านั้น</div>${periodHtml()}${toolbar(base, true)}${tableHtml(list)}`;
       bindToolbar(draw);
       if (keepFocus) { const q = $('#q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
     };
@@ -199,6 +255,7 @@
       }).join('') || `<div class="empty">ยังไม่มีแคมเปญ${isAdmin() ? ' — กด "+ สร้างแคมเปญ" ด้านบน' : ''}</div>`;
       const mineN = base.filter(l => l.owner === state.meId).length;
       $('#view').innerHTML = `<div class="camp-grid">${poolCard()}${cards}</div>
+        ${periodHtml()}
         ${isAll ? poolPanel() : `<div class="quota card" style="padding:10px 14px">ลีดในแคมเปญนี้ <b>${base.length}</b> รายการ · ที่ฉันดูแล <b>${mineN}</b> · ยังไม่มีผู้ดูแล <b>${base.filter(l => !l.owner).length}</b> · วิธีจอง: <b>${MODES[mode]}</b></div>
         ${toolbar(base, false)}${tableHtml(list, { mode })}`}`;
       document.querySelectorAll('[data-camp]').forEach(b => b.onclick = () => { ui.selCamp = b.dataset.camp; ui.status = 'all'; draw(); });
@@ -210,32 +267,70 @@
 
   /* ---------- dashboard ---------- */
   function renderDashboard() {
-    const L = state.leads.filter(mineOrAll);
-    const won = L.filter(l => l.status === 'won');
-    const contacted = L.filter(l => l.status !== 'new').length;
-    const wonValue = won.reduce((s, l) => s + (l.closedAmount ?? l.purchases[0]?.amount ?? 0), 0);
-    const overdue = L.filter(l => l.callback && l.callback < today).length;
+    const A = state.leads.filter(mineOrAll);
+    const L = ui.dashBrand === 'all' ? A : A.filter(l => l.brand === ui.dashBrand);
+    const stat = (arr) => {
+      const w = arr.filter(wonIn);
+      return { n: arr.length, c: arr.filter(contactedIn).length, w: w.length,
+        val: w.reduce((s, l) => s + (l.closedAmount ?? l.purchases[0]?.amount ?? 0), 0),
+        due: arr.filter(l => l.callback && l.callback < today).length, wait: arr.filter(l => l.status === 'callback').length };
+    };
+    const s = stat(L), pct = (a, b) => b ? Math.round(a / b * 100) : 0;
     const kpi = (label, val, foot) => `<div class="kpi"><div class="kpi-label">${label}</div><div class="kpi-value">${val}</div><div class="kpi-foot">${foot}</div></div>`;
+    const scope = ui.dashBrand === 'all' ? 'ทุกแบรนด์' : BRAND[ui.dashBrand];
     const maxN = Math.max(1, ...state.reps.map(r => L.filter(l => l.owner === r.id).length));
     const repRows = state.reps.map(r => {
-      const mine = L.filter(l => l.owner === r.id), w = mine.filter(l => l.status === 'won').length, c = mine.filter(l => l.status !== 'new').length;
+      const mine = L.filter(l => l.owner === r.id), w = mine.filter(wonIn).length, c = mine.filter(contactedIn).length;
       return `<div class="rep-row"><div>${esc(r.name)}</div>
         <div class="rep-bars"><div class="bar"><i style="width:${mine.length / maxN * 100}%"></i></div><div class="bar won"><i style="width:${mine.length ? w / maxN * 100 : 0}%"></i></div></div>
         <div class="sub num" style="text-align:right">${c}/${mine.length} · ปิด ${w}</div></div>`;
     }).join('');
-    const feed = L.flatMap(l => l.interactions.map(i => ({ ...i, lead: l }))).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8)
+    const feed = L.flatMap(l => l.interactions.filter(i => !hasPeriod() || inPeriod(i.date)).map(i => ({ ...i, lead: l }))).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8)
       .map(i => `<li><span class="feed-ic ${i.type}"><svg viewBox="0 0 24 24"><path d="${i.type === 'call' ? 'M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z' : 'M4 4h16v12H7l-3 3z'}"/></svg></span>
         <div class="feed-body"><b>${esc(i.lead.name)}</b> <span class="sub">· ${esc(rep(i.rep)?.name || '')} · ${fmtDT(i.date)}</span><div>${esc(i.note)}</div></div></li>`).join('') || '<li class="empty">ยังไม่มีการบันทึก</li>';
-    $('#view').innerHTML = `<div class="kpis">
-      ${kpi('ลีดทั้งหมด', L.length, 'จากทุกแคมเปญและที่ขุดเอง')}
-      ${kpi('ติดต่อแล้ว', contacted + ' <span class="sub">/ ' + L.length + '</span>', Math.round(contacted / L.length * 100) + '% ของลีดทั้งหมด')}
-      ${kpi('ปิดการขาย', won.length, 'อัตราปิด ' + (contacted ? Math.round(won.length / contacted * 100) : 0) + '% ของที่ติดต่อแล้ว')}
-      ${kpi('ยอดที่ปิดได้', baht(wonValue), 'จากยอดที่เซลล์บันทึกตอนปิดการขาย')}
-      ${kpi('นัดติดต่อเลยกำหนด', overdue, overdue ? 'ควรติดตามวันนี้' : 'ไม่มีค้าง')}</div>
+    const brandChips = [['all', 'ทุกแบรนด์', A.length], ['bebeplay', 'Bebeplay', A.filter(l => l.brand === 'bebeplay').length], ['hosttail', 'Hosttail', A.filter(l => l.brand === 'hosttail').length]]
+      .map(([k, t, n]) => `<button class="chip ${ui.dashBrand === k ? 'active' : ''}" data-brand="${k}">${k === 'all' ? '' : `<i class="dot" style="background:var(--${k === 'bebeplay' ? 'bebe' : 'host'})"></i>`}${t} (${n})</button>`).join('');
+    const brandRow = (k, t) => { const x = stat(A.filter(l => l.brand === k)); return `<tr class="${ui.dashBrand === k ? 'sel' : ''}"><td><span class="tag ${k === 'bebeplay' ? 'bebe' : 'host'}">${t}</span></td>
+      <td class="r num">${x.n}</td><td class="r num">${x.c} <span class="sub">(${pct(x.c, x.n)}%)</span></td><td class="r num">${x.wait}</td><td class="r num">${x.due}</td><td class="r num">${x.w} <span class="sub">(${pct(x.w, x.c)}%)</span></td><td class="r num">${baht(x.val)}</td></tr>`; };
+    const all = stat(A);
+    const TH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+    const mLabel = (k) => k === 'none' ? 'ไม่ระบุวันที่' : `${TH[+k.slice(5, 7) - 1]} ${k.slice(0, 4)}`;
+    const wonLeads = L.filter(wonIn).filter(l => l.owner);
+    const mkey = (l) => l.closedAt ? l.closedAt.slice(0, 7) : 'none';
+    const months = [...new Set(wonLeads.map(mkey))].sort();
+    const rate = Number(state.commissionRate) || 0;
+    const commRows = state.reps.map(r => {
+      const mine = wonLeads.filter(l => l.owner === r.id);
+      const byM = months.map(m => mine.filter(l => mkey(l) === m).reduce((s, l) => s + (l.closedAmount ?? 0), 0));
+      const sum = byM.reduce((a, b) => a + b, 0);
+      return { name: r.name, byM, sum, bills: mine.reduce((s, l) => s + l.closedBills.length, 0), cnt: mine.length, comm: sum * rate / 100 };
+    }).filter(r => r.cnt);
+    const colSum = months.map((_, i) => commRows.reduce((s, r) => s + r.byM[i], 0)), grand = colSum.reduce((a, b) => a + b, 0);
+    const commTable = commRows.length ? `<div class="table-wrap"><table><thead><tr><th>เซลล์</th>${months.map(m => `<th class="r">${mLabel(m)}</th>`).join('')}<th class="r">ยอดรวม</th><th class="r">จำนวนบิล</th><th class="r">ค่าคอม${rate ? ` (${rate}%)` : ''}</th></tr></thead><tbody>${commRows.map(r => `<tr><td>${esc(r.name)}</td>${r.byM.map(v => `<td class="r num">${v ? baht(v) : '—'}</td>`).join('')}<td class="r num"><b>${baht(r.sum)}</b></td><td class="r num">${r.bills}</td><td class="r num">${rate ? baht(Math.round(r.comm)) : '—'}</td></tr>`).join('')}<tr class="total"><td><b>รวม</b></td>${colSum.map(v => `<td class="r num">${baht(v)}</td>`).join('')}<td class="r num"><b>${baht(grand)}</b></td><td class="r num">${commRows.reduce((s, r) => s + r.bills, 0)}</td><td class="r num">${rate ? baht(Math.round(grand * rate / 100)) : '—'}</td></tr></tbody></table></div>` : '<div class="empty">ไม่มียอดที่ปิดได้ในช่วงนี้</div>';
+    $('#view').innerHTML = `${periodHtml()}<div class="toolbar">${brandChips}</div><div class="kpis">
+      ${kpi('ลีดทั้งหมด', s.n, scope)}
+      ${kpi('ติดต่อแล้ว', s.c + ' <span class="sub">/ ' + s.n + '</span>', pct(s.c, s.n) + '% ของลีด · ' + scope)}
+      ${kpi('ปิดการขาย', s.w, 'อัตราปิด ' + pct(s.w, s.c) + '% ของที่ติดต่อแล้ว')}
+      ${kpi('ยอดที่ปิดได้', baht(s.val), 'จากยอดที่เซลล์บันทึกตอนปิดการขาย')}
+      ${kpi('นัดติดต่อเลยกำหนด', s.due, s.due ? 'ควรติดตามวันนี้' : 'ไม่มีค้าง')}</div>
+      <div class="panel"><div class="panel-h"><h2>เปรียบเทียบแยกแบรนด์</h2></div>
+        <div class="table-wrap"><table><thead><tr><th>แบรนด์</th><th class="r">ลีด</th><th class="r">ติดต่อแล้ว</th><th class="r">รอติดต่อ</th><th class="r">เลยนัด</th><th class="r">ปิดการขาย</th><th class="r">ยอดที่ปิดได้</th></tr></thead>
+        <tbody>${brandRow('bebeplay', 'Bebeplay')}${brandRow('hosttail', 'Hosttail')}
+        <tr class="total"><td><b>รวม</b></td><td class="r num">${all.n}</td><td class="r num">${all.c} <span class="sub">(${pct(all.c, all.n)}%)</span></td><td class="r num">${all.wait}</td><td class="r num">${all.due}</td><td class="r num">${all.w} <span class="sub">(${pct(all.w, all.c)}%)</span></td><td class="r num">${baht(all.val)}</td></tr></tbody></table></div></div>
+      <div class="panel"><div class="panel-h"><h2>ยอดที่ปิดได้รายเดือนต่อเซลล์ (สำหรับคิดค่าคอม) · ${scope}</h2>
+        <div class="toolbar"><label class="sub" for="comm-rate">อัตราค่าคอม (%)</label><input class="input pin" id="comm-rate" type="number" min="0" step="0.1" value="${rate || ''}" placeholder="เช่น 3" style="width:90px"><button class="btn sm" id="comm-copy">คัดลอกตาราง</button></div></div>${commTable}</div>
       <div class="grid-2">
-        <div class="panel"><div class="panel-h"><h2>ผลงานรายเซลล์</h2><div class="legend"><span><i style="background:var(--accent)"></i>ลีดที่ดูแล</span><span><i style="background:var(--ok)"></i>ปิดการขาย</span></div></div><div class="panel-b">${repRows}</div></div>
-        <div class="panel"><div class="panel-h"><h2>กิจกรรมล่าสุด</h2></div><div class="panel-b"><ul class="feed">${feed}</ul></div></div>
+        <div class="panel"><div class="panel-h"><h2>ผลงานรายเซลล์ · ${scope}</h2><div class="legend"><span><i style="background:var(--accent)"></i>ลีดที่ดูแล</span><span><i style="background:var(--ok)"></i>ปิดการขาย</span></div></div><div class="panel-b">${repRows}</div></div>
+        <div class="panel"><div class="panel-h"><h2>กิจกรรมล่าสุด · ${scope}</h2></div><div class="panel-b"><ul class="feed">${feed}</ul></div></div>
       </div>`;
+    document.querySelectorAll('[data-brand]').forEach(btn => btn.onclick = () => { ui.dashBrand = btn.dataset.brand; renderDashboard(); });
+    bindPeriod(renderDashboard);
+    $('#comm-rate').onchange = (e) => { state.commissionRate = Number(e.target.value) || 0; save(); renderDashboard(); };
+    $('#comm-copy').onclick = () => {
+      const rows = [['เซลล์', ...months.map(mLabel), 'ยอดรวม', 'จำนวนบิล', 'ค่าคอม'], ...commRows.map(r => [r.name, ...r.byM, r.sum, r.bills, rate ? Math.round(r.comm) : ''])];
+      const tsv = rows.map(r => r.join('\t')).join('\n');
+      navigator.clipboard?.writeText(tsv).then(() => toast('คัดลอกตารางแล้ว วางใน Excel ได้เลย'), () => toast('คัดลอกไม่สำเร็จ'));
+    };
   }
 
   /* ---------- setup ---------- */
@@ -285,7 +380,8 @@
           <div><dt>ร้านค้า</dt><dd>${esc(l.shop)}</dd></div>
           <div><dt>ผู้ดูแล</dt><dd>${esc(rep(l.owner)?.name || '—')}</dd></div>
           <div><dt>สินค้าที่สนใจ</dt><dd>${esc(l.interest || '—')}</dd></div>
-          <div><dt>เลขบิลที่ปิดได้</dt><dd class="mono">${l.closedBills?.length ? esc(l.closedBills.join(', ')) : '—'}</dd></div></dl>
+          <div><dt>เลขบิลที่ปิดได้</dt><dd class="mono">${l.closedBills?.length ? esc(l.closedBills.join(', ')) : '—'}</dd></div>
+          <div><dt>วันที่ปิดการขาย</dt><dd>${l.closedAt ? fmtDate(l.closedAt) : '—'}</dd></div></dl>
         <div class="tabs" role="tablist"><button class="tab ${tab === 'buy' ? 'active' : ''}" data-tab="buy">ประวัติการซื้อ (${l.purchases.length})</button>
           <button class="tab ${tab === 'talk' ? 'active' : ''}" data-tab="talk">ประวัติการโทร/แชต (${l.interactions.length})</button></div>
         ${tab === 'buy'
@@ -306,16 +402,17 @@
     const RES = { call: ['คุยแล้ว', 'ไม่รับสาย', 'สายไม่ว่าง', 'เบอร์ผิด'], chat: ['ตอบกลับแล้ว', 'อ่านแล้วไม่ตอบ', 'ส่งโปรโมชันแล้ว'] };
     openModal(`
       <div class="modal-h"><h3>บันทึก · ${esc(l.name)}</h3>${X}</div>
-      <form id="log-form"><div class="modal-b">
+      <form id="log-form" novalidate><div class="modal-b">
         <div class="field"><label>ช่องทาง</label><div class="seg" id="seg"><button type="button" data-t="call" class="${type === 'call' ? 'active' : ''}">โทร</button><button type="button" data-t="chat" class="${type === 'chat' ? 'active' : ''}">แชต</button></div></div>
         <div class="form-grid">
           <div class="field"><label for="f-res">ผลการติดต่อ</label><select class="select" id="f-res"></select></div>
           <div class="field"><label for="f-status">สถานะลูกค้าหลังบันทึก</label><select class="select" id="f-status">
             ${Object.entries(STATUS).filter(([k]) => k !== 'new').map(([k, v]) => `<option value="${k}" ${k === (l.status === 'new' ? 'following' : l.status) ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-          <div class="field wide" id="cb-wrap"><label for="f-cb">วันที่นัดติดต่อ <span class="req">*</span></label><input class="input" type="date" id="f-cb" min="${today}" value="${l.callback || ''}"></div>
+          <div class="field wide" id="cb-wrap"><label for="f-cb">วันที่นัดติดต่อ <span class="req">*</span></label><input class="input" type="date" id="f-cb" min="${today}" value="${l.callback && l.callback >= today ? l.callback : ''}"></div>
           <div class="field wide"><label for="f-interest">สินค้าที่ลูกค้าสนใจ</label><input class="input" id="f-interest" value="${esc(l.interest || '')}" placeholder="เช่น เตียงนอนเด็ก, ทรายแมว"></div>
           <div class="field wide" id="won-wrap"><label for="f-bills">เลขบิลที่ขายได้ (อ้างอิงตอนผูกข้อมูล คั่นหลายบิลด้วยจุลภาค)</label><input class="input" id="f-bills" value="${esc((l.closedBills || []).join(', '))}" placeholder="เช่น 312345, 312399">
-            <label for="f-amount" style="margin-top:8px">ยอดที่ปิดได้ (บาท)</label><input class="input" id="f-amount" type="number" min="0" step="1" value="${l.closedAmount ?? ''}"></div>
+            <label for="f-amount" style="margin-top:8px">ยอดที่ปิดได้ (บาท)</label><input class="input" id="f-amount" type="number" min="0" step="1" value="${l.closedAmount ?? ''}">
+            <label for="f-closed" style="margin-top:8px">วันที่ปิดการขาย</label><input class="input" id="f-closed" type="date" value="${l.closedAt || today}"></div>
           <div class="field wide"><label for="f-note">หมายเหตุ</label><textarea class="textarea" id="f-note" placeholder="สรุปสิ่งที่คุยกับลูกค้า"></textarea></div>
         </div></div>
         <div class="modal-f"><button type="button" class="btn" data-close>ยกเลิก</button><button class="btn primary">บันทึก</button></div></form>`, 'sm');
@@ -330,6 +427,7 @@
     $('#log-form').onsubmit = (e) => {
       e.preventDefault();
       if ($('#f-status').value === 'callback' && !$('#f-cb').value) { toast('เลือกวันที่นัดติดต่อก่อนบันทึก'); $('#f-cb').focus(); return; }
+      if ($('#f-status').value === 'callback' && $('#f-cb').value < today) { toast('วันที่นัดติดต่อต้องไม่ย้อนหลัง'); $('#f-cb').focus(); return; }
       const billList = $('#f-bills').value.split(/[,\s]+/).map(x => x.trim()).filter(Boolean);
       if ($('#f-status').value === 'won' && !billList.length) { toast('ใส่เลขบิลที่ขายได้ก่อนปิดการขาย'); $('#f-bills').focus(); return; }
       const now = new Date(); const pad = (n) => String(n).padStart(2, '0');
@@ -337,7 +435,7 @@
         result: $('#f-res').value, due: $('#f-status').value === 'callback' ? $('#f-cb').value : null, note: $('#f-note').value.trim() || '(ไม่มีหมายเหตุ)' });
       l.status = $('#f-status').value;
       l.interest = $('#f-interest').value.trim();
-      if (l.status === 'won') { l.closedBills = billList; l.closedAmount = $('#f-amount').value === '' ? null : Number($('#f-amount').value); }
+      if (l.status === 'won') { l.closedBills = billList; l.closedAmount = $('#f-amount').value === '' ? null : Number($('#f-amount').value); l.closedAt = $('#f-closed').value || today; }
       l.callback = l.status === 'callback' ? ($('#f-cb').value || null) : null;
       if (!l.owner) l.owner = state.meId;
       save(); closeModal(); route(); toast('บันทึกแล้ว');
@@ -374,14 +472,14 @@
     const P = ui.pool; P.loading = true; P.err = '';
     try {
       if (isLive()) {
-        const { data, error } = await sb.rpc('dsales_customer_pool', { p_search: P.q.trim() || null, p_limit: PAGE, p_offset: P.page * PAGE });
+        const { data, error } = await sb.rpc('dsales_customer_pool', { p_search: P.q.trim() || null, p_limit: PAGE, p_offset: P.page * PAGE, ...(hasPeriod() ? { p_from: ui.period.from || null, p_to: ui.period.to || null } : {}) });
         if (error) throw error;
         P.live = true; P.total = data.length ? Number(data[0].total_count) : 0;
         P.rows = data.map(r => ({ id: r.identity_id, name: r.name, phone: r.phone, segment: r.rfm_segment || r.segment || '', ltv: r.ltv, orders: r.order_count, last: r.last_order_date, brands: r.brands || [] }));
       } else {
         const q = P.q.trim().toLowerCase(), qd = q.replace(/\D/g, '');
         const all = state.customers.filter(c => !q || c.name.toLowerCase().includes(q) || (qd && c.phone.includes(qd)))
-          .sort((a, b) => total(b) - total(a));
+          .filter(c => !hasPeriod() || inPeriod(c.purchases[0]?.date)).sort((a, b) => total(b) - total(a));
         P.live = false; P.total = all.length;
         P.rows = all.slice(P.page * PAGE, P.page * PAGE + PAGE).map(c => ({ id: c.id, name: c.name, phone: c.phone, segment: '', ltv: total(c), orders: c.purchases.length, last: c.purchases[0]?.date, brands: [c.brand] }));
       }
@@ -404,7 +502,7 @@
       <td class="r num">${r.ltv == null ? '—' : baht(Math.round(r.ltv))}</td><td class="r num">${r.orders ?? '—'}</td>
       <td>${r.last ? fmtDate(r.last) : '—'}</td>
       <td>${r.brands.length ? r.brands.map(b => `<span class="tag ${b === 'bebeplay' ? 'bebe' : b === 'hosttail' ? 'host' : ''}">${esc(BRAND[b] || b)}</span>`).join(' ') : '<span class="sub">—</span>'}</td></tr>`).join('');
-    return `<div class="quota card" style="padding:10px 14px">ถังนี้เหมือนกันทั้ง Bebeplay และ Hosttail · ลูกค้าที่มีเบอร์โทร <b>${P.total === null ? '…' : P.total.toLocaleString('th-TH')}</b> ราย · เรียงตามยอดซื้อสะสมมากไปน้อย${P.live ? '' : ' · <b>ข้อมูลตัวอย่าง</b>'}</div>
+    return `<div class="quota card" style="padding:10px 14px">ถังนี้เหมือนกันทั้ง Bebeplay และ Hosttail · ลูกค้าที่มีเบอร์โทร <b>${P.total === null ? '…' : P.total.toLocaleString('th-TH')}</b> ราย · เรียงตามยอดซื้อสะสมมากไปน้อย${hasPeriod() ? ' · กรองตามวันที่ซื้อล่าสุดในช่วงที่เลือก' : ''}${P.live ? '' : ' · <b>ข้อมูลตัวอย่าง</b>'}</div>
       <div class="toolbar"><label class="search" for="pool-q">${SEARCH_SVG}<input id="pool-q" type="search" placeholder="ค้นหา ชื่อ หรือเบอร์โทร" value="${esc(P.q)}"></label>
         ${P.loading ? '<span class="sub">กำลังโหลด…</span>' : ''}</div>
       ${P.err ? `<div class="login-err">${esc(P.err)}</div>` : ''}
@@ -593,7 +691,7 @@
     if (error || !data?.user) return showLogin('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
     enterAuth(data.user); start();
   };
-  $('#l-demo').onclick = () => { authUser = null; start(); };
+  $('#l-demo').onclick = () => { authUser = null; if (me()?.email) { state.meId = 'r4'; save(); } start(); }; // โหมดตัวอย่างไม่ใช้ตัวตนของผู้ใช้จริง
   $('#logout').onclick = async () => { if (sb && authUser) await sb.auth.signOut(); authUser = null; $('#l-pass').value = ''; showLogin(''); };
 
   (async function boot() {

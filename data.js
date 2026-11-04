@@ -48,8 +48,9 @@
     if (status === 'new' && fromCampaign && (i % 2 === 1 || i % 3 === 2)) owner = null; // ยังไม่มีผู้ดูแล (กองกลางแคมเปญ)
     const phone = '0' + pick(['81','86','89','92','95','64']) + String(1000000 + Math.floor(rnd() * 8999999));
     const interactions = [];
+    const lastDay = addDays(-1 - Math.floor(rnd() * 75));
     if (status !== 'new') {
-      interactions.push({ id: 'i' + i + 'a', type: i % 2 ? 'chat' : 'call', date: addDays(-1 - Math.floor(rnd() * 6)) + 'T1' + (i % 10) + ':20', rep: owner || 'r4', result: status === 'unreachable' ? 'ไม่รับสาย' : 'คุยแล้ว', note: status === 'won' ? 'สนใจโปร ตกลงสั่งซื้อ' : status === 'lost' ? 'ยังไม่สะดวกซื้อ' : status === 'unreachable' ? 'โทรสองครั้งไม่รับ' : 'ขอดูโปรก่อน นัดคุยอีกครั้ง' });
+      interactions.push({ id: 'i' + i + 'a', type: i % 2 ? 'chat' : 'call', date: lastDay + 'T1' + (i % 10) + ':20', rep: owner || 'r4', result: status === 'unreachable' ? 'ไม่รับสาย' : 'คุยแล้ว', note: status === 'won' ? 'สนใจโปร ตกลงสั่งซื้อ' : status === 'lost' ? 'ยังไม่สะดวกซื้อ' : status === 'unreachable' ? 'โทรสองครั้งไม่รับ' : 'ขอดูโปรก่อน นัดคุยอีกครั้ง' });
     }
     leads.push({
       id: 'L' + (1000 + i),
@@ -68,6 +69,7 @@
       interest: status === 'new' ? '' : pick(['เตียงนอนเด็ก','แผ่นรองคลาน','ห้องน้ำแมว','ทรายแมว']),
       closedBills: status === 'won' ? ['3' + String(10000 + Math.floor(rnd() * 89999))] : [],
       closedAmount: status === 'won' ? purchases[0].amount : null,
+      closedAt: status === 'won' ? lastDay : null,
     });
   }
   // ลูกค้าทั้งหมดของแต่ละแบรนด์ (ถังตั้งต้นของแคมเปญ) ใช้กรองตอนสร้างแคมเปญ
