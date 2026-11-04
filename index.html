@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MPD Direct Sale</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<!-- APP:START -->
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-name">MPD Direct Sale</div>
+      <div class="brand-sub">MPD Group · Preview v0.1</div>
+    </div>
+    <nav class="nav" id="nav">
+      <div class="nav-group">ข้อมูลลูกค้าเก่า</div>
+      <a class="nav-item" href="#leads" data-route="leads">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg>
+        <span>Direct Sale</span><b class="nav-badge" id="badge-leads"></b>
+      </a>
+      <div class="nav-group">แคมเปญ</div>
+      <a class="nav-item" href="#campaign-bebeplay" data-route="campaign-bebeplay">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10v4a1 1 0 0 0 1 1h2l5 4V5L6 9H4a1 1 0 0 0-1 1zm13.5 2A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>
+        <span>Bebeplay</span><b class="nav-badge" id="badge-bebeplay"></b>
+      </a>
+      <a class="nav-item" href="#campaign-hosttail" data-route="campaign-hosttail">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10v4a1 1 0 0 0 1 1h2l5 4V5L6 9H4a1 1 0 0 0-1 1zm13.5 2A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>
+        <span>Hosttail</span><b class="nav-badge" id="badge-hosttail"></b>
+      </a>
+      <div class="nav-group">Overview</div>
+      <a class="nav-item" href="#dashboard" data-route="dashboard">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h8v10H3zm10 0h8v6h-8zM3 15h8v6H3zm10-4h8v10h-8z"/></svg>
+        <span>Dashboard</span>
+      </a>
+      <div class="nav-group">Tool</div>
+      <a class="nav-item" href="#setup" data-route="setup">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.4-2.9a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
+        <span>ตั้งค่า</span>
+      </a>
+    </nav>
+    <div class="me">
+      <div class="avatar" id="me-avatar">DM</div>
+      <div class="me-info">
+        <label for="me-select" class="me-label">กำลังใช้งานในชื่อ</label>
+        <select id="me-select" class="me-select"></select>
+      </div>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="menu-btn" aria-label="เปิดเมนู">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+      </button>
+      <div class="topbar-title">
+        <h1 id="page-title">Direct Sale</h1>
+        <span id="page-sub" class="page-sub"></span>
+      </div>
+      <div class="topbar-actions" id="topbar-actions"></div>
+    </header>
+    <section class="content" id="view"></section>
+  </main>
+</div>
+
+<div class="modal-root" id="modal-root" hidden></div>
+<div class="toast" id="toast" hidden></div>
+<!-- APP:END -->
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

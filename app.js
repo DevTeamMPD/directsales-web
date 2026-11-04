@@ -1,0 +1,350 @@
+(function () {
+  'use strict';
+  const KEY = 'mpd-directsale-preview-v1';
+  const $ = (s, r = document) => r.querySelector(s);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const baht = (n) => Number(n || 0).toLocaleString('th-TH') + '.-';
+  const fmtDate = (s) => { if (!s) return '—'; const [y, m, d] = s.slice(0, 10).split('-'); return `${+d}/${+m}/${y}`; };
+  const fmtDT = (s) => fmtDate(s) + (s.length > 10 ? ' ' + s.slice(11, 16) : '');
+
+  const STATUS = {
+    new: 'ยังไม่ติดต่อ', following: 'กำลังติดตาม', callback: 'รอโทรกลับ',
+    won: 'ปิดการขายแล้ว', lost: 'ไม่สนใจ', unreachable: 'ติดต่อไม่ได้',
+  };
+  const BRAND = { bebeplay: 'Bebeplay', hosttail: 'Hosttail' };
+
+  let state;
+  try { state = JSON.parse(localStorage.getItem(KEY)); } catch (e) { state = null; }
+  if (!state || !state.leads) state = JSON.parse(JSON.stringify(window.DS_DATA));
+  state.meId = state.meId || 'r4';
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
+  const today = state.today;
+
+  const ui = { q: '', status: 'all', camp: 'all', rep: 'all', selCamp: null };
+  const rep = (id) => state.reps.find(r => r.id === id);
+  const camp = (id) => state.campaigns.find(c => c.id === id);
+  const lead = (id) => state.leads.find(l => l.id === id);
+  const total = (l) => l.purchases.reduce((s, p) => s + p.amount, 0);
+  const bills = (l) => [...new Set(l.purchases.map(p => p.bill))];
+
+  function toast(msg) {
+    const t = $('#toast'); t.textContent = msg; t.hidden = false;
+    clearTimeout(toast.h); toast.h = setTimeout(() => { t.hidden = true; }, 2200);
+  }
+
+  /* ---------- routing ---------- */
+  const routes = {
+    leads: { title: 'Direct Sale', sub: 'ลูกค้าเก่า Direct Sale Lead', render: renderLeads },
+    'campaign-bebeplay': { title: 'แคมเปญ Bebeplay', sub: '', render: () => renderCampaign('bebeplay') },
+    'campaign-hosttail': { title: 'แคมเปญ Hosttail', sub: '', render: () => renderCampaign('hosttail') },
+    dashboard: { title: 'Dashboard', sub: 'ภาพรวมทีม Direct Sale', render: renderDashboard },
+    setup: { title: 'ตั้งค่า', sub: '', render: renderSetup },
+  };
+  function route() {
+    const name = (location.hash || '#leads').slice(1);
+    const r = routes[name] || routes.leads;
+    $('#page-title').textContent = r.title;
+    $('#page-sub').textContent = r.sub;
+    document.querySelectorAll('.nav-item').forEach(a => a.classList.toggle('active', a.dataset.route === (routes[name] ? name : 'leads')));
+    $('#topbar-actions').innerHTML = '';
+    r.render();
+    closeMenu();
+    updateBadges();
+  }
+  function updateBadges() {
+    const mine = (l) => l.owner === state.meId;
+    const open = (l) => l.status === 'new' || l.status === 'callback';
+    const set = (id, n) => { const b = $(id); b.textContent = n || ''; };
+    set('#badge-leads', state.leads.filter(l => mine(l) && open(l)).length);
+    ['bebeplay', 'hosttail'].forEach(b => {
+      const n = state.leads.filter(l => l.brand === b && l.source === 'campaign' && l.status === 'new').length;
+      set('#badge-' + b, n); $('#badge-' + b).classList.add('soft');
+    });
+  }
+  const openMenu = () => { $('#sidebar').classList.add('open'); $('#scrim').classList.add('open'); };
+  const closeMenu = () => { $('#sidebar').classList.remove('open'); $('#scrim').classList.remove('open'); };
+
+  /* ---------- lead table ---------- */
+  function filtered(base) {
+    const q = ui.q.trim().toLowerCase();
+    return base.filter(l => {
+      if (ui.status !== 'all' && l.status !== ui.status) return false;
+      if (ui.rep === 'me' && l.owner !== state.meId) return false;
+      if (ui.camp !== 'all' && (ui.camp === 'self' ? l.source !== 'self' : l.campaignId !== ui.camp)) return false;
+      if (!q) return true;
+      return l.name.toLowerCase().includes(q) || l.phone.includes(q.replace(/-/g, '')) ||
+        bills(l).some(b => b.includes(q)) || l.shop.toLowerCase().includes(q);
+    });
+  }
+  function dueHtml(l) {
+    if (!l.callback) return '';
+    const cls = l.callback < today ? 'overdue' : l.callback === today ? 'today' : '';
+    const lbl = l.callback < today ? 'เลยกำหนด ' : l.callback === today ? 'วันนี้ ' : 'โทรกลับ ';
+    return `<div class="due ${cls}">${lbl}${fmtDate(l.callback)}</div>`;
+  }
+  function leadRows(list, opts = {}) {
+    if (!list.length) return `<tr><td colspan="7" class="empty">ไม่พบรายการที่ตรงกับตัวกรอง</td></tr>`;
+    return list.map(l => {
+      const o = rep(l.owner);
+      const claim = opts.claim && l.owner !== state.meId && l.status === 'new'
+        ? `<button class="btn sm outline" data-act="claim" data-id="${l.id}">จองลีด</button>` : '';
+      return `<tr>
+        <td><button class="cust-name" data-act="open" data-id="${l.id}">${esc(l.name)}</button>
+          <div class="sub mono">${esc(l.phone)}</div></td>
+        <td><div class="bills">${bills(l).map(b => `<span class="bill">${b}</span>`).join('')}</div></td>
+        <td>${esc(l.shop)}<div class="sub">${l.source === 'self' ? '<span class="tag self">เซลล์ขุดเอง</span>' : esc(camp(l.campaignId)?.name || '')}</div></td>
+        <td class="r num">${baht(total(l))}</td>
+        <td><span class="badge s-${l.status}">${STATUS[l.status]}</span>${dueHtml(l)}
+          <div class="sub">${esc(o ? o.name : 'ยังไม่มีผู้ดูแล')}</div></td>
+        <td class="note-cell">${esc(l.interactions[l.interactions.length - 1]?.note || '—')}</td>
+        <td><div class="actions">
+          <button class="btn sm primary" data-act="log" data-type="call" data-id="${l.id}">บันทึกโทร</button>
+          <button class="btn sm" data-act="log" data-type="chat" data-id="${l.id}">บันทึกแชต</button>${claim}
+        </div></td></tr>`;
+    }).join('');
+  }
+  function tableHtml(list, opts) {
+    return `<div class="card table-wrap"><table>
+      <thead><tr><th>ชื่อ / เบอร์</th><th>เลขบิลที่เคยซื้อ</th><th>ร้านค้า</th><th class="r">ยอดซื้อรวม</th><th>สถานะ</th><th>บันทึกล่าสุด</th><th>ปุ่มดำเนินการ</th></tr></thead>
+      <tbody>${leadRows(list, opts)}</tbody></table></div>`;
+  }
+  const SEARCH_SVG = '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>';
+
+  function toolbar(base, withCampSelect) {
+    const count = (s) => base.filter(l => s === 'all' || l.status === s).length;
+    const dots = { new: 'var(--grey)', following: 'var(--info)', callback: 'var(--warn)', won: 'var(--ok)', lost: 'var(--bad)', unreachable: 'var(--violet)' };
+    const chips = ['all', 'new', 'following', 'callback', 'won', 'unreachable', 'lost'].map(s =>
+      `<button class="chip ${ui.status === s ? 'active' : ''}" data-chip="${s}">${s === 'all' ? '' : `<i class="dot" style="background:${dots[s]}"></i>`}${s === 'all' ? 'ทั้งหมด' : STATUS[s]} (${count(s)})</button>`).join('');
+    const campOpts = `<option value="all">แคมเปญทั้งหมด</option><option value="self" ${ui.camp === 'self' ? 'selected' : ''}>เซลล์ขุดเอง</option>` +
+      state.campaigns.map(c => `<option value="${c.id}" ${ui.camp === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+    return `<div class="toolbar">
+      <label class="search" for="q">${SEARCH_SVG}<input id="q" type="search" placeholder="ค้นหา ชื่อ, เบอร์, เลขบิล, ร้านค้า" value="${esc(ui.q)}"></label>
+      ${chips}
+      ${withCampSelect ? `<select id="camp-sel" class="select" aria-label="แคมเปญ">${campOpts}</select>` : ''}
+      <select id="rep-sel" class="select" aria-label="ผู้ดูแล"><option value="all">ทุกคน</option><option value="me" ${ui.rep === 'me' ? 'selected' : ''}>ของฉัน</option></select>
+    </div>`;
+  }
+  function bindToolbar(redraw) {
+    const q = $('#q'); if (q) q.addEventListener('input', () => { ui.q = q.value; redraw(true); });
+    document.querySelectorAll('[data-chip]').forEach(b => b.onclick = () => { ui.status = b.dataset.chip; redraw(); });
+    const cs = $('#camp-sel'); if (cs) cs.onchange = () => { ui.camp = cs.value; redraw(); };
+    const rs = $('#rep-sel'); if (rs) rs.onchange = () => { ui.rep = rs.value; redraw(); };
+  }
+
+  function renderLeads() {
+    $('#topbar-actions').innerHTML = `<button class="btn primary" id="add-lead">+ เพิ่มลูกค้า (ขุดเอง)</button>`;
+    $('#add-lead').onclick = () => leadForm();
+    const draw = (keepFocus) => {
+      const base = state.leads;
+      const list = filtered(base);
+      $('#view').innerHTML = `<div class="demo-note">ข้อมูลทั้งหมดเป็นตัวอย่างสำหรับ Preview — กดบันทึกโทร/แชตได้จริง ข้อมูลเก็บในเบราว์เซอร์นี้เท่านั้น</div>${toolbar(base, true)}${tableHtml(list)}`;
+      bindToolbar(draw);
+      if (keepFocus) { const q = $('#q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+    };
+    draw();
+  }
+
+  function renderCampaign(brand) {
+    const cs = state.campaigns.filter(c => c.brand === brand);
+    if (!ui.selCamp || camp(ui.selCamp)?.brand !== brand) ui.selCamp = cs[0]?.id;
+    $('#page-sub').textContent = `${cs.length} แคมเปญ`;
+    const draw = (keepFocus) => {
+      const base = state.leads.filter(l => l.campaignId === ui.selCamp);
+      const list = filtered(base);
+      const cards = cs.map(c => {
+        const ls = state.leads.filter(l => l.campaignId === c.id);
+        const done = ls.filter(l => l.status !== 'new').length;
+        const won = ls.filter(l => l.status === 'won').length;
+        const active = c.end >= today;
+        return `<button class="camp ${c.id === ui.selCamp ? 'active' : ''}" data-camp="${c.id}">
+          <div class="camp-top"><span class="camp-name">${esc(c.name)}</span>
+            <span class="badge ${active ? 's-won' : 's-new'}">${active ? 'กำลังดำเนินการ' : 'จบแล้ว'}</span></div>
+          <div class="camp-meta">${fmtDate(c.start)} – ${fmtDate(c.end)}</div>
+          <div class="camp-meta">${esc(c.note)}</div>
+          <div class="bar"><i style="width:${ls.length ? Math.round(done / ls.length * 100) : 0}%"></i></div>
+          <div class="camp-stats"><span>ติดต่อแล้ว ${done}/${ls.length}</span><span>ปิดการขาย ${won}</span></div></button>`;
+      }).join('') || '<div class="empty">ยังไม่มีแคมเปญ — เพิ่มได้ที่เมนู ตั้งค่า</div>';
+      const mineN = base.filter(l => l.owner === state.meId).length;
+      $('#view').innerHTML = `<div class="camp-grid">${cards}</div>
+        <div class="quota card" style="padding:10px 14px">ลีดในแคมเปญนี้ <b>${base.length}</b> รายการ · ที่ฉันจองไว้ <b>${mineN}</b> · กด "จองลีด" เพื่อรับลูกค้าที่ยังไม่ติดต่อมาเป็นของตัวเอง</div>
+        ${toolbar(base, false)}${tableHtml(list, { claim: true })}`;
+      document.querySelectorAll('[data-camp]').forEach(b => b.onclick = () => { ui.selCamp = b.dataset.camp; ui.status = 'all'; draw(); });
+      bindToolbar(draw);
+      if (keepFocus) { const q = $('#q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+    };
+    draw();
+  }
+
+  /* ---------- dashboard ---------- */
+  function renderDashboard() {
+    const L = state.leads;
+    const won = L.filter(l => l.status === 'won');
+    const contacted = L.filter(l => l.status !== 'new').length;
+    const wonValue = won.reduce((s, l) => s + (l.purchases[0]?.amount || 0), 0);
+    const overdue = L.filter(l => l.callback && l.callback < today).length;
+    const kpi = (label, val, foot) => `<div class="kpi"><div class="kpi-label">${label}</div><div class="kpi-value">${val}</div><div class="kpi-foot">${foot}</div></div>`;
+    const maxN = Math.max(1, ...state.reps.map(r => L.filter(l => l.owner === r.id).length));
+    const repRows = state.reps.map(r => {
+      const mine = L.filter(l => l.owner === r.id), w = mine.filter(l => l.status === 'won').length, c = mine.filter(l => l.status !== 'new').length;
+      return `<div class="rep-row"><div>${esc(r.name)}</div>
+        <div class="rep-bars"><div class="bar"><i style="width:${mine.length / maxN * 100}%"></i></div><div class="bar won"><i style="width:${mine.length ? w / maxN * 100 : 0}%"></i></div></div>
+        <div class="sub num" style="text-align:right">${c}/${mine.length} · ปิด ${w}</div></div>`;
+    }).join('');
+    const feed = L.flatMap(l => l.interactions.map(i => ({ ...i, lead: l }))).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8)
+      .map(i => `<li><span class="feed-ic ${i.type}"><svg viewBox="0 0 24 24"><path d="${i.type === 'call' ? 'M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z' : 'M4 4h16v12H7l-3 3z'}"/></svg></span>
+        <div class="feed-body"><b>${esc(i.lead.name)}</b> <span class="sub">· ${esc(rep(i.rep)?.name || '')} · ${fmtDT(i.date)}</span><div>${esc(i.note)}</div></div></li>`).join('') || '<li class="empty">ยังไม่มีการบันทึก</li>';
+    $('#view').innerHTML = `<div class="kpis">
+      ${kpi('ลีดทั้งหมด', L.length, 'จากทุกแคมเปญและที่ขุดเอง')}
+      ${kpi('ติดต่อแล้ว', contacted + ' <span class="sub">/ ' + L.length + '</span>', Math.round(contacted / L.length * 100) + '% ของลีดทั้งหมด')}
+      ${kpi('ปิดการขาย', won.length, 'อัตราปิด ' + (contacted ? Math.round(won.length / contacted * 100) : 0) + '% ของที่ติดต่อแล้ว')}
+      ${kpi('ยอดที่ปิดได้ (ประมาณ)', baht(wonValue), 'นับจากยอดซื้อล่าสุดของลูกค้า')}
+      ${kpi('โทรกลับเลยกำหนด', overdue, overdue ? 'ควรติดตามวันนี้' : 'ไม่มีค้าง')}</div>
+      <div class="grid-2">
+        <div class="panel"><div class="panel-h"><h2>ผลงานรายเซลล์</h2><div class="legend"><span><i style="background:var(--accent)"></i>ลีดที่ดูแล</span><span><i style="background:var(--ok)"></i>ปิดการขาย</span></div></div><div class="panel-b">${repRows}</div></div>
+        <div class="panel"><div class="panel-h"><h2>กิจกรรมล่าสุด</h2></div><div class="panel-b"><ul class="feed">${feed}</ul></div></div>
+      </div>`;
+  }
+
+  /* ---------- setup ---------- */
+  function renderSetup() {
+    $('#view').innerHTML = `<div class="settings">
+      <div class="panel"><div class="panel-h"><h2>ทีมเซลล์</h2></div><div class="panel-b">
+        ${state.reps.map(r => `<div class="list-row"><div><b>${esc(r.name)}</b></div><span class="sub">${state.leads.filter(l => l.owner === r.id).length} ลีด</span></div>`).join('')}
+        <form class="inline-form" id="rep-form"><input class="input" id="rep-name" placeholder="ชื่อเซลล์ใหม่" required><button class="btn primary">เพิ่ม</button></form></div></div>
+      <div class="panel"><div class="panel-h"><h2>แคมเปญ</h2></div><div class="panel-b">
+        ${state.campaigns.map(c => `<div class="list-row"><div><b>${esc(c.name)}</b><div class="sub">${fmtDate(c.start)} – ${fmtDate(c.end)}</div></div><span class="tag ${c.brand === 'bebeplay' ? 'bebe' : 'host'}">${BRAND[c.brand]}</span></div>`).join('')}
+        <form class="inline-form" id="camp-form"><input class="input" id="camp-name" placeholder="ชื่อแคมเปญใหม่" required>
+          <select class="select" id="camp-brand"><option value="bebeplay">Bebeplay</option><option value="hosttail">Hosttail</option></select>
+          <button class="btn primary">เพิ่ม</button></form></div></div>
+      <div class="panel"><div class="panel-h"><h2>ข้อมูลตัวอย่าง</h2></div><div class="panel-b">
+        <p class="help">ล้างสิ่งที่บันทึกไว้ในเบราว์เซอร์นี้ แล้วกลับไปใช้ข้อมูลตัวอย่างตั้งต้น</p><br><button class="btn danger" id="reset">รีเซ็ตข้อมูลตัวอย่าง</button></div></div></div>`;
+    $('#rep-form').onsubmit = (e) => { e.preventDefault(); const n = $('#rep-name').value.trim(); if (!n) return;
+      state.reps.push({ id: 'r' + Date.now(), name: n, initials: n.slice(0, 2) }); save(); fillMe(); renderSetup(); toast('เพิ่มเซลล์แล้ว'); };
+    $('#camp-form').onsubmit = (e) => { e.preventDefault(); const n = $('#camp-name').value.trim(); if (!n) return;
+      state.campaigns.push({ id: 'c' + Date.now(), brand: $('#camp-brand').value, name: n, start: today, end: today.slice(0, 8) + '30', note: '' }); save(); renderSetup(); toast('เพิ่มแคมเปญแล้ว'); };
+    $('#reset').onclick = () => { try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); };
+  }
+
+  /* ---------- modals ---------- */
+  function openModal(html, cls = '') {
+    const root = $('#modal-root');
+    root.innerHTML = `<div class="modal ${cls}" role="dialog" aria-modal="true">${html}</div>`;
+    root.hidden = false;
+    root.onmousedown = (e) => { if (e.target === root) closeModal(); };
+    const f = root.querySelector('input,select,textarea,button.btn'); if (f) f.focus();
+  }
+  function closeModal() { const r = $('#modal-root'); r.hidden = true; r.innerHTML = ''; }
+  const X = '<button class="icon-btn" data-close aria-label="ปิด"><svg viewBox="0 0 24 24"><path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7l1.4-1.4 6.3 6.3 6.3-6.3z"/></svg></button>';
+
+  function customerModal(id, tab = 'buy') {
+    const l = lead(id); if (!l) return;
+    const lastBuy = l.purchases[0]?.date;
+    const buyRows = l.purchases.map(p => `<tr><td>${fmtDate(p.date)}</td><td class="mono">${esc(p.sku)}</td><td>${esc(p.product)}</td><td class="r num">${baht(p.amount)}</td></tr>`).join('');
+    const hist = [...l.interactions].sort((a, b) => b.date.localeCompare(a.date)).map(i => `<li>
+      <span class="feed-ic ${i.type}"><svg viewBox="0 0 24 24"><path d="${i.type === 'call' ? 'M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z' : 'M4 4h16v12H7l-3 3z'}"/></svg></span>
+      <div style="flex:1;min-width:0"><div class="tl-head"><b>${i.type === 'call' ? 'โทร' : 'แชต'}</b><span class="sub">${fmtDT(i.date)} · ${esc(rep(i.rep)?.name || '')}</span><span class="tag">${esc(i.result)}</span></div><div class="tl-note">${esc(i.note)}</div></div></li>`).join('');
+    openModal(`
+      <div class="modal-h"><h3>${esc(l.name)}</h3><span class="badge s-${l.status}">${STATUS[l.status]}</span>
+        <span class="tag ${l.brand === 'bebeplay' ? 'bebe' : 'host'}">${BRAND[l.brand]}</span>${X}</div>
+      <div class="modal-b">
+        <dl class="info-grid" style="margin:0">
+          <div><dt>ชื่อ</dt><dd>${esc(l.name)}</dd></div>
+          <div><dt>เบอร์</dt><dd class="mono">${esc(l.phone)} <button class="copy" data-copy="${esc(l.phone)}">คัดลอก</button></dd></div>
+          <div class="wide"><dt>ที่อยู่</dt><dd>${esc(l.address)}</dd></div>
+          <div><dt>วันที่ซื้อล่าสุด</dt><dd>${fmtDate(lastBuy)}</dd></div>
+          <div><dt>ยอดซื้อรวม</dt><dd class="num">${baht(total(l))}</dd></div>
+          <div><dt>ร้านค้า</dt><dd>${esc(l.shop)}</dd></div>
+          <div><dt>ผู้ดูแล</dt><dd>${esc(rep(l.owner)?.name || '—')}</dd></div></dl>
+        <div class="tabs" role="tablist"><button class="tab ${tab === 'buy' ? 'active' : ''}" data-tab="buy">ประวัติการซื้อ (${l.purchases.length})</button>
+          <button class="tab ${tab === 'talk' ? 'active' : ''}" data-tab="talk">ประวัติการโทร/แชต (${l.interactions.length})</button></div>
+        ${tab === 'buy'
+          ? `<div class="mini-table table-wrap"><table><thead><tr><th>วัน/เดือน/ปี</th><th>SKU</th><th>ชื่อสินค้า</th><th class="r">ยอดซื้อ</th></tr></thead><tbody>${buyRows}</tbody></table></div>`
+          : (hist ? `<ul class="timeline">${hist}</ul>` : '<div class="empty">ยังไม่เคยติดต่อลูกค้ารายนี้</div>')}
+      </div>
+      <div class="modal-f"><button class="btn" data-log="chat">บันทึกแชต</button><button class="btn primary" data-log="call">บันทึกโทร</button></div>`);
+    const m = $('.modal');
+    m.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => customerModal(id, b.dataset.tab));
+    m.querySelectorAll('[data-log]').forEach(b => b.onclick = () => logModal(id, b.dataset.log));
+    m.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => {
+      navigator.clipboard?.writeText(b.dataset.copy).then(() => toast('คัดลอกเบอร์แล้ว'), () => toast(b.dataset.copy));
+    });
+  }
+
+  function logModal(id, type) {
+    const l = lead(id); if (!l) return;
+    const RES = { call: ['คุยแล้ว', 'ไม่รับสาย', 'สายไม่ว่าง', 'เบอร์ผิด'], chat: ['ตอบกลับแล้ว', 'อ่านแล้วไม่ตอบ', 'ส่งโปรโมชันแล้ว'] };
+    openModal(`
+      <div class="modal-h"><h3>บันทึก${type === 'call' ? 'โทร' : 'แชต'} · ${esc(l.name)}</h3>${X}</div>
+      <form id="log-form"><div class="modal-b">
+        <div class="field"><label>ช่องทาง</label><div class="seg" id="seg"><button type="button" data-t="call" class="${type === 'call' ? 'active' : ''}">โทร</button><button type="button" data-t="chat" class="${type === 'chat' ? 'active' : ''}">แชต</button></div></div>
+        <div class="form-grid">
+          <div class="field"><label for="f-res">ผลการติดต่อ</label><select class="select" id="f-res"></select></div>
+          <div class="field"><label for="f-status">สถานะลูกค้าหลังบันทึก</label><select class="select" id="f-status">
+            ${Object.entries(STATUS).filter(([k]) => k !== 'new').map(([k, v]) => `<option value="${k}" ${k === (l.status === 'new' ? 'following' : l.status) ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+          <div class="field wide" id="cb-wrap"><label for="f-cb">วันนัดโทรกลับ</label><input class="input" type="date" id="f-cb" min="${today}" value="${l.callback || ''}"></div>
+          <div class="field wide"><label for="f-note">หมายเหตุ</label><textarea class="textarea" id="f-note" placeholder="สรุปสิ่งที่คุยกับลูกค้า"></textarea></div>
+        </div></div>
+        <div class="modal-f"><button type="button" class="btn" data-close>ยกเลิก</button><button class="btn primary">บันทึก</button></div></form>`, 'sm');
+    let cur = type;
+    const fillRes = () => { $('#f-res').innerHTML = RES[cur].map(r => `<option>${r}</option>`).join(''); };
+    const cbToggle = () => { $('#cb-wrap').hidden = $('#f-status').value !== 'callback'; };
+    fillRes(); cbToggle();
+    $('#f-status').onchange = cbToggle;
+    document.querySelectorAll('#seg button').forEach(b => b.onclick = () => {
+      cur = b.dataset.t; document.querySelectorAll('#seg button').forEach(x => x.classList.toggle('active', x === b)); fillRes();
+    });
+    $('#log-form').onsubmit = (e) => {
+      e.preventDefault();
+      const now = new Date(); const pad = (n) => String(n).padStart(2, '0');
+      l.interactions.push({ id: 'i' + Date.now(), type: cur, date: `${today}T${pad(now.getHours())}:${pad(now.getMinutes())}`, rep: state.meId,
+        result: $('#f-res').value, note: $('#f-note').value.trim() || '(ไม่มีหมายเหตุ)' });
+      l.status = $('#f-status').value;
+      l.callback = l.status === 'callback' ? ($('#f-cb').value || null) : null;
+      if (!l.owner) l.owner = state.meId;
+      save(); closeModal(); route(); toast('บันทึกแล้ว');
+    };
+  }
+
+  function leadForm() {
+    openModal(`
+      <div class="modal-h"><h3>เพิ่มลูกค้าที่ขุดเอง</h3>${X}</div>
+      <form id="lead-form"><div class="modal-b"><div class="form-grid">
+        <div class="field"><label for="n-name">ชื่อ</label><input class="input" id="n-name" required></div>
+        <div class="field"><label for="n-phone">เบอร์โทร</label><input class="input" id="n-phone" inputmode="tel" required></div>
+        <div class="field"><label for="n-brand">แบรนด์</label><select class="select" id="n-brand"><option value="bebeplay">Bebeplay</option><option value="hosttail">Hosttail</option></select></div>
+        <div class="field"><label for="n-shop">ร้านค้า</label><input class="input" id="n-shop" placeholder="เช่น Loo_bebeplay"></div>
+        <div class="field wide"><label for="n-addr">ที่อยู่</label><input class="input" id="n-addr"></div>
+      </div></div>
+      <div class="modal-f"><button type="button" class="btn" data-close>ยกเลิก</button><button class="btn primary">เพิ่ม</button></div></form>`, 'sm');
+    $('#lead-form').onsubmit = (e) => {
+      e.preventDefault();
+      state.leads.unshift({ id: 'L' + Date.now(), name: $('#n-name').value.trim(), phone: $('#n-phone').value.trim(), address: $('#n-addr').value.trim() || '—',
+        shop: $('#n-shop').value.trim() || '—', source: 'self', brand: $('#n-brand').value, campaignId: null, owner: state.meId,
+        status: 'new', callback: null, purchases: [], interactions: [] });
+      save(); closeModal(); route(); toast('เพิ่มลูกค้าแล้ว');
+    };
+  }
+
+  /* ---------- global events ---------- */
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-act],[data-close]'); if (!t) return;
+    if (t.hasAttribute('data-close')) return closeModal();
+    const id = t.dataset.id;
+    if (t.dataset.act === 'open') customerModal(id);
+    if (t.dataset.act === 'log') logModal(id, t.dataset.type);
+    if (t.dataset.act === 'claim') { lead(id).owner = state.meId; save(); route(); toast('จองลีดแล้ว'); }
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+  $('#menu-btn').onclick = openMenu;
+  $('#scrim').onclick = closeMenu;
+
+  function fillMe() {
+    const sel = $('#me-select');
+    sel.innerHTML = state.reps.map(r => `<option value="${r.id}" ${r.id === state.meId ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
+    const r = rep(state.meId); $('#me-avatar').textContent = (r?.initials || '?').slice(0, 2);
+  }
+  $('#me-select').onchange = (e) => { state.meId = e.target.value; save(); fillMe(); route(); };
+  fillMe();
+  window.addEventListener('hashchange', route);
+  route();
+})();
