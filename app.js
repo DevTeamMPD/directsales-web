@@ -83,7 +83,7 @@
     if (!opts.mode || l.owner) return '';
     const repOpts = state.reps.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
     const assign = isAdmin() ? `<select class="select" data-assign="${l.id}" aria-label="มอบหมายให้"><option value="">มอบหมายให้…</option>${repOpts}</select>` : '';
-    if (opts.mode === 'self') return `<button class="btn sm outline" data-act="claim" data-id="${l.id}">จองลีด</button>${assign}`;
+    if (opts.mode === 'self') return `<button class="btn sm outline" data-act="claim" data-id="${l.id}">จอง</button>${assign}`;
     if (opts.mode === 'assign') return assign || '<span class="sub">รอหัวหน้ามอบหมาย</span>';
     return assign || '<span class="sub">ไม่มียอดขายเดิมให้อ้างอิง</span>';
   }
@@ -232,6 +232,8 @@
     const cs = state.campaigns.filter(c => c.brand === brand);
     if (!ui.selCamp || (ui.selCamp !== 'ALL' && camp(ui.selCamp)?.brand !== brand)) ui.selCamp = 'ALL';
     $('#page-sub').textContent = `${cs.length} แคมเปญ`;
+    ui.pool.loaded = false; // โหลดถังใหม่ทุกครั้งที่เข้าหน้า/เปลี่ยนผู้ใช้ เพื่อไม่ให้เห็นรายชื่อที่คนอื่นจองไปแล้ว
+    if (ui.pool.brand !== brand) Object.assign(ui.pool, { brand, loaded: false, page: 0, q: '', total: null, rows: [] }); // ถังเป็นของแบรนด์ที่เปิดอยู่เท่านั้น
     if (isAdmin()) { $('#topbar-actions').innerHTML = `<button class="btn" id="auto-run">จัดสรรให้เซลล์ที่ขายล่าสุด</button><button class="btn primary" id="new-camp">+ สร้างแคมเปญ</button>`; $('#new-camp').onclick = () => campaignForm(brand); $('#auto-run').onclick = () => { const n = applyAuto(ui.selCamp); if (!n) toast('ไม่มีลีดที่ต้องจัดสรร'); route(); }; }
     const draw = (keepFocus) => {
       const isAll = ui.selCamp === 'ALL';
@@ -466,22 +468,24 @@
 
   /* ---------- ถังกลาง "ลูกค้าทั้งหมด" (เหมือนกันทั้งสองแบรนด์) ---------- */
   const PAGE = 50;
-  ui.pool = { q: '', page: 0, rows: [], total: null, loaded: false, loading: false, err: '', live: false, t: null };
+  ui.pool = { brand: null, q: '', page: 0, rows: [], total: null, loaded: false, loading: false, err: '', live: false, t: null };
+  const takenBy = (c) => state.leads.find(l => l.phone === c.phone && l.owner)?.owner || null;
+  const hiddenFromMe = (c) => { const o = takenBy(c); return !!o && !isAdmin() && o !== state.meId; }; // จองแล้ว คนอื่นต้องไม่เห็นชื่อ
   const isLive = () => !!(typeof sb !== 'undefined' && sb && authUser);
   async function poolLoad(redraw, keepFocus) {
     const P = ui.pool; P.loading = true; P.err = '';
     try {
       if (isLive()) {
-        const { data, error } = await sb.rpc('dsales_customer_pool', { p_search: P.q.trim() || null, p_limit: PAGE, p_offset: P.page * PAGE, ...(hasPeriod() ? { p_from: ui.period.from || null, p_to: ui.period.to || null } : {}) });
+        const { data, error } = await sb.rpc('dsales_customer_pool_v2', { p_search: P.q.trim() || null, p_limit: PAGE, p_offset: P.page * PAGE, p_brand: P.brand || null, ...(hasPeriod() ? { p_from: ui.period.from || null, p_to: ui.period.to || null } : {}) });
         if (error) throw error;
         P.live = true; P.total = data.length ? Number(data[0].total_count) : 0;
         P.rows = data.map(r => ({ id: r.identity_id, name: r.name, phone: r.phone, segment: r.rfm_segment || r.segment || '', ltv: r.ltv, orders: r.order_count, last: r.last_order_date, brands: r.brands || [] }));
       } else {
         const q = P.q.trim().toLowerCase(), qd = q.replace(/\D/g, '');
-        const all = state.customers.filter(c => !q || c.name.toLowerCase().includes(q) || (qd && c.phone.includes(qd)))
+        const all = state.customers.filter(c => (!P.brand || c.brand === P.brand) && !hiddenFromMe(c) && (!q || c.name.toLowerCase().includes(q) || (qd && c.phone.includes(qd))))
           .filter(c => !hasPeriod() || inPeriod(c.purchases[0]?.date)).sort((a, b) => total(b) - total(a));
         P.live = false; P.total = all.length;
-        P.rows = all.slice(P.page * PAGE, P.page * PAGE + PAGE).map(c => ({ id: c.id, name: c.name, phone: c.phone, segment: '', ltv: total(c), orders: c.purchases.length, last: c.purchases[0]?.date, brands: [c.brand] }));
+        P.rows = all.slice(P.page * PAGE, P.page * PAGE + PAGE).map(c => ({ id: c.id, name: c.name, phone: c.phone, segment: '', ltv: total(c), orders: c.purchases.length, last: c.purchases[0]?.date, brands: [c.brand], taken: takenBy(c) }));
       }
       P.loaded = true;
     } catch (e) { P.err = 'โหลดลูกค้าไม่สำเร็จ: ' + (e.message || e); }
@@ -491,27 +495,74 @@
     const P = ui.pool;
     return `<button class="camp all ${ui.selCamp === 'ALL' ? 'active' : ''}" data-camp="ALL">
       <div class="camp-top"><span class="camp-name">ลูกค้าทั้งหมด</span><span class="badge ${P.live ? 's-won' : 's-new'}">${P.live ? 'ข้อมูลจริง' : 'ตัวอย่าง'}</span></div>
-      <div class="camp-meta">ถังกลางของทุกแบรนด์ ลูกค้าทั้งหมดในระบบ</div>
+      <div class="camp-meta">ลูกค้าทั้งหมดของ ${BRAND[P.brand] || 'ทุกแบรนด์'}</div>
       <div class="kpi-value num" style="font-size:22px">${P.total === null ? '…' : P.total.toLocaleString('th-TH')} <span class="sub" style="font-size:13px;font-weight:400">ราย</span></div>
       <div class="camp-stats"><span>${P.live ? 'จาก Supabase (อ่านอย่างเดียว)' : 'ล็อกอินเพื่อดูลูกค้าจริง'}</span></div></button>`;
   }
   function poolPanel() {
     const P = ui.pool, from = P.page * PAGE;
-    const rows = P.rows.map(r => `<tr><td><b>${esc(r.name)}</b><div class="sub mono">${esc(r.phone)}</div></td>
+    const rows = P.rows.map(r => `<tr><td><button class="cust-name" data-pool-open="${esc(r.id)}">${esc(r.name)}</button><div class="sub mono">${esc(r.phone)}</div></td>
       <td>${r.segment ? `<span class="tag">${esc(r.segment)}</span>` : '<span class="sub">—</span>'}</td>
       <td class="r num">${r.ltv == null ? '—' : baht(Math.round(r.ltv))}</td><td class="r num">${r.orders ?? '—'}</td>
       <td>${r.last ? fmtDate(r.last) : '—'}</td>
-      <td>${r.brands.length ? r.brands.map(b => `<span class="tag ${b === 'bebeplay' ? 'bebe' : b === 'hosttail' ? 'host' : ''}">${esc(BRAND[b] || b)}</span>`).join(' ') : '<span class="sub">—</span>'}</td></tr>`).join('');
+      <td>${r.brands.length ? r.brands.map(b => `<span class="tag ${b === 'bebeplay' ? 'bebe' : b === 'hosttail' ? 'host' : ''}">${esc(BRAND[b] || b)}</span>`).join(' ') : '<span class="sub">—</span>'}</td><td>${poolAction(r)}</td></tr>`).join('');
     return `<div class="toolbar"><label class="search" for="pool-q">${SEARCH_SVG}<input id="pool-q" type="search" placeholder="ค้นหา ชื่อ หรือเบอร์โทร" value="${esc(P.q)}"></label>
         ${P.loading ? '<span class="sub">กำลังโหลด…</span>' : ''}</div>
       ${P.err ? `<div class="login-err">${esc(P.err)}</div>` : ''}
-      <div class="card table-wrap"><table><thead><tr><th>ชื่อ / เบอร์</th><th>กลุ่มลูกค้า</th><th class="r">ยอดซื้อสะสม</th><th class="r">ออเดอร์</th><th>ซื้อล่าสุด</th><th>แบรนด์</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="6" class="empty">${P.loading ? 'กำลังโหลด…' : 'ไม่พบลูกค้าที่ตรงกับคำค้น'}</td></tr>`}</tbody></table></div>
+      <div class="card table-wrap"><table><thead><tr><th>ชื่อ / เบอร์</th><th>กลุ่มลูกค้า</th><th class="r">ยอดซื้อสะสม</th><th class="r">ออเดอร์</th><th>ซื้อล่าสุด</th><th>แบรนด์</th><th></th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="7" class="empty">${P.loading ? 'กำลังโหลด…' : 'ไม่พบลูกค้าที่ตรงกับคำค้น'}</td></tr>`}</tbody></table></div>
       <div class="toolbar"><button class="btn sm" data-pool="prev" ${P.page === 0 ? 'disabled' : ''}>← ก่อนหน้า</button>
         <span class="sub num">${P.total ? `${(from + 1).toLocaleString('th-TH')}–${(from + P.rows.length).toLocaleString('th-TH')} จาก ${P.total.toLocaleString('th-TH')}` : ''}</span>
         <button class="btn sm" data-pool="next" ${(P.total === null || from + P.rows.length >= P.total) ? 'disabled' : ''}>ถัดไป →</button></div>`;
   }
+  function poolAction(r) {
+    if (isLive()) return '<button class="btn sm outline" disabled title="ยังไม่ได้เชื่อมการจองกับฐานข้อมูลจริง">จอง</button>';
+    if (r.taken) return r.taken === state.meId ? '<span class="badge s-won plain">จองแล้ว</span>' : `<span class="badge s-new plain">จองโดย ${esc(rep(r.taken)?.name || '')}</span>`;
+    return `<button class="btn sm outline" data-pool-claim="${esc(r.id)}">จอง</button>`;
+  }
+  function poolClaim(id) {
+    const c = state.customers.find(x => x.id === id); if (!c) return;
+    const ex = state.leads.find(l => l.phone === c.phone);
+    if (ex && ex.owner && ex.owner !== state.meId) { ui.pool.loaded = false; route(); return toast('ลูกค้ารายนี้มีคนจองไปแล้ว'); }
+    if (ex && ex.owner === state.meId) return toast('คุณจองลูกค้ารายนี้แล้ว');
+    if (ex) ex.owner = state.meId; // มีลีดว่างอยู่แล้ว (จากแคมเปญ) จองลีดเดิม ไม่สร้างซ้ำ
+    else state.leads.unshift({ id: 'L' + Date.now(), name: c.name, phone: c.phone, address: c.address, shop: c.shop, source: 'self', brand: c.brand, campaignId: null, owner: state.meId,
+      status: 'new', callback: null, purchases: JSON.parse(JSON.stringify(c.purchases)), interactions: [], interest: '', closedBills: [], closedAmount: null, closedAt: null });
+    save(); closeModal(); ui.pool.loaded = false; route(); toast('จองแล้ว ลูกค้าย้ายเข้าหน้า Direct Sale ของคุณ');
+  }
+  async function poolDetail(id) {
+    const r = ui.pool.rows.find(x => x.id === id); if (!r) return;
+    const cu = state.customers.find(c => c.id === id);
+    let lines = null, err = '';
+    const render = () => {
+      const body = lines === null ? '<div class="empty">กำลังโหลดประวัติการซื้อ…</div>' : err ? `<div class="login-err">${esc(err)}</div>`
+        : lines.length ? `<div class="mini-table table-wrap"><table><thead><tr><th>วัน/เดือน/ปี</th><th>SKU</th><th>ชื่อสินค้า</th><th class="r">ยอดซื้อ</th></tr></thead><tbody>${lines.map(p => `<tr><td>${fmtDate(p.date)}</td><td class="mono">${esc(p.sku || '—')}</td><td>${esc(p.product || '—')}<div class="sub">บิล ${esc(p.bill || '—')}${p.seller ? ' · ขายโดย ' + esc(p.seller) : ''}</div></td><td class="r num">${p.amount == null ? '—' : baht(p.amount)}</td></tr>`).join('')}</tbody></table></div>`
+        : '<div class="empty">ไม่พบประวัติการซื้อรายรายการ</div>';
+      openModal(`<div class="modal-h"><h3>${esc(r.name)}</h3>${r.brands.map(b => `<span class="tag ${b === 'bebeplay' ? 'bebe' : b === 'hosttail' ? 'host' : ''}">${esc(BRAND[b] || b)}</span>`).join(' ')}${r.taken ? `<span class="badge s-new plain">จองโดย ${esc(rep(r.taken)?.name || '')}</span>` : ''}${X}</div>
+        <div class="modal-b"><dl class="info-grid" style="margin:0">
+          <div><dt>เบอร์</dt><dd class="mono">${esc(r.phone)} <button class="copy" data-copy="${esc(r.phone)}">คัดลอก</button></dd></div>
+          <div><dt>กลุ่มลูกค้า</dt><dd>${esc(r.segment || '—')}</dd></div>
+          <div><dt>ยอดซื้อสะสม</dt><dd class="num">${r.ltv == null ? '—' : baht(Math.round(r.ltv))}</dd></div>
+          <div><dt>จำนวนออเดอร์</dt><dd class="num">${r.orders ?? '—'}</dd></div>
+          <div><dt>ซื้อล่าสุด</dt><dd>${r.last ? fmtDate(r.last) : '—'}</dd></div>
+          <div><dt>ที่อยู่</dt><dd>${esc(cu?.address || '—')}</dd></div></dl>
+          <div class="sub"><b>ประวัติการซื้อ</b></div>${body}</div>
+        ${!isLive() && !r.taken ? `<div class="modal-f"><button class="btn primary" data-pool-claim="${esc(id)}">จอง</button></div>` : ''}`);
+      const m = $('.modal');
+      m.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => { navigator.clipboard?.writeText(b.dataset.copy).then(() => toast('คัดลอกเบอร์แล้ว'), () => toast(b.dataset.copy)); });
+      m.querySelectorAll('[data-pool-claim]').forEach(b => b.onclick = () => poolClaim(b.dataset.poolClaim));
+    };
+    if (isLive()) {
+      render();
+      const { data, error } = await sb.rpc('dsales_customer_purchases', { p_phone: r.phone });
+      if (error) err = 'โหลดประวัติการซื้อไม่สำเร็จ'; else lines = data.map(x => ({ date: x.txn_date, bill: x.bill_no || x.order_no, sku: x.sku, product: x.product_name, amount: x.amount }));
+      if (lines === null) lines = [];
+    } else lines = (cu?.purchases || []).map(p => ({ date: p.date, bill: p.bill, sku: p.sku, product: p.product, amount: p.amount, seller: rep(p.seller)?.name }));
+    render();
+  }
   function bindPool(draw) {
+    document.querySelectorAll('[data-pool-open]').forEach(b => b.onclick = () => poolDetail(b.dataset.poolOpen));
+    document.querySelectorAll('[data-pool-claim]').forEach(b => b.onclick = () => poolClaim(b.dataset.poolClaim));
     const P = ui.pool, q = $('#pool-q');
     if (q) q.addEventListener('input', () => { P.q = q.value; P.page = 0; clearTimeout(P.t); P.t = setTimeout(() => poolLoad(draw, true), 300); });
     document.querySelectorAll('[data-pool]').forEach(b => b.onclick = () => { P.page += b.dataset.pool === 'next' ? 1 : -1; poolLoad(draw); });
