@@ -70,5 +70,25 @@
       closedAmount: status === 'won' ? purchases[0].amount : null,
     });
   }
-  window.DS_DATA = { reps, campaigns, leads, today: iso(today) };
+  // ลูกค้าทั้งหมดของแต่ละแบรนด์ (ถังตั้งต้นของแคมเปญ) ใช้กรองตอนสร้างแคมเปญ
+  const customers = [];
+  for (let i = 0; i < 90; i++) {
+    const isHost = i % 3 === 2;
+    const n = 1 + Math.floor(rnd() * 5);
+    const pur = [];
+    for (let k = 0; k < n; k++) {
+      const p = pick(products.filter(x => isHost ? x[0].startsWith('HST') : x[0].startsWith('BBP')));
+      pur.push({ date: addDays(-20 - Math.floor(rnd() * 540)), bill: String(200000 + Math.floor(rnd() * 799999)), seller: pick(reps).id, sku: p[0], product: p[1], amount: p[2] });
+    }
+    pur.sort((a, b) => b.date.localeCompare(a.date));
+    customers.push({
+      id: 'C' + (5000 + i), name: first[(i * 7 + 3) % first.length] + ' ' + last[(i * 11 + 1) % last.length],
+      phone: '0' + pick(['81','86','89','92','95','64']) + String(2000000 + Math.floor(rnd() * 7999999)),
+      address: 'เขต' + pick(['บางนา','ลาดพร้าว','หนองจอก','เมืองเชียงใหม่','บางกรวย']),
+      brand: isHost ? 'hosttail' : 'bebeplay',
+      shop: isHost ? pick(['SH_hosttail','Lazada_hosttail']) : pick(['Loo_bebeplay','SH_bebeplay','TikTok_bebeplay']),
+      purchases: pur,
+    });
+  }
+  window.DS_DATA = { reps, campaigns, leads, customers, today: iso(today) };
 })();
