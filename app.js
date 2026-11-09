@@ -166,7 +166,7 @@
     if (!list.length) return `<tr><td colspan="9" class="empty">ไม่พบรายการที่ตรงกับตัวกรอง</td></tr>`;
     return list.map(l => {
       const o = rep(l.owner);
-      const claim = claimCell(l, opts);
+      const claim = claimCell(l, opts.perCamp ? { ...opts, mode: camp(l.campaignId)?.claimMode || 'self' } : opts);
       return `<tr>
         <td><button class="cust-name" data-act="open" data-id="${l.id}">${esc(l.name)}</button>
           <div class="sub mono">${esc(l.phone)}</div></td>
@@ -230,17 +230,18 @@
 
   function renderCampaign(brand) {
     const cs = state.campaigns.filter(c => c.brand === brand);
-    if (!ui.selCamp || (ui.selCamp !== 'ALL' && camp(ui.selCamp)?.brand !== brand)) ui.selCamp = 'ALL';
+    if (!ui.selCamp || (ui.selCamp !== 'ALL' && ui.selCamp !== 'CAMPS' && camp(ui.selCamp)?.brand !== brand)) ui.selCamp = 'ALL';
     $('#page-sub').textContent = `${cs.length} แคมเปญ`;
     ui.pool.loaded = false; // โหลดถังใหม่ทุกครั้งที่เข้าหน้า/เปลี่ยนผู้ใช้ เพื่อไม่ให้เห็นรายชื่อที่คนอื่นจองไปแล้ว
-    if (ui.pool.brand !== brand) Object.assign(ui.pool, { brand, loaded: false, page: 0, q: '', total: null, rows: [] }); // ถังเป็นของแบรนด์ที่เปิดอยู่เท่านั้น
+    if (ui.pool.brand !== brand) Object.assign(ui.pool, { brand, loaded: false, page: 0, q: '', total: null, rows: [], grand: null, grandFor: null }); // ถังเป็นของแบรนด์ที่เปิดอยู่เท่านั้น
     if (isAdmin()) { $('#topbar-actions').innerHTML = `<button class="btn" id="auto-run">จัดสรรให้เซลล์ที่ขายล่าสุด</button><button class="btn primary" id="new-camp">+ สร้างแคมเปญ</button>`; $('#new-camp').onclick = () => campaignForm(brand); $('#auto-run').onclick = () => { const n = applyAuto(ui.selCamp); if (!n) toast('ไม่มีลีดที่ต้องจัดสรร'); route(); }; }
     const draw = (keepFocus) => {
-      const isAll = ui.selCamp === 'ALL';
+      const isAll = ui.selCamp === 'ALL', isCamps = ui.selCamp === 'CAMPS';
       if (!ui.pool.loaded && !ui.pool.loading) poolLoad(draw);
       const mode = camp(ui.selCamp)?.claimMode || 'self';
       if (mode === 'auto') applyAuto(ui.selCamp, true);
-      const base = state.leads.filter(l => l.campaignId === ui.selCamp && visible(l));
+      const campIds = new Set(cs.map(c => c.id));
+      const base = state.leads.filter(l => (isCamps ? campIds.has(l.campaignId) : l.campaignId === ui.selCamp) && visible(l));
       const list = filtered(base);
       const cards = cs.map(c => {
         const ls = state.leads.filter(l => l.campaignId === c.id && visible(l));
@@ -256,10 +257,10 @@
           <div class="camp-stats"><span>ติดต่อแล้ว ${done}/${ls.length}</span><span>ปิดการขาย ${won}</span></div></button>`;
       }).join('') || `<div class="empty">ยังไม่มีแคมเปญ${isAdmin() ? ' — กด "+ สร้างแคมเปญ" ด้านบน' : ''}</div>`;
       const mineN = base.filter(l => l.owner === state.meId).length;
-      $('#view').innerHTML = `<div class="camp-grid">${poolCard()}${cards}</div>
+      $('#view').innerHTML = `<div class="camp-grid">${poolCard()}${campsCard()}${cards}</div>
         ${periodHtml()}
-        ${isAll ? poolPanel() : `<div class="quota card" style="padding:10px 14px">ลีดในแคมเปญนี้ <b>${base.length}</b> รายการ · ที่ฉันดูแล <b>${mineN}</b> · ยังไม่มีผู้ดูแล <b>${base.filter(l => !l.owner).length}</b> · วิธีจอง: <b>${MODES[mode]}</b></div>
-        ${toolbar(base, false)}${tableHtml(list, { mode })}`}`;
+        ${isAll ? poolPanel() : `<div class="quota card" style="padding:10px 14px">ลีดในแคมเปญนี้ <b>${base.length}</b> รายการ · ที่ฉันดูแล <b>${mineN}</b> · ยังไม่มีผู้ดูแล <b>${base.filter(l => !l.owner).length}</b> · วิธีจอง: <b>${isCamps ? 'ตามที่ตั้งไว้ในแต่ละแคมเปญ' : MODES[mode]}</b></div>
+        ${toolbar(base, false)}${tableHtml(list, { mode, perCamp: isCamps })}`}`;
       document.querySelectorAll('[data-camp]').forEach(b => b.onclick = () => { ui.selCamp = b.dataset.camp; ui.status = 'all'; draw(); });
       bindToolbar(draw); if (isAll) bindPool(draw);
       if (keepFocus) { const q = $(isAll ? '#pool-q' : '#q'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
@@ -475,6 +476,10 @@
   async function poolLoad(redraw, keepFocus) {
     const P = ui.pool; P.loading = true; P.err = '';
     try {
+      if (isLive() && P.grandFor !== P.brand) { // จำนวนลูกค้าทั้งแบรนด์ (ไม่ขึ้นกับคำค้น/ช่วงวันที่)
+        const g = await sb.rpc('dsales_customer_pool_v2', { p_limit: 1, p_offset: 0, p_brand: P.brand || null });
+        if (!g.error) { P.grand = g.data.length ? Number(g.data[0].total_count) : 0; P.grandFor = P.brand; }
+      }
       if (isLive()) {
         const { data, error } = await sb.rpc('dsales_customer_pool_v2', { p_search: P.q.trim() || null, p_limit: PAGE, p_offset: P.page * PAGE, p_brand: P.brand || null, ...(hasPeriod() ? { p_from: ui.period.from || null, p_to: ui.period.to || null } : {}) });
         if (error) throw error;
@@ -487,21 +492,40 @@
         P.live = false; P.total = all.length;
         P.rows = all.slice(P.page * PAGE, P.page * PAGE + PAGE).map(c => ({ id: c.id, name: c.name, phone: c.phone, segment: '', ltv: total(c), orders: c.purchases.length, last: c.purchases[0]?.date, brands: [c.brand], taken: takenBy(c) }));
       }
+      if (!isLive()) { P.grand = state.customers.filter(c => c.brand === P.brand && !hiddenFromMe(c)).length; P.grandFor = P.brand; }
       P.loaded = true;
     } catch (e) { P.err = 'โหลดลูกค้าไม่สำเร็จ: ' + (e.message || e); }
     P.loading = false; redraw(keepFocus);
+  }
+  const brandCampIds = () => new Set(state.campaigns.filter(c => c.brand === ui.pool.brand).map(c => c.id));
+  function inCampLine() { // ลูกค้าในถังที่อยู่ในแคมเปญของแบรนด์นี้แล้ว / ยังไม่เข้า (จับคู่ด้วยเบอร์)
+    const ids = brandCampIds(), phones = new Set(state.leads.filter(l => ids.has(l.campaignId)).map(l => l.phone));
+    const mine = state.customers.filter(c => c.brand === ui.pool.brand && !hiddenFromMe(c));
+    const inC = mine.filter(c => phones.has(c.phone)).length;
+    return `เข้าแคมเปญแล้ว ${inC} · ยังไม่เข้า ${mine.length - inC}`;
+  }
+  function campsCard() {
+    const ids = brandCampIds(), ls = state.leads.filter(l => ids.has(l.campaignId) && visible(l));
+    const done = ls.filter(l => l.status !== 'new').length, won = ls.filter(l => l.status === 'won').length;
+    return `<button class="camp ${ui.selCamp === 'CAMPS' ? 'active' : ''}" data-camp="CAMPS">
+      <div class="camp-top"><span class="camp-name">ลูกค้าทุกแคมเปญ</span><span class="badge s-following plain">${ids.size} แคมเปญ</span></div>
+      <div class="camp-meta">ลูกค้าที่อยู่ในแคมเปญต่างๆ ของ ${BRAND[ui.pool.brand] || ''} รวมกัน</div>
+      <div class="kpi-value num" style="font-size:22px">${ls.length} <span class="sub" style="font-size:13px;font-weight:400">ราย</span></div>
+      <div class="bar"><i style="width:${ls.length ? Math.round(done / ls.length * 100) : 0}%"></i></div>
+      <div class="camp-stats"><span>ติดต่อแล้ว ${done}/${ls.length}</span><span>ปิดการขาย ${won}</span></div></button>`;
   }
   function poolCard() {
     const P = ui.pool;
     return `<button class="camp all ${ui.selCamp === 'ALL' ? 'active' : ''}" data-camp="ALL">
       <div class="camp-top"><span class="camp-name">ลูกค้าทั้งหมด</span><span class="badge ${P.live ? 's-won' : 's-new'}">${P.live ? 'ข้อมูลจริง' : 'ตัวอย่าง'}</span></div>
       <div class="camp-meta">ลูกค้าทั้งหมดของ ${BRAND[P.brand] || 'ทุกแบรนด์'}</div>
-      <div class="kpi-value num" style="font-size:22px">${P.total === null ? '…' : P.total.toLocaleString('th-TH')} <span class="sub" style="font-size:13px;font-weight:400">ราย</span></div>
-      <div class="camp-stats"><span>${P.live ? 'จาก Supabase (อ่านอย่างเดียว)' : 'ล็อกอินเพื่อดูลูกค้าจริง'}</span></div></button>`;
+      <div class="kpi-value num" style="font-size:22px">${P.grand == null ? '…' : P.grand.toLocaleString('th-TH')} <span class="sub" style="font-size:13px;font-weight:400">ราย</span></div>
+      <div class="camp-stats"><span>${P.live ? 'ทั้งที่เข้าและยังไม่เข้าแคมเปญ' : inCampLine()}</span></div></button>`;
   }
   function poolPanel() {
     const P = ui.pool, from = P.page * PAGE;
     const rows = P.rows.map(r => `<tr><td><button class="cust-name" data-pool-open="${esc(r.id)}">${esc(r.name)}</button><div class="sub mono">${esc(r.phone)}</div></td>
+      <td>${poolCampCell(r)}</td>
       <td>${r.segment ? `<span class="tag">${esc(r.segment)}</span>` : '<span class="sub">—</span>'}</td>
       <td class="r num">${r.ltv == null ? '—' : baht(Math.round(r.ltv))}</td><td class="r num">${r.orders ?? '—'}</td>
       <td>${r.last ? fmtDate(r.last) : '—'}</td>
@@ -509,11 +533,16 @@
     return `<div class="toolbar"><label class="search" for="pool-q">${SEARCH_SVG}<input id="pool-q" type="search" placeholder="ค้นหา ชื่อ หรือเบอร์โทร" value="${esc(P.q)}"></label>
         ${P.loading ? '<span class="sub">กำลังโหลด…</span>' : ''}</div>
       ${P.err ? `<div class="login-err">${esc(P.err)}</div>` : ''}
-      <div class="card table-wrap"><table><thead><tr><th>ชื่อ / เบอร์</th><th>กลุ่มลูกค้า</th><th class="r">ยอดซื้อสะสม</th><th class="r">ออเดอร์</th><th>ซื้อล่าสุด</th><th>แบรนด์</th><th></th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="7" class="empty">${P.loading ? 'กำลังโหลด…' : 'ไม่พบลูกค้าที่ตรงกับคำค้น'}</td></tr>`}</tbody></table></div>
+      <div class="card table-wrap"><table><thead><tr><th>ชื่อ / เบอร์</th><th>แคมเปญ</th><th>กลุ่มลูกค้า</th><th class="r">ยอดซื้อสะสม</th><th class="r">ออเดอร์</th><th>ซื้อล่าสุด</th><th>แบรนด์</th><th></th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="8" class="empty">${P.loading ? 'กำลังโหลด…' : 'ไม่พบลูกค้าที่ตรงกับคำค้น'}</td></tr>`}</tbody></table></div>
       <div class="toolbar"><button class="btn sm" data-pool="prev" ${P.page === 0 ? 'disabled' : ''}>← ก่อนหน้า</button>
         <span class="sub num">${P.total ? `${(from + 1).toLocaleString('th-TH')}–${(from + P.rows.length).toLocaleString('th-TH')} จาก ${P.total.toLocaleString('th-TH')}` : ''}</span>
         <button class="btn sm" data-pool="next" ${(P.total === null || from + P.rows.length >= P.total) ? 'disabled' : ''}>ถัดไป →</button></div>`;
+  }
+  function poolCampCell(r) {
+    if (isLive()) return '<span class="sub">—</span>';
+    const names = state.leads.filter(l => l.phone === r.phone && l.campaignId).map(l => camp(l.campaignId)?.name).filter(Boolean);
+    return names.length ? names.map(n => `<div class="camp-cell">${esc(n)}</div>`).join('') : '<span class="sub">ยังไม่เข้าแคมเปญ</span>';
   }
   function poolAction(r) {
     if (isLive()) return '<button class="btn sm outline" disabled title="ยังไม่ได้เชื่อมการจองกับฐานข้อมูลจริง">จอง</button>';

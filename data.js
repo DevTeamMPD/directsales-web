@@ -92,5 +92,13 @@
       purchases: pur,
     });
   }
+  // ลีดตัวอย่างคือลูกค้าในถังของแบรนด์เดียวกัน (จับคู่ด้วยเบอร์)
+  const usedC = new Set();
+  leads.forEach(l => {
+    const c = customers.find(x => x.brand === l.brand && !usedC.has(x.id)); if (!c) return;
+    usedC.add(c.id); l.name = c.name; l.phone = c.phone; l.address = c.address; l.shop = c.shop;
+    l.purchases = JSON.parse(JSON.stringify(c.purchases));
+    if (l.status === 'won') l.closedAmount = l.purchases[0].amount;
+  });
   window.DS_DATA = { reps, campaigns, leads, customers, today: iso(today) };
 })();
