@@ -79,23 +79,24 @@
   const lastSeller = (l) => l.purchases.find(p => p.seller && rep(p.seller))?.seller || null;
   function applyAuto(campId, quiet) {
     let n = 0;
-    state.leads.filter(l => l.campaignId === campId && !l.owner && !l.noCall).forEach(l => { const s = lastSeller(l); if (s && !(l.releasedBy || []).includes(s)) { l.owner = s; n++; } }); // ไม่ส่งลีดที่คัดออกกลับไปหาคนที่คัดออก
+    state.leads.filter(l => l.campaignId === campId && !l.owner && !l.noCall && !l.autoSkip).forEach(l => { const s = lastSeller(l); if (s && !(l.releasedBy || []).includes(s)) { l.owner = s; n++; } }); // ไม่ส่งลีดที่คัดออกกลับไปหาคนที่คัดออก
     if (n) { save(); if (!quiet) toast(`จัดสรรอัตโนมัติ ${n} ลีด ไปยังเซลล์ที่ขายล่าสุด`); }
     return n;
   }
   // ยกเลิกจองได้เฉพาะลีดที่เซลล์จองเอง (ไม่ใช่ที่ระบบ/หัวหน้าจัดให้) และยังไม่ปิดการขาย / ไม่ใช่ลูกค้าห้ามโทร
   const canUnclaim = (l) => l.owner === state.meId && l.claimedBy === state.meId && !l.noCall && l.status !== 'won';
+  const canUnclaimAny = (l) => l.owner === state.meId && !l.noCall && l.status !== 'won'; // ในถังลูกค้า: ทุกรายที่ขึ้น "จองแล้ว" ของตัวเอง (ยกเว้นปิดการขายแล้ว/ห้ามโทร)
   const unclaimBtn = (l) => canUnclaim(l) ? `<button class="btn sm danger" data-act="unclaim" data-id="${l.id}">ยกเลิกจอง</button>` : '';
   function confirmUnclaim(id) { // ถามยืนยันอีกชั้น กันกดผิด
-    const l = lead(id); if (!l || !canUnclaim(l)) return toast('ยกเลิกจองรายการนี้ไม่ได้');
+    const l = lead(id); if (!l || !canUnclaimAny(l)) return toast('ยกเลิกจองรายการนี้ไม่ได้');
     openModal(`<div class="modal-h"><h3>ยกเลิกจอง?</h3>${X}</div>
       <div class="modal-b"><p style="margin:0">ยืนยันยกเลิกการจอง <b>${esc(l.name)}</b> ใช่หรือไม่</p>
         <p class="help">ลูกค้าจะกลับเข้าถังให้เซลล์คนอื่นจองได้ ประวัติที่บันทึกไว้ยังอยู่</p></div>
       <div class="modal-f"><button class="btn" data-close>ไม่ยกเลิก</button><button class="btn danger solid" id="unclaim-ok">ยืนยันยกเลิกจอง</button></div>`, 'sm');
     $('#unclaim-ok').onclick = () => {
-      const mineOnlyMined = l.source === 'self' && !l.campaignId && !l.interactions.length; // ลีดที่เกิดจากการจองในถังและยังไม่เคยบันทึก ลบทิ้ง
+      const mineOnlyMined = l.claimedBy === state.meId && l.source === 'self' && !l.campaignId && !l.interactions.length; // ลีดที่เกิดจากการจองในถังและยังไม่เคยบันทึก ลบทิ้ง
       if (mineOnlyMined) state.leads = state.leads.filter(x => x !== l);
-      else Object.assign(l, { owner: null, claimedBy: null, status: 'new', callback: null });
+      else Object.assign(l, { owner: null, claimedBy: null, status: 'new', callback: null, autoSkip: !!l.campaignId || !!l.autoSkip }); // กันแคมเปญแบบ auto ส่งกลับมาหาเซลล์เดิมทันที
       save(); closeModal(); ui.pool.loaded = false; route(); toast('ยกเลิกจองแล้ว');
     };
   }
@@ -558,7 +559,7 @@
         const all = state.customers.filter(c => (!P.brand || c.brand === P.brand) && !hiddenFromMe(c) && (!q || c.name.toLowerCase().includes(q) || (qd && c.phone.includes(qd))))
           .filter(c => !hasPeriod() || inPeriod(c.purchases[0]?.date)).sort((a, b) => total(b) - total(a));
         P.live = false; P.total = all.length;
-        P.rows = all.slice(P.page * PAGE, P.page * PAGE + PAGE).map(c => ({ id: c.id, name: c.name, phone: c.phone, segment: '', ltv: total(c), orders: c.purchases.length, last: c.purchases[0]?.date, brands: [c.brand], taken: takenBy(c), leadId: takenLead(c)?.id, mineReserved: takenLead(c)?.claimedBy === state.meId && !takenLead(c)?.noCall && takenLead(c)?.status !== 'won' }));
+        P.rows = all.slice(P.page * PAGE, P.page * PAGE + PAGE).map(c => ({ id: c.id, name: c.name, phone: c.phone, segment: '', ltv: total(c), orders: c.purchases.length, last: c.purchases[0]?.date, brands: [c.brand], taken: takenBy(c), leadId: takenLead(c)?.id, mineReserved: takenLead(c)?.owner === state.meId && !takenLead(c)?.noCall && takenLead(c)?.status !== 'won' }));
       }
       if (!isLive()) { P.grand = state.customers.filter(c => c.brand === P.brand && !hiddenFromMe(c)).length; P.grandFor = P.brand; }
       P.loaded = true;
