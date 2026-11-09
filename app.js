@@ -9,7 +9,7 @@
 
   const STATUS = {
     new: 'ยังไม่ติดต่อ', following: 'กำลังติดตาม', callback: 'รอติดต่อ',
-    won: 'ปิดการขายแล้ว', lost: 'ไม่สนใจ', unreachable: 'ติดต่อไม่ได้', dnc: 'ไม่สะดวกให้โทร',
+    won: 'ปิดการขายแล้ว', lost: 'ไม่สนใจ', unreachable: 'ติดต่อไม่ได้',
   };
   const BRAND = { bebeplay: 'Bebeplay', hosttail: 'Hosttail' };
 
@@ -18,6 +18,7 @@
   if (!state || !state.leads) state = JSON.parse(JSON.stringify(window.DS_DATA));
   state.meId = state.meId || 'r4';
   state.customers = state.customers || JSON.parse(JSON.stringify(window.DS_DATA.customers));
+  state.leads.forEach(l => { if (l.status === 'dnc') { l.noCall = true; l.noCallAt = l.dncAt; l.noCallBy = l.dncBy; l.status = 'following'; } }); // ย้ายข้อมูลรุ่นเก่า
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
   save();
   const today = state.today;
@@ -30,10 +31,10 @@
   const me = () => rep(state.meId);
   const isAdmin = () => me()?.role === 'admin';
   // ถังไม่สะดวกให้โทร (dnc) ไม่แสดงในหน้าไหนเลยนอกจากถังของหัวหน้า / คนที่คัดออกแล้วไม่เห็นลีดนั้นอีก (คนอื่นเห็นและจองได้)
-  const isDnc = (phone) => state.leads.some(l => l.phone === phone && l.status === 'dnc');
+  const isDnc = (phone) => state.leads.some(l => l.phone === phone && l.noCall); // ห้ามโทร: ไม่อยู่ในถัง/แคมเปญ ให้เฉพาะเซลล์ที่แจ้งเห็นใน Direct Sale และติดต่อทางแชต
   const releasedByMe = (l) => !isAdmin() && !!l.releasedBy?.includes(state.meId);
-  const visible = (l) => l.status !== 'dnc' && !releasedByMe(l) && (isAdmin() || !l.owner || l.owner === state.meId); // เซลล์เห็นเฉพาะลีดว่างกับของตัวเอง
-  const mineOrAll = (l) => l.status !== 'dnc' && (isAdmin() || l.owner === state.meId);
+  const visible = (l) => !l.noCall && !releasedByMe(l) && (isAdmin() || !l.owner || l.owner === state.meId); // เซลล์เห็นเฉพาะลีดว่างกับของตัวเอง
+  const mineOrAll = (l) => isAdmin() || l.owner === state.meId;
   /* ---------- ตัวกรองช่วงวันที่ (ใช้ร่วมทุกหน้า) ---------- */
   const hasPeriod = () => !!(ui.period.from || ui.period.to);
   const inPeriod = (d) => !!d && (!ui.period.from || d.slice(0, 10) >= ui.period.from) && (!ui.period.to || d.slice(0, 10) <= ui.period.to);
@@ -78,7 +79,7 @@
   const lastSeller = (l) => l.purchases.find(p => p.seller && rep(p.seller))?.seller || null;
   function applyAuto(campId, quiet) {
     let n = 0;
-    state.leads.filter(l => l.campaignId === campId && !l.owner && l.status !== 'dnc').forEach(l => { const s = lastSeller(l); if (s && !(l.releasedBy || []).includes(s)) { l.owner = s; n++; } }); // ไม่ส่งลีดที่คัดออกกลับไปหาคนที่คัดออก
+    state.leads.filter(l => l.campaignId === campId && !l.owner && !l.noCall).forEach(l => { const s = lastSeller(l); if (s && !(l.releasedBy || []).includes(s)) { l.owner = s; n++; } }); // ไม่ส่งลีดที่คัดออกกลับไปหาคนที่คัดออก
     if (n) { save(); if (!quiet) toast(`จัดสรรอัตโนมัติ ${n} ลีด ไปยังเซลล์ที่ขายล่าสุด`); }
     return n;
   }
@@ -117,8 +118,8 @@
   function route() {
     state.campaigns.filter(c => c.claimMode === 'auto').forEach(c => applyAuto(c.id, true)); // แคมเปญแบบ auto เด้งเข้าถังเซลล์ทันทีที่มีข้อมูล
     const name = (location.hash || '#leads').slice(1);
-    if (name === 'dnc' && !isAdmin()) { location.hash = '#leads'; return; }
-    $('#nav-dnc').hidden = !isAdmin();
+    if ((name === 'dnc' || name === 'setup') && !isAdmin()) { location.hash = '#leads'; return; } // หลังบ้านเฉพาะหัวหน้า
+    $('#nav-dnc').hidden = !isAdmin(); $('#nav-setup').hidden = !isAdmin(); $('#nav-tool').hidden = !isAdmin();
     const r = routes[name] || routes.leads;
     $('#page-title').textContent = r.title;
     $('#page-sub').textContent = r.sub;
@@ -132,7 +133,7 @@
     const mine = (l) => l.owner === state.meId;
     const open = (l) => l.status === 'new' || l.status === 'callback';
     const set = (id, n) => { const b = $(id); b.textContent = n || ''; };
-    set('#badge-dnc', state.leads.filter(l => l.status === 'dnc').length);
+    set('#badge-dnc', state.leads.filter(l => l.noCall).length);
     set('#badge-leads', state.leads.filter(l => mine(l) && open(l)).length);
     ['bebeplay', 'hosttail'].forEach(b => {
       const n = state.leads.filter(l => l.brand === b && l.source === 'campaign' && l.status === 'new' && !l.owner).length;
@@ -149,6 +150,7 @@
       if (!periodOk(l)) return false;
       if (ui.status === 'today') { if (l.callback !== today) return false; }
       else if (ui.status === 'overdue') { if (!(l.callback && l.callback < today)) return false; }
+      else if (ui.status === 'nocall') { if (!l.noCall) return false; }
       else if (ui.status !== 'all' && l.status !== ui.status) return false;
       if (ui.rep === 'me' && l.owner !== state.meId) return false;
       if (ui.camp !== 'all' && (ui.camp === 'self' ? l.source !== 'self' : l.campaignId !== ui.camp)) return false;
@@ -182,10 +184,10 @@
         <td>${l.source === 'self' ? '<span class="tag self">เซลล์ขุดเอง</span>' : `<span class="camp-cell">${esc(camp(l.campaignId)?.name || '—')}</span>`}</td>
         <td>${o ? `<span class="rep-name">${esc(o.name)}</span>` : '<span class="sub">ยังไม่มีผู้ดูแล</span>'}${lastSeller(l) ? `<div class="sub">ขายล่าสุด: ${esc(rep(lastSeller(l))?.name || '')}</div>` : ''}</td>
         <td class="r num">${baht(total(l))}</td>
-        <td><span class="badge s-${l.status}">${STATUS[l.status]}</span>${dueHtml(l)}${isAdmin() && l.releasedBy?.length && !l.owner ? `<div class="sub">คัดออกโดย ${esc(l.releasedBy.map(id => rep(id)?.name || '').join(', '))}</div>` : ''}</td>
+        <td><span class="badge s-${l.status}">${STATUS[l.status]}</span>${dueHtml(l)}${l.noCall ? '<div><span class="tag nocall">ห้ามโทร · แชตเท่านั้น</span></div>' : ''}${isAdmin() && l.releasedBy?.length && !l.owner ? `<div class="sub">คัดออกโดย ${esc(l.releasedBy.map(id => rep(id)?.name || '').join(', '))}</div>` : ''}</td>
         <td class="note-cell">${noteCell(l)}</td>
         <td><div class="actions">
-          <button class="btn sm primary" data-act="log" data-type="call" data-id="${l.id}">บันทึก</button>${claim}
+          <button class="btn sm primary" data-act="log" data-type="${l.noCall ? 'chat' : 'call'}" data-id="${l.id}">${l.noCall ? 'บันทึกแชต' : 'บันทึก'}</button>${claim}
         </div></td></tr>`;
     }).join('');
   }
@@ -197,11 +199,11 @@
   const SEARCH_SVG = '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>';
 
   function toolbar(base, withCampSelect) {
-    const match = (l, s) => s === 'all' ? true : s === 'today' ? l.callback === today : s === 'overdue' ? !!(l.callback && l.callback < today) : l.status === s;
+    const match = (l, s) => s === 'all' ? true : s === 'today' ? l.callback === today : s === 'overdue' ? !!(l.callback && l.callback < today) : s === 'nocall' ? !!l.noCall : l.status === s;
     const count = (s) => base.filter(l => periodOk(l) && match(l, s)).length;
-    const EXTRA = { overdue: 'เลยนัด', today: 'นัดวันนี้' };
-    const dots = { new: 'var(--grey)', following: 'var(--info)', callback: 'var(--warn)', won: 'var(--ok)', lost: 'var(--bad)', unreachable: 'var(--violet)', overdue: 'var(--bad)', today: 'var(--warn)' };
-    const chips = ['all', 'overdue', 'today', 'new', 'following', 'callback', 'won', 'unreachable', 'lost'].map(s =>
+    const EXTRA = { overdue: 'เลยนัด', today: 'นัดวันนี้', nocall: 'ไม่สะดวกให้โทร' };
+    const dots = { new: 'var(--grey)', following: 'var(--info)', callback: 'var(--warn)', won: 'var(--ok)', lost: 'var(--bad)', unreachable: 'var(--violet)', overdue: 'var(--bad)', today: 'var(--warn)', nocall: 'var(--bad)' };
+    const chips = ['all', 'overdue', 'today', 'new', 'following', 'callback', 'won', 'unreachable', 'lost', 'nocall'].map(s =>
       `<button class="chip ${ui.status === s ? 'active' : ''}" data-chip="${s}">${s === 'all' ? '' : `<i class="dot" style="background:${dots[s]}"></i>`}${s === 'all' ? 'ทั้งหมด' : (EXTRA[s] || STATUS[s])} (${count(s)})</button>`).join('');
     const campOpts = `<option value="all">แคมเปญทั้งหมด</option><option value="self" ${ui.camp === 'self' ? 'selected' : ''}>เซลล์ขุดเอง</option>` +
       state.campaigns.map(c => `<option value="${c.id}" ${ui.camp === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
@@ -345,19 +347,24 @@
 
   /* ---------- ถังไม่สะดวกให้โทร (หัวหน้า) ---------- */
   function renderDnc() {
-    const L = state.leads.filter(l => l.status === 'dnc');
+    const all = state.leads.filter(l => l.noCall);
+    ui.dncRep = ui.dncRep || 'all';
+    const L = ui.dncRep === 'all' ? all : all.filter(l => l.noCallBy === ui.dncRep);
+    const byRep = [...new Set(all.map(l => l.noCallBy))].map(id => [id, all.filter(l => l.noCallBy === id).length]);
     const rows = L.map(l => {
       const why = [...l.interactions].reverse().find(i => i.result === 'ไม่สะดวกให้โทร') || l.interactions[l.interactions.length - 1];
       return `<tr><td><button class="cust-name" data-act="open" data-id="${l.id}">${esc(l.name)}</button><div class="sub mono">${esc(l.phone)}</div></td>
         <td><span class="tag ${l.brand === 'bebeplay' ? 'bebe' : 'host'}">${BRAND[l.brand]}</span></td>
         <td>${l.source === 'self' ? '<span class="tag self">เซลล์ขุดเอง</span>' : esc(camp(l.campaignId)?.name || '—')}</td>
-        <td>${esc(rep(l.dncBy)?.name || '—')}</td><td>${l.dncAt ? fmtDate(l.dncAt) : '—'}</td>
+        <td>${esc(rep(l.noCallBy)?.name || '—')}</td><td>${l.noCallAt ? fmtDate(l.noCallAt) : '—'}</td><td><span class="badge s-${l.status}">${STATUS[l.status] || '—'}</span></td>
         <td class="note-cell">${esc(why?.note || '—')}</td><td class="r num">${baht(total(l))}</td>
-        <td><button class="btn sm" data-act="dnc-restore" data-id="${l.id}">นำกลับเข้าถัง</button></td></tr>`;
+        <td><button class="btn sm" data-act="dnc-restore" data-id="${l.id}">ยกเลิกห้ามโทร</button></td></tr>`;
     }).join('');
-    $('#view').innerHTML = `<div class="demo-note">ลูกค้าที่แจ้งว่าไม่สะดวกให้โทร ถูกคัดออกถาวร เซลล์ไม่เห็นและไม่มีใครโทรได้ เห็นเฉพาะหัวหน้า ("นำกลับเข้าถัง" ใช้เมื่อกดผิด)</div>
-      <div class="card table-wrap"><table><thead><tr><th>ชื่อ / เบอร์</th><th>แบรนด์</th><th>แคมเปญ</th><th>แจ้งโดย</th><th>วันที่</th><th>เหตุผล</th><th class="r">ยอดซื้อรวม</th><th></th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="8" class="empty">ยังไม่มีลูกค้าในถังนี้</td></tr>'}</tbody></table></div>`;
+    $('#view').innerHTML = `<div class="demo-note">ลูกค้าที่ไม่สะดวกให้โทร: ห้ามโทรถาวร เซลล์ที่แจ้งติดต่อได้ทางแชตเท่านั้นและเห็นลูกค้าในหน้า Direct Sale ของตัวเอง เซลล์คนอื่นไม่เห็น ("ยกเลิกห้ามโทร" ใช้เมื่อกดผิด)</div>
+      <div class="toolbar"><label class="sub" for="dnc-rep">พนักงานขายที่แจ้ง</label><select class="select" id="dnc-rep"><option value="all">ทุกคน (${all.length})</option>${byRep.map(([id, n]) => `<option value="${esc(id)}" ${ui.dncRep === id ? 'selected' : ''}>${esc(rep(id)?.name || id)} (${n})</option>`).join('')}</select></div>
+      <div class="card table-wrap"><table><thead><tr><th>ชื่อ / เบอร์</th><th>แบรนด์</th><th>แคมเปญ</th><th>พนักงานขายที่แจ้ง</th><th>วันที่</th><th>สถานะตอนนี้</th><th>เหตุผล</th><th class="r">ยอดซื้อรวม</th><th></th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="9" class="empty">ยังไม่มีลูกค้าในถังนี้</td></tr>'}</tbody></table></div>`;
+    $('#dnc-rep').onchange = (e) => { ui.dncRep = e.target.value; renderDnc(); };
   }
 
   /* ---------- setup ---------- */
@@ -415,7 +422,7 @@
           ? `<div class="mini-table table-wrap"><table><thead><tr><th>วัน/เดือน/ปี</th><th>SKU</th><th>ชื่อสินค้า</th><th class="r">ยอดซื้อ</th></tr></thead><tbody>${buyRows}</tbody></table></div>`
           : (hist ? `<ul class="timeline">${hist}</ul>` : '<div class="empty">ยังไม่เคยติดต่อลูกค้ารายนี้</div>')}
       </div>
-      <div class="modal-f"><button class="btn primary" data-log="call">บันทึก</button></div>`);
+      <div class="modal-f"><button class="btn primary" data-log="${l.noCall ? 'chat' : 'call'}">${l.noCall ? 'บันทึกแชต' : 'บันทึก'}</button></div>`);
     const m = $('.modal');
     m.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => customerModal(id, b.dataset.tab));
     m.querySelectorAll('[data-log]').forEach(b => b.onclick = () => logModal(id, b.dataset.log));
@@ -426,15 +433,18 @@
 
   function logModal(id, type) {
     const l = lead(id); if (!l) return;
+    const prevStatus = l.status;
+    if (l.noCall) type = 'chat'; // ห้ามโทร: ติดต่อและบันทึกได้ทางแชตเท่านั้น
     const RES = { call: ['คุยแล้ว', 'ไม่รับสาย', 'สายไม่ว่าง', 'เบอร์ผิด'], chat: ['ตอบกลับแล้ว', 'อ่านแล้วไม่ตอบ', 'ส่งโปรโมชันแล้ว'] };
     openModal(`
       <div class="modal-h"><h3>บันทึก · ${esc(l.name)}</h3>${X}</div>
       <form id="log-form" novalidate><div class="modal-b">
-        <div class="field"><label>ช่องทาง</label><div class="seg" id="seg"><button type="button" data-t="call" class="${type === 'call' ? 'active' : ''}">โทร</button><button type="button" data-t="chat" class="${type === 'chat' ? 'active' : ''}">แชต</button></div></div>
+        ${l.noCall ? '<div class="warn">ลูกค้ารายนี้ไม่สะดวกให้โทร ติดต่อได้ทางแชตเท่านั้น</div>' : ''}
+        <div class="field"><label>ช่องทาง</label><div class="seg" id="seg"><button type="button" data-t="call" class="${type === 'call' ? 'active' : ''}" ${l.noCall ? 'disabled title="ลูกค้ารายนี้ห้ามโทร ติดต่อทางแชตเท่านั้น"' : ''}>โทร</button><button type="button" data-t="chat" class="${type === 'chat' ? 'active' : ''}">แชต</button></div></div>
         <div class="form-grid">
           <div class="field"><label for="f-res">ผลการติดต่อ</label><select class="select" id="f-res"></select></div>
           <div class="field"><label for="f-status">สถานะลูกค้าหลังบันทึก</label><select class="select" id="f-status">
-            ${Object.entries(STATUS).filter(([k]) => k !== 'new').map(([k, v]) => `<option value="${k}" ${k === (l.status === 'new' ? 'following' : l.status) ? 'selected' : ''}>${v}</option>`).join('')}<option value="release">คัดออก (คืนให้คนอื่นโทร)</option></select></div>
+            ${Object.entries(STATUS).filter(([k]) => k !== 'new').map(([k, v]) => `<option value="${k}" ${k === (l.status === 'new' ? 'following' : l.status) ? 'selected' : ''}>${v}</option>`).join('')}${l.noCall ? '' : '<option value="dnc">ไม่สะดวกให้โทร (ติดต่อทางแชตเท่านั้น)</option><option value="release">คัดออก (คืนให้คนอื่นโทร)</option>'}</select></div>
           <div class="field wide" id="cb-wrap"><label for="f-cb">วันที่นัดติดต่อ <span class="req">*</span></label><input class="input" type="date" id="f-cb" min="${today}" value="${l.callback && l.callback >= today ? l.callback : ''}"></div>
           <div class="field wide"><label for="f-interest">สินค้าที่ลูกค้าสนใจ</label><input class="input" id="f-interest" value="${esc(l.interest || '')}" placeholder="เช่น เตียงนอนเด็ก, ทรายแมว"></div>
           <div class="field wide" id="won-wrap"><label for="f-bills">เลขบิลที่ขายได้ (อ้างอิงตอนผูกข้อมูล คั่นหลายบิลด้วยจุลภาค)</label><input class="input" id="f-bills" value="${esc((l.closedBills || []).join(', '))}" placeholder="เช่น 312345, 312399">
@@ -446,7 +456,7 @@
         <div class="modal-f"><button type="button" class="btn" data-close>ยกเลิก</button><button class="btn primary">บันทึก</button></div></form>`, 'sm');
     let cur = type;
     const fillRes = () => { $('#f-res').innerHTML = RES[cur].map(r => `<option>${r}</option>`).join(''); };
-    const WARN = { dnc: 'ลูกค้ารายนี้จะถูกคัดออกถาวร ไม่มีใครโทรได้อีก และเห็นได้เฉพาะหัวหน้า (ถังไม่สะดวกให้โทร)', release: 'ลูกค้ารายนี้จะออกจากรายการของคุณและกลับเข้าถังให้เซลล์คนอื่นโทร คุณจะไม่เห็นลูกค้ารายนี้อีก' };
+    const WARN = { dnc: 'ลูกค้ารายนี้จะถูกทำเครื่องหมายห้ามโทรถาวร คุณติดต่อได้ทางแชตเท่านั้น (ยังเห็นในหน้า Direct Sale ของคุณ) เซลล์คนอื่นจะไม่เห็นลูกค้ารายนี้ และหัวหน้าเห็นในถังไม่สะดวกให้โทร', release: 'ลูกค้ารายนี้จะออกจากรายการของคุณและกลับเข้าถังให้เซลล์คนอื่นโทร คุณจะไม่เห็นลูกค้ารายนี้อีก' };
     const cbToggle = () => { const v = $('#f-status').value; $('#cb-wrap').hidden = v !== 'callback'; $('#won-wrap').hidden = v !== 'won'; $('#warn-wrap').hidden = !WARN[v]; $('#warn-text').textContent = WARN[v] || ''; $('#note-req').hidden = !WARN[v]; };
     fillRes(); cbToggle();
     $('#f-status').onchange = cbToggle;
@@ -470,9 +480,9 @@
       l.callback = l.status === 'callback' ? ($('#f-cb').value || null) : null;
       if (!l.owner) l.owner = state.meId;
       const last = l.interactions[l.interactions.length - 1];
-      if (sv === 'dnc') { // คัดออกถาวร -> ถังไม่สะดวกให้โทร (หัวหน้าเห็นคนเดียว)
-        Object.assign(l, { status: 'dnc', dncAt: today, dncBy: state.meId, callback: null }); last.result = 'ไม่สะดวกให้โทร';
-        save(); closeModal(); route(); return toast('ย้ายไปถังไม่สะดวกให้โทรแล้ว');
+      if (sv === 'dnc') { // ห้ามโทรถาวร: ยังเป็นลูกค้าของเซลล์คนนี้ ติดต่อทางแชตเท่านั้น และหัวหน้าเห็นในถังไม่สะดวกให้โทร
+        Object.assign(l, { noCall: true, noCallAt: today, noCallBy: state.meId, status: prevStatus === 'new' ? 'following' : prevStatus, callback: null }); last.result = 'ไม่สะดวกให้โทร';
+        save(); closeModal(); route(); return toast('ทำเครื่องหมายห้ามโทรแล้ว ติดต่อลูกค้ารายนี้ทางแชตเท่านั้น');
       }
       if (sv === 'release') { // โทรเท่าไหร่ก็ปิดไม่ได้ -> คืนเข้าถังให้คนอื่น
         Object.assign(l, { status: 'new', callback: null, owner: null, releasedBy: [...new Set([...(l.releasedBy || []), state.meId])] }); last.result = 'คัดออก';
@@ -593,7 +603,7 @@
   function poolClaim(id) {
     const c = state.customers.find(x => x.id === id); if (!c) return;
     const ex = state.leads.find(l => l.phone === c.phone);
-    if (ex && ex.status === 'dnc') return toast('ลูกค้ารายนี้อยู่ในถังไม่สะดวกให้โทร');
+    if (ex && ex.noCall) return toast('ลูกค้ารายนี้ไม่สะดวกให้โทร จองไม่ได้');
     if (ex && ex.releasedBy?.includes(state.meId)) return toast('คุณคัดออกลูกค้ารายนี้ไปแล้ว');
     if (ex && ex.owner && ex.owner !== state.meId) { ui.pool.loaded = false; route(); return toast('ลูกค้ารายนี้มีคนจองไปแล้ว'); }
     if (ex && ex.owner === state.meId) return toast('คุณจองลูกค้ารายนี้แล้ว');
@@ -661,6 +671,7 @@
   const TRASH = '<svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z"/></svg>';
 
   function campaignForm(brand) {
+    if (!isAdmin()) return toast('เฉพาะหัวหน้าเท่านั้นที่สร้างแคมเปญได้');
     const f = { tab: 'base', name: '', desc: '', active: true, start: '', end: '', brand, mode: 'self', max: '', crits: [], prev: false };
     const funnel = () => {
       let cur = state.customers.filter(c => c.brand === f.brand && !isDnc(c.phone));
@@ -748,7 +759,7 @@
     if (t.hasAttribute('data-close')) return closeModal();
     const id = t.dataset.id;
     if (t.dataset.act === 'open') customerModal(id);
-    if (t.dataset.act === 'dnc-restore') { const l = lead(id); Object.assign(l, { status: 'new', dncAt: null, dncBy: null, owner: null }); save(); route(); toast('นำกลับเข้าถังแล้ว'); }
+    if (t.dataset.act === 'dnc-restore') { Object.assign(lead(id), { noCall: false, noCallAt: null, noCallBy: null }); save(); route(); toast('ยกเลิกห้ามโทรแล้ว'); }
     if (t.dataset.act === 'log') logModal(id, t.dataset.type);
     if (t.dataset.act === 'claim') {
       const l = lead(id), c = camp(l.campaignId);
@@ -795,15 +806,19 @@
     $('#login').hidden = false;
     const err = $('#l-err'); err.hidden = !msg; err.textContent = msg || '';
   }
-  function enterAuth(user) {
+  async function enterAuth(user) {
     authUser = user.email;
+    let name = null, admin = null;
+    try { // ชื่อจาก profiles ของพนักงาน สิทธิ์หัวหน้าจาก dsales_members (ฝั่ง Supabase)
+      const { data, error } = await sb.rpc('dsales_me');
+      if (!error && data && data[0]) { name = data[0].display_name; admin = !!data[0].is_admin; }
+    } catch (e) {}
+    if (admin === null) admin = user.email.toLowerCase() === 'dev@mpdgroup.co'; // สำรองเมื่อเรียกฟังก์ชันไม่ได้
+    const nm = name || user.email.split('@')[0];
     let r = state.reps.find(x => x.email === user.email);
-    if (!r) {
-      const nm = user.email.split('@')[0];
-      r = { id: 'u' + user.id.slice(0, 8), name: nm, initials: nm.slice(0, 2).toUpperCase(), email: user.email, role: 'sales' };
-      state.reps.push(r); save();
-    }
-    state.meId = r.id;
+    if (!r) { r = { id: 'u' + user.id.slice(0, 8), email: user.email }; state.reps.push(r); }
+    Object.assign(r, { name: nm, initials: nm.slice(0, 2).toUpperCase(), role: admin ? 'admin' : 'sales' });
+    state.meId = r.id; save();
   }
   $('#login-form').onsubmit = async (e) => {
     e.preventDefault();
@@ -812,7 +827,7 @@
     const { data, error } = await sb.auth.signInWithPassword({ email: $('#l-email').value.trim(), password: $('#l-pass').value });
     $('#l-submit').disabled = false;
     if (error || !data?.user) return showLogin('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
-    enterAuth(data.user); start();
+    await enterAuth(data.user); start();
   };
   $('#l-demo').onclick = () => { authUser = null; if (me()?.email) { state.meId = 'r4'; save(); } start(); }; // โหมดตัวอย่างไม่ใช้ตัวตนของผู้ใช้จริง
   $('#logout').onclick = async () => { if (sb && authUser) await sb.auth.signOut(); authUser = null; $('#l-pass').value = ''; showLogin(''); };
@@ -822,7 +837,7 @@
     if (!sb) return showLogin('โหลดระบบล็อกอินไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่ หรือเลือกดูตัวอย่าง');
     try {
       const { data } = await sb.auth.getSession();
-      if (data?.session?.user) { enterAuth(data.session.user); return start(); }
+      if (data?.session?.user) { await enterAuth(data.session.user); return start(); }
     } catch (e) {}
     showLogin('');
   })();
