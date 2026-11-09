@@ -83,6 +83,22 @@
     if (n) { save(); if (!quiet) toast(`จัดสรรอัตโนมัติ ${n} ลีด ไปยังเซลล์ที่ขายล่าสุด`); }
     return n;
   }
+  // ยกเลิกจองได้เฉพาะลีดที่เซลล์จองเอง (ไม่ใช่ที่ระบบ/หัวหน้าจัดให้) และยังไม่ปิดการขาย / ไม่ใช่ลูกค้าห้ามโทร
+  const canUnclaim = (l) => l.owner === state.meId && l.claimedBy === state.meId && !l.noCall && l.status !== 'won';
+  const unclaimBtn = (l) => canUnclaim(l) ? `<button class="btn sm danger" data-act="unclaim" data-id="${l.id}">ยกเลิกจอง</button>` : '';
+  function confirmUnclaim(id) { // ถามยืนยันอีกชั้น กันกดผิด
+    const l = lead(id); if (!l || !canUnclaim(l)) return toast('ยกเลิกจองรายการนี้ไม่ได้');
+    openModal(`<div class="modal-h"><h3>ยกเลิกจอง?</h3>${X}</div>
+      <div class="modal-b"><p style="margin:0">ยืนยันยกเลิกการจอง <b>${esc(l.name)}</b> ใช่หรือไม่</p>
+        <p class="help">ลูกค้าจะกลับเข้าถังให้เซลล์คนอื่นจองได้ ประวัติที่บันทึกไว้ยังอยู่</p></div>
+      <div class="modal-f"><button class="btn" data-close>ไม่ยกเลิก</button><button class="btn danger solid" id="unclaim-ok">ยืนยันยกเลิกจอง</button></div>`, 'sm');
+    $('#unclaim-ok').onclick = () => {
+      const mineOnlyMined = l.source === 'self' && !l.campaignId && !l.interactions.length; // ลีดที่เกิดจากการจองในถังและยังไม่เคยบันทึก ลบทิ้ง
+      if (mineOnlyMined) state.leads = state.leads.filter(x => x !== l);
+      else Object.assign(l, { owner: null, claimedBy: null, status: 'new', callback: null });
+      save(); closeModal(); ui.pool.loaded = false; route(); toast('ยกเลิกจองแล้ว');
+    };
+  }
   function claimCell(l, opts) {
     if (!opts.mode || l.owner) return '';
     const repOpts = state.reps.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
@@ -187,7 +203,7 @@
         <td><span class="badge s-${l.status}">${STATUS[l.status]}</span>${dueHtml(l)}${l.noCall ? '<div><span class="tag nocall">ห้ามโทร · แชตเท่านั้น</span></div>' : ''}${isAdmin() && l.releasedBy?.length && !l.owner ? `<div class="sub">คัดออกโดย ${esc(l.releasedBy.map(id => rep(id)?.name || '').join(', '))}</div>` : ''}</td>
         <td class="note-cell">${noteCell(l)}</td>
         <td><div class="actions">
-          <button class="btn sm primary" data-act="log" data-type="${l.noCall ? 'chat' : 'call'}" data-id="${l.id}">${l.noCall ? 'บันทึกแชต' : 'บันทึก'}</button>${claim}
+          <button class="btn sm primary" data-act="log" data-type="${l.noCall ? 'chat' : 'call'}" data-id="${l.id}">${l.noCall ? 'บันทึกแชต' : 'บันทึก'}</button>${claim}${unclaimBtn(l)}
         </div></td></tr>`;
     }).join('');
   }
@@ -517,6 +533,7 @@
   /* ---------- ถังกลาง "ลูกค้าทั้งหมด" (เหมือนกันทั้งสองแบรนด์) ---------- */
   const PAGE = 50;
   ui.pool = { brand: null, q: '', page: 0, rows: [], total: null, loaded: false, loading: false, err: '', live: false, t: null };
+  const takenLead = (c) => state.leads.find(l => l.phone === c.phone && l.owner);
   const takenBy = (c) => state.leads.find(l => l.phone === c.phone && l.owner)?.owner || null;
   const hiddenFromMe = (c) => {
     if (isDnc(c.phone)) return true; // ไม่สะดวกให้โทร: ไม่มีใครเห็นในถัง
@@ -541,7 +558,7 @@
         const all = state.customers.filter(c => (!P.brand || c.brand === P.brand) && !hiddenFromMe(c) && (!q || c.name.toLowerCase().includes(q) || (qd && c.phone.includes(qd))))
           .filter(c => !hasPeriod() || inPeriod(c.purchases[0]?.date)).sort((a, b) => total(b) - total(a));
         P.live = false; P.total = all.length;
-        P.rows = all.slice(P.page * PAGE, P.page * PAGE + PAGE).map(c => ({ id: c.id, name: c.name, phone: c.phone, segment: '', ltv: total(c), orders: c.purchases.length, last: c.purchases[0]?.date, brands: [c.brand], taken: takenBy(c) }));
+        P.rows = all.slice(P.page * PAGE, P.page * PAGE + PAGE).map(c => ({ id: c.id, name: c.name, phone: c.phone, segment: '', ltv: total(c), orders: c.purchases.length, last: c.purchases[0]?.date, brands: [c.brand], taken: takenBy(c), leadId: takenLead(c)?.id, mineReserved: takenLead(c)?.claimedBy === state.meId && !takenLead(c)?.noCall && takenLead(c)?.status !== 'won' }));
       }
       if (!isLive()) { P.grand = state.customers.filter(c => c.brand === P.brand && !hiddenFromMe(c)).length; P.grandFor = P.brand; }
       P.loaded = true;
@@ -597,7 +614,7 @@
   }
   function poolAction(r) {
     if (isLive()) return '<button class="btn sm outline" disabled title="ยังไม่ได้เชื่อมการจองกับฐานข้อมูลจริง">จอง</button>';
-    if (r.taken) return r.taken === state.meId ? '<span class="badge s-won plain">จองแล้ว</span>' : `<span class="badge s-new plain">จองโดย ${esc(rep(r.taken)?.name || '')}</span>`;
+    if (r.taken) return r.taken === state.meId ? (r.mineReserved ? `<button class="btn sm danger" data-act="unclaim" data-id="${esc(r.leadId)}">ยกเลิกจอง</button>` : '<span class="badge s-won plain">จองแล้ว</span>') : `<span class="badge s-new plain">จองโดย ${esc(rep(r.taken)?.name || '')}</span>`;
     return `<button class="btn sm outline" data-pool-claim="${esc(r.id)}">จอง</button>`;
   }
   function poolClaim(id) {
@@ -607,8 +624,8 @@
     if (ex && ex.releasedBy?.includes(state.meId)) return toast('คุณคัดออกลูกค้ารายนี้ไปแล้ว');
     if (ex && ex.owner && ex.owner !== state.meId) { ui.pool.loaded = false; route(); return toast('ลูกค้ารายนี้มีคนจองไปแล้ว'); }
     if (ex && ex.owner === state.meId) return toast('คุณจองลูกค้ารายนี้แล้ว');
-    if (ex) ex.owner = state.meId; // มีลีดว่างอยู่แล้ว (จากแคมเปญ) จองลีดเดิม ไม่สร้างซ้ำ
-    else state.leads.unshift({ id: 'L' + Date.now(), name: c.name, phone: c.phone, address: c.address, shop: c.shop, source: 'self', brand: c.brand, campaignId: null, owner: state.meId,
+    if (ex) { ex.owner = state.meId; ex.claimedBy = state.meId; } // มีลีดว่างอยู่แล้ว (จากแคมเปญ) จองลีดเดิม ไม่สร้างซ้ำ
+    else state.leads.unshift({ id: 'L' + Date.now(), name: c.name, phone: c.phone, address: c.address, shop: c.shop, source: 'self', brand: c.brand, campaignId: null, owner: state.meId, claimedBy: state.meId,
       status: 'new', callback: null, purchases: JSON.parse(JSON.stringify(c.purchases)), interactions: [], interest: '', closedBills: [], closedAmount: null, closedAt: null });
     save(); closeModal(); ui.pool.loaded = false; route(); toast('จองแล้ว ลูกค้าย้ายเข้าหน้า Direct Sale ของคุณ');
   }
@@ -629,7 +646,7 @@
           <div><dt>ซื้อล่าสุด</dt><dd>${r.last ? fmtDate(r.last) : '—'}</dd></div>
           <div><dt>ที่อยู่</dt><dd>${esc(cu?.address || '—')}</dd></div></dl>
           <div class="sub"><b>ประวัติการซื้อ</b></div>${body}</div>
-        ${!isLive() && !r.taken ? `<div class="modal-f"><button class="btn primary" data-pool-claim="${esc(id)}">จอง</button></div>` : ''}`);
+        ${!isLive() && !r.taken ? `<div class="modal-f"><button class="btn primary" data-pool-claim="${esc(id)}">จอง</button></div>` : ''}${!isLive() && r.taken === state.meId && r.mineReserved ? `<div class="modal-f"><button class="btn danger" data-act="unclaim" data-id="${esc(r.leadId)}">ยกเลิกจอง</button></div>` : ''}`);
       const m = $('.modal');
       m.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => { navigator.clipboard?.writeText(b.dataset.copy).then(() => toast('คัดลอกเบอร์แล้ว'), () => toast(b.dataset.copy)); });
       m.querySelectorAll('[data-pool-claim]').forEach(b => b.onclick = () => poolClaim(b.dataset.poolClaim));
@@ -759,13 +776,14 @@
     if (t.hasAttribute('data-close')) return closeModal();
     const id = t.dataset.id;
     if (t.dataset.act === 'open') customerModal(id);
+    if (t.dataset.act === 'unclaim') confirmUnclaim(id);
     if (t.dataset.act === 'dnc-restore') { Object.assign(lead(id), { noCall: false, noCallAt: null, noCallBy: null }); save(); route(); toast('ยกเลิกห้ามโทรแล้ว'); }
     if (t.dataset.act === 'log') logModal(id, t.dataset.type);
     if (t.dataset.act === 'claim') {
       const l = lead(id), c = camp(l.campaignId);
       if (l.owner) { route(); return toast('ลีดนี้มีคนจองไปแล้ว'); }
       if (c?.maxPerRep && state.leads.filter(x => x.campaignId === c.id && x.owner === state.meId).length >= c.maxPerRep) return toast(`จองได้สูงสุด ${c.maxPerRep} ลีดต่อคนในแคมเปญนี้`);
-      l.owner = state.meId; save(); route(); toast('จองลีดแล้ว ลีดนี้ย้ายเข้าหน้า Direct Sale ของคุณ');
+      l.owner = state.meId; l.claimedBy = state.meId; save(); route(); toast('จองลีดแล้ว ลีดนี้ย้ายเข้าหน้า Direct Sale ของคุณ');
     }
   });
   document.addEventListener('change', (e) => {

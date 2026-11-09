@@ -379,3 +379,6 @@ tr.total td { border-top: 2px solid var(--border); background: var(--surface-2);
 .warn { border: 1px solid var(--bad); background: var(--bad-soft); color: var(--bad); border-radius: 8px; padding: 8px 12px; font-size: 14px; font-weight: 500; }
 
 .tag.nocall { color: var(--bad); border-color: currentColor; font-weight: 600; }
+
+.btn.danger.solid { background: var(--bad); border-color: var(--bad); color: #fff; }
+.btn.danger.solid:hover { color: #fff; filter: brightness(1.08); }
