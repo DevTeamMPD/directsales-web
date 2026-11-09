@@ -242,8 +242,8 @@
   }
 
   function renderLeads() {
-    $('#topbar-actions').innerHTML = `<button class="btn primary" id="add-lead">+ เพิ่มลูกค้า (ขุดเอง)</button>`;
-    $('#add-lead').onclick = () => leadForm();
+    $('#topbar-actions').innerHTML = `<button class="btn primary" id="add-lead">+ เพิ่มลูกค้าจากถังลูกค้าทั้งหมด</button>`;
+    $('#add-lead').onclick = () => pickFromBucket();
     const draw = (keepFocus) => {
       const base = state.leads.filter(mineOrAll);
       const list = filtered(base);
@@ -289,6 +289,7 @@
         ${toolbar(base, false)}${tableHtml(list, { mode, perCamp: isCamps })}`}`;
       document.querySelectorAll('[data-camp]').forEach(b => b.onclick = () => { ui.selCamp = b.dataset.camp; ui.status = 'all'; draw(); });
       bindToolbar(draw); if (isAll) bindPool(draw);
+      if (isAll && ui.focusSearch) { $('#pool-q')?.focus(); if (ui.pool.loaded) ui.focusSearch = false; } // โฟกัสช่องค้นหาจนกว่าถังจะโหลดเสร็จ
       if (keepFocus) { const q = $(isAll ? '#pool-q' : '#q'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
     };
     draw();
@@ -509,24 +510,14 @@
     };
   }
 
-  function leadForm() {
-    openModal(`
-      <div class="modal-h"><h3>เพิ่มลูกค้าที่ขุดเอง</h3>${X}</div>
-      <form id="lead-form"><div class="modal-b"><div class="form-grid">
-        <div class="field"><label for="n-name">ชื่อ</label><input class="input" id="n-name" required></div>
-        <div class="field"><label for="n-phone">เบอร์โทร</label><input class="input" id="n-phone" inputmode="tel" required></div>
-        <div class="field"><label for="n-brand">แบรนด์</label><select class="select" id="n-brand"><option value="bebeplay">Bebeplay</option><option value="hosttail">Hosttail</option></select></div>
-        <div class="field"><label for="n-shop">ร้านค้า</label><input class="input" id="n-shop" placeholder="เช่น Loo_bebeplay"></div>
-        <div class="field wide"><label for="n-addr">ที่อยู่</label><input class="input" id="n-addr"></div>
-      </div></div>
-      <div class="modal-f"><button type="button" class="btn" data-close>ยกเลิก</button><button class="btn primary">เพิ่ม</button></div></form>`, 'sm');
-    $('#lead-form').onsubmit = (e) => {
-      e.preventDefault();
-      state.leads.unshift({ id: 'L' + Date.now(), name: $('#n-name').value.trim(), phone: $('#n-phone').value.trim(), address: $('#n-addr').value.trim() || '—',
-        shop: $('#n-shop').value.trim() || '—', source: 'self', brand: $('#n-brand').value, campaignId: null, owner: state.meId,
-        status: 'new', callback: null, purchases: [], interactions: [] });
-      save(); closeModal(); route(); toast('เพิ่มลูกค้าแล้ว');
-    };
+  function pickFromBucket() { // ไม่ให้พิมพ์ข้อมูลเอง: เลือกลูกค้าจากถัง "ลูกค้าทั้งหมด" ของแบรนด์แล้วกด จอง
+    openModal(`<div class="modal-h"><h3>เพิ่มลูกค้า</h3>${X}</div>
+      <div class="modal-b"><p style="margin:0">เลือกลูกค้าจากถัง <b>ลูกค้าทั้งหมด</b> ของแบรนด์ แล้วกด <b>จอง</b> (ไม่ต้องพิมพ์ข้อมูลเอง)</p>
+        <p class="help">ค้นหาได้จาก เบอร์โทร, เลขบิลเดิมที่เคยซื้อ, ชื่อแชต หรือชื่อลูกค้า</p>
+        <div class="form-grid"><button class="btn primary" data-open-bucket="bebeplay">ถังลูกค้าทั้งหมด Bebeplay</button><button class="btn primary" data-open-bucket="hosttail">ถังลูกค้าทั้งหมด Hosttail</button></div></div>`, 'sm');
+    document.querySelectorAll('[data-open-bucket]').forEach(b => b.onclick = () => {
+      ui.selCamp = 'ALL'; ui.focusSearch = true; ui.pool.q = ''; ui.pool.loaded = false; closeModal(); location.hash = '#campaign-' + b.dataset.openBucket;
+    });
   }
 
 
@@ -536,30 +527,28 @@
   ui.pool = { brand: null, q: '', page: 0, rows: [], total: null, loaded: false, loading: false, err: '', live: false, t: null };
   const takenLead = (c) => state.leads.find(l => l.phone === c.phone && l.owner);
   const takenBy = (c) => state.leads.find(l => l.phone === c.phone && l.owner)?.owner || null;
-  const hiddenFromMe = (c) => {
-    if (isDnc(c.phone)) return true; // ไม่สะดวกให้โทร: ไม่มีใครเห็นในถัง
-    if (state.leads.some(l => l.phone === c.phone && releasedByMe(l))) return true; // คนที่คัดออกแล้วไม่เห็นอีก
-    const o = takenBy(c); return !!o && !isAdmin() && o !== state.meId; // จองแล้ว คนอื่นต้องไม่เห็นชื่อ
-  };
+  // ถัง "ลูกค้าทั้งหมด" เก็บลูกค้าครบเสมอ ไม่ว่าจองแล้วหรือยัง (จองแล้วจะเป็นปุ่มกดไม่ได้) ยกเว้นห้ามโทรที่ซ่อนจากถัง
+  const hiddenFromMe = (c) => isDnc(c.phone);
   const isLive = () => !!(typeof sb !== 'undefined' && sb && authUser);
   async function poolLoad(redraw, keepFocus) {
     const P = ui.pool; P.loading = true; P.err = '';
+    await Promise.resolve(); // ให้การวาดหน้าที่เรียกมาเสร็จก่อน (กันวาดซ้อนกันสองรอบจนโฟกัสหาย)
     try {
       if (isLive() && P.grandFor !== P.brand) { // จำนวนลูกค้าทั้งแบรนด์ (ไม่ขึ้นกับคำค้น/ช่วงวันที่)
-        const g = await sb.rpc('dsales_customer_pool_v2', { p_limit: 1, p_offset: 0, p_brand: P.brand || null });
+        const g = await sb.rpc('dsales_customer_pool_v3', { p_limit: 1, p_offset: 0, p_brand: P.brand || null });
         if (!g.error) { P.grand = g.data.length ? Number(g.data[0].total_count) : 0; P.grandFor = P.brand; }
       }
       if (isLive()) {
-        const { data, error } = await sb.rpc('dsales_customer_pool_v2', { p_search: P.q.trim() || null, p_limit: PAGE, p_offset: P.page * PAGE, p_brand: P.brand || null, ...(hasPeriod() ? { p_from: ui.period.from || null, p_to: ui.period.to || null } : {}) });
+        const { data, error } = await sb.rpc('dsales_customer_pool_v3', { p_search: P.q.trim() || null, p_limit: PAGE, p_offset: P.page * PAGE, p_brand: P.brand || null, ...(hasPeriod() ? { p_from: ui.period.from || null, p_to: ui.period.to || null } : {}) });
         if (error) throw error;
         P.live = true; P.total = data.length ? Number(data[0].total_count) : 0;
-        P.rows = data.map(r => ({ id: r.identity_id, name: r.name, phone: r.phone, segment: r.rfm_segment || r.segment || '', ltv: r.ltv, orders: r.order_count, last: r.last_order_date, brands: r.brands || [] }));
+        P.rows = data.map(r => ({ id: r.identity_id, name: r.name, phone: r.phone, segment: r.rfm_segment || r.segment || '', ltv: r.ltv, orders: r.order_count, last: r.last_order_date, brands: r.brands || [], chat: r.chat_name }));
       } else {
         const q = P.q.trim().toLowerCase(), qd = q.replace(/\D/g, '');
-        const all = state.customers.filter(c => (!P.brand || c.brand === P.brand) && !hiddenFromMe(c) && (!q || c.name.toLowerCase().includes(q) || (qd && c.phone.includes(qd))))
+        const all = state.customers.filter(c => (!P.brand || c.brand === P.brand) && !hiddenFromMe(c) && (!q || c.name.toLowerCase().includes(q) || (c.chatName || '').toLowerCase().includes(q) || (qd && c.phone.includes(qd)) || c.purchases.some(p => p.bill.includes(q))))
           .filter(c => !hasPeriod() || inPeriod(c.purchases[0]?.date)).sort((a, b) => total(b) - total(a));
         P.live = false; P.total = all.length;
-        P.rows = all.slice(P.page * PAGE, P.page * PAGE + PAGE).map(c => ({ id: c.id, name: c.name, phone: c.phone, segment: '', ltv: total(c), orders: c.purchases.length, last: c.purchases[0]?.date, brands: [c.brand], taken: takenBy(c), leadId: takenLead(c)?.id, mineReserved: takenLead(c)?.owner === state.meId && !takenLead(c)?.noCall && takenLead(c)?.status !== 'won' }));
+        P.rows = all.slice(P.page * PAGE, P.page * PAGE + PAGE).map(c => ({ id: c.id, name: c.name, phone: c.phone, segment: '', ltv: total(c), orders: c.purchases.length, last: c.purchases[0]?.date, brands: [c.brand], taken: takenBy(c), leadId: takenLead(c)?.id, chat: c.chatName, releasedByMe: state.leads.some(l => l.phone === c.phone && releasedByMe(l)), mineReserved: takenLead(c)?.owner === state.meId && !takenLead(c)?.noCall && takenLead(c)?.status !== 'won' }));
       }
       if (!isLive()) { P.grand = state.customers.filter(c => c.brand === P.brand && !hiddenFromMe(c)).length; P.grandFor = P.brand; }
       P.loaded = true;
@@ -593,13 +582,13 @@
   }
   function poolPanel() {
     const P = ui.pool, from = P.page * PAGE;
-    const rows = P.rows.map(r => `<tr><td><button class="cust-name" data-pool-open="${esc(r.id)}">${esc(r.name)}</button><div class="sub mono">${esc(r.phone)}</div></td>
+    const rows = P.rows.map(r => `<tr><td><button class="cust-name" data-pool-open="${esc(r.id)}">${esc(r.name)}</button><div class="sub mono">${esc(r.phone)}</div>${r.chat ? `<div class="sub">แชต: ${esc(r.chat)}</div>` : ''}</td>
       <td>${poolCampCell(r)}</td>
       <td>${r.segment ? `<span class="tag">${esc(r.segment)}</span>` : '<span class="sub">—</span>'}</td>
       <td class="r num">${r.ltv == null ? '—' : baht(Math.round(r.ltv))}</td><td class="r num">${r.orders ?? '—'}</td>
       <td>${r.last ? fmtDate(r.last) : '—'}</td>
       <td>${r.brands.length ? r.brands.map(b => `<span class="tag ${b === 'bebeplay' ? 'bebe' : b === 'hosttail' ? 'host' : ''}">${esc(BRAND[b] || b)}</span>`).join(' ') : '<span class="sub">—</span>'}</td><td>${poolAction(r)}</td></tr>`).join('');
-    return `<div class="toolbar"><label class="search" for="pool-q">${SEARCH_SVG}<input id="pool-q" type="search" placeholder="ค้นหา ชื่อ หรือเบอร์โทร" value="${esc(P.q)}"></label>
+    return `<div class="toolbar"><label class="search" for="pool-q" style="flex-basis:480px">${SEARCH_SVG}<input id="pool-q" type="search" placeholder="ค้นหา เบอร์ / เลขบิล / ชื่อแชต / ชื่อลูกค้า" value="${esc(P.q)}"></label>
         ${P.loading ? '<span class="sub">กำลังโหลด…</span>' : ''}</div>
       ${P.err ? `<div class="login-err">${esc(P.err)}</div>` : ''}
       <div class="card table-wrap"><table><thead><tr><th>ชื่อ / เบอร์</th><th>แคมเปญ</th><th>กลุ่มลูกค้า</th><th class="r">ยอดซื้อสะสม</th><th class="r">ออเดอร์</th><th>ซื้อล่าสุด</th><th>แบรนด์</th><th></th></tr></thead>
@@ -615,7 +604,8 @@
   }
   function poolAction(r) {
     if (isLive()) return '<button class="btn sm outline" disabled title="ยังไม่ได้เชื่อมการจองกับฐานข้อมูลจริง">จอง</button>';
-    if (r.taken) return r.taken === state.meId ? (r.mineReserved ? `<button class="btn sm danger" data-act="unclaim" data-id="${esc(r.leadId)}">ยกเลิกจอง</button>` : '<span class="badge s-won plain">จองแล้ว</span>') : `<span class="badge s-new plain">จองโดย ${esc(rep(r.taken)?.name || '')}</span>`;
+    if (r.releasedByMe) return '<button class="btn sm" disabled>คัดออกแล้ว</button>';
+    if (r.taken) return r.taken === state.meId ? (r.mineReserved ? `<button class="btn sm danger" data-act="unclaim" data-id="${esc(r.leadId)}">ยกเลิกจอง</button>` : '<button class="btn sm" disabled>จองแล้ว</button>') : `<button class="btn sm" disabled>${isAdmin() ? 'จองโดย ' + esc(rep(r.taken)?.name || '') : 'จองแล้ว'}</button>`;
     return `<button class="btn sm outline" data-pool-claim="${esc(r.id)}">จอง</button>`;
   }
   function poolClaim(id) {
@@ -645,6 +635,7 @@
           <div><dt>ยอดซื้อสะสม</dt><dd class="num">${r.ltv == null ? '—' : baht(Math.round(r.ltv))}</dd></div>
           <div><dt>จำนวนออเดอร์</dt><dd class="num">${r.orders ?? '—'}</dd></div>
           <div><dt>ซื้อล่าสุด</dt><dd>${r.last ? fmtDate(r.last) : '—'}</dd></div>
+          <div><dt>ชื่อแชต</dt><dd>${esc(r.chat || '—')}</dd></div>
           <div><dt>ที่อยู่</dt><dd>${esc(cu?.address || '—')}</dd></div></dl>
           <div class="sub"><b>ประวัติการซื้อ</b></div>${body}</div>
         ${!isLive() && !r.taken ? `<div class="modal-f"><button class="btn primary" data-pool-claim="${esc(id)}">จอง</button></div>` : ''}${!isLive() && r.taken === state.meId && r.mineReserved ? `<div class="modal-f"><button class="btn danger" data-act="unclaim" data-id="${esc(r.leadId)}">ยกเลิกจอง</button></div>` : ''}`);

@@ -89,6 +89,7 @@
       address: 'เขต' + pick(['บางนา','ลาดพร้าว','หนองจอก','เมืองเชียงใหม่','บางกรวย']),
       brand: isHost ? 'hosttail' : 'bebeplay',
       shop: isHost ? pick(['SH_hosttail','Lazada_hosttail']) : pick(['Loo_bebeplay','SH_bebeplay','TikTok_bebeplay']),
+      chatName: pick(['baby_love', 'mom_ploy', 'nong_mint', 'cat_lover', 'kid_zone', 'happy_mom', 'pet_home', 'little_star', 'mama_bell']) + (100 + i),
       purchases: pur,
     });
   }
@@ -96,7 +97,7 @@
   const usedC = new Set();
   leads.forEach(l => {
     const c = customers.find(x => x.brand === l.brand && !usedC.has(x.id)); if (!c) return;
-    usedC.add(c.id); l.name = c.name; l.phone = c.phone; l.address = c.address; l.shop = c.shop;
+    usedC.add(c.id); l.name = c.name; l.phone = c.phone; l.address = c.address; l.shop = c.shop; l.chatName = c.chatName;
     l.purchases = JSON.parse(JSON.stringify(c.purchases));
     if (l.status === 'won') l.closedAmount = l.purchases[0].amount;
   });
