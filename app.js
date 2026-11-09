@@ -128,15 +128,14 @@
     leads: { title: 'Direct Sale', sub: 'ลูกค้าเก่า Direct Sale Lead', render: renderLeads },
     'campaign-bebeplay': { title: 'แคมเปญ Bebeplay', sub: '', render: () => renderCampaign('bebeplay') },
     'campaign-hosttail': { title: 'แคมเปญ Hosttail', sub: '', render: () => renderCampaign('hosttail') },
-    dnc: { title: 'ถังไม่สะดวกให้โทร', sub: 'เห็นเฉพาะหัวหน้า', render: renderDnc },
     dashboard: { title: 'Dashboard', sub: 'ภาพรวมทีม Direct Sale', render: renderDashboard },
     setup: { title: 'ตั้งค่า', sub: '', render: renderSetup },
   };
   function route() {
     state.campaigns.filter(c => c.claimMode === 'auto').forEach(c => applyAuto(c.id, true)); // แคมเปญแบบ auto เด้งเข้าถังเซลล์ทันทีที่มีข้อมูล
     const name = (location.hash || '#leads').slice(1);
-    if ((name === 'dnc' || name === 'setup') && !isAdmin()) { location.hash = '#leads'; return; } // หลังบ้านเฉพาะหัวหน้า
-    $('#nav-dnc').hidden = !isAdmin(); $('#nav-setup').hidden = !isAdmin(); $('#nav-tool').hidden = !isAdmin();
+    if (name === 'setup' && !isAdmin()) { location.hash = '#leads'; return; } // หลังบ้านเฉพาะหัวหน้า
+    $('#nav-setup').hidden = !isAdmin(); $('#nav-tool').hidden = !isAdmin();
     const r = routes[name] || routes.leads;
     $('#page-title').textContent = r.title;
     $('#page-sub').textContent = r.sub;
@@ -150,7 +149,6 @@
     const mine = (l) => l.owner === state.meId;
     const open = (l) => l.status === 'new' || l.status === 'callback';
     const set = (id, n) => { const b = $(id); b.textContent = n || ''; };
-    set('#badge-dnc', state.leads.filter(l => l.noCall).length);
     set('#badge-leads', state.leads.filter(l => mine(l) && open(l)).length);
     ['bebeplay', 'hosttail'].forEach(b => {
       const n = state.leads.filter(l => l.brand === b && l.source === 'campaign' && l.status === 'new' && !l.owner).length;
@@ -169,7 +167,7 @@
       else if (ui.status === 'overdue') { if (!(l.callback && l.callback < today)) return false; }
       else if (ui.status === 'nocall') { if (!l.noCall) return false; }
       else if (ui.status !== 'all' && l.status !== ui.status) return false;
-      if (ui.rep === 'me' && l.owner !== state.meId) return false;
+      if (ui.rep !== 'all' && l.owner !== ui.rep) return false; // หัวหน้ากรองตามเซลล์
       if (ui.camp !== 'all' && (ui.camp === 'self' ? l.source !== 'self' : l.campaignId !== ui.camp)) return false;
       if (!q) return true;
       return l.name.toLowerCase().includes(q) || l.phone.includes(q.replace(/-/g, '')) ||
@@ -201,10 +199,10 @@
         <td>${l.source === 'self' ? '<span class="tag self">เซลล์ขุดเอง</span>' : `<span class="camp-cell">${esc(camp(l.campaignId)?.name || '—')}</span>`}</td>
         <td>${o ? `<span class="rep-name">${esc(o.name)}</span>` : '<span class="sub">ยังไม่มีผู้ดูแล</span>'}${lastSeller(l) ? `<div class="sub">ขายล่าสุด: ${esc(rep(lastSeller(l))?.name || '')}</div>` : ''}</td>
         <td class="r num">${baht(total(l))}</td>
-        <td><span class="badge s-${l.status}">${STATUS[l.status]}</span>${dueHtml(l)}${l.noCall ? '<div><span class="tag nocall">ห้ามโทร · แชตเท่านั้น</span></div>' : ''}${isAdmin() && l.releasedBy?.length && !l.owner ? `<div class="sub">คัดออกโดย ${esc(l.releasedBy.map(id => rep(id)?.name || '').join(', '))}</div>` : ''}</td>
+        <td><span class="badge s-${l.status}">${STATUS[l.status]}</span>${dueHtml(l)}${l.noCall ? `<div><span class="tag nocall">ห้ามโทร · แชตเท่านั้น</span></div>${isAdmin() ? `<div class="sub">แจ้งโดย ${esc(rep(l.noCallBy)?.name || '—')}${l.noCallAt ? ' · ' + fmtDate(l.noCallAt) : ''}</div>` : ''}` : ''}${isAdmin() && l.releasedBy?.length && !l.owner ? `<div class="sub">คัดออกโดย ${esc(l.releasedBy.map(id => rep(id)?.name || '').join(', '))}</div>` : ''}</td>
         <td class="note-cell">${noteCell(l)}</td>
         <td><div class="actions">
-          <button class="btn sm primary" data-act="log" data-type="${l.noCall ? 'chat' : 'call'}" data-id="${l.id}">${l.noCall ? 'บันทึกแชต' : 'บันทึก'}</button>${claim}${unclaimBtn(l)}
+          <button class="btn sm primary" data-act="log" data-type="${l.noCall ? 'chat' : 'call'}" data-id="${l.id}">${l.noCall ? 'บันทึกแชต' : 'บันทึก'}</button>${claim}${unclaimBtn(l)}${isAdmin() && l.noCall ? `<button class="btn sm" data-act="dnc-restore" data-id="${l.id}">ยกเลิกห้ามโทร</button>` : ''}
         </div></td></tr>`;
     }).join('');
   }
@@ -229,7 +227,7 @@
       ${chips}
       ${withCampSelect ? `<select id="camp-sel" class="select" aria-label="แคมเปญ">${campOpts}</select>` : ''}
       <select id="sort-sel" class="select" aria-label="เรียงตาม"><option value="due" ${ui.sort === 'due' ? 'selected' : ''}>เรียง: วันนัดใกล้สุด</option><option value="spend" ${ui.sort === 'spend' ? 'selected' : ''}>เรียง: ยอดซื้อสูงสุด</option><option value="none" ${ui.sort === 'none' ? 'selected' : ''}>เรียง: ตามเดิม</option></select>
-      ${isAdmin() ? `<select id="rep-sel" class="select" aria-label="ผู้ดูแล"><option value="all">ทุกคน</option><option value="me" ${ui.rep === 'me' ? 'selected' : ''}>ของฉัน</option></select>` : ''}
+      ${isAdmin() ? `<select id="rep-sel" class="select" aria-label="เซลล์"><option value="all">เซลล์ทุกคน</option>${state.reps.map(r => `<option value="${r.id}" ${ui.rep === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>` : ''}
     </div>`;
   }
   function bindToolbar(redraw) {
@@ -309,7 +307,7 @@
     const kpi = (label, val, foot) => `<div class="kpi"><div class="kpi-label">${label}</div><div class="kpi-value">${val}</div><div class="kpi-foot">${foot}</div></div>`;
     const scope = ui.dashBrand === 'all' ? 'ทุกแบรนด์' : BRAND[ui.dashBrand];
     const maxN = Math.max(1, ...state.reps.map(r => L.filter(l => l.owner === r.id).length));
-    const repRows = state.reps.map(r => {
+    const repRows = state.reps.filter(r => isAdmin() || r.id === state.meId).map(r => { // เซลล์เห็นเฉพาะแถวของตัวเอง
       const mine = L.filter(l => l.owner === r.id), w = mine.filter(wonIn).length, c = mine.filter(contactedIn).length;
       return `<div class="rep-row"><div>${esc(r.name)}</div>
         <div class="rep-bars"><div class="bar"><i style="width:${mine.length / maxN * 100}%"></i></div><div class="bar won"><i style="width:${mine.length ? w / maxN * 100 : 0}%"></i></div></div>
@@ -361,28 +359,6 @@
       const tsv = rows.map(r => r.join('\t')).join('\n');
       navigator.clipboard?.writeText(tsv).then(() => toast('คัดลอกตารางแล้ว วางใน Excel ได้เลย'), () => toast('คัดลอกไม่สำเร็จ'));
     };
-  }
-
-  /* ---------- ถังไม่สะดวกให้โทร (หัวหน้า) ---------- */
-  function renderDnc() {
-    const all = state.leads.filter(l => l.noCall);
-    ui.dncRep = ui.dncRep || 'all';
-    const L = ui.dncRep === 'all' ? all : all.filter(l => l.noCallBy === ui.dncRep);
-    const byRep = [...new Set(all.map(l => l.noCallBy))].map(id => [id, all.filter(l => l.noCallBy === id).length]);
-    const rows = L.map(l => {
-      const why = [...l.interactions].reverse().find(i => i.result === 'ไม่สะดวกให้โทร') || l.interactions[l.interactions.length - 1];
-      return `<tr><td><button class="cust-name" data-act="open" data-id="${l.id}">${esc(l.name)}</button><div class="sub mono">${esc(l.phone)}</div></td>
-        <td><span class="tag ${l.brand === 'bebeplay' ? 'bebe' : 'host'}">${BRAND[l.brand]}</span></td>
-        <td>${l.source === 'self' ? '<span class="tag self">เซลล์ขุดเอง</span>' : esc(camp(l.campaignId)?.name || '—')}</td>
-        <td>${esc(rep(l.noCallBy)?.name || '—')}</td><td>${l.noCallAt ? fmtDate(l.noCallAt) : '—'}</td><td><span class="badge s-${l.status}">${STATUS[l.status] || '—'}</span></td>
-        <td class="note-cell">${esc(why?.note || '—')}</td><td class="r num">${baht(total(l))}</td>
-        <td><button class="btn sm" data-act="dnc-restore" data-id="${l.id}">ยกเลิกห้ามโทร</button></td></tr>`;
-    }).join('');
-    $('#view').innerHTML = `<div class="demo-note">ลูกค้าที่ไม่สะดวกให้โทร: ห้ามโทรถาวร เซลล์ที่แจ้งติดต่อได้ทางแชตเท่านั้นและเห็นลูกค้าในหน้า Direct Sale ของตัวเอง เซลล์คนอื่นไม่เห็น ("ยกเลิกห้ามโทร" ใช้เมื่อกดผิด)</div>
-      <div class="toolbar"><label class="sub" for="dnc-rep">พนักงานขายที่แจ้ง</label><select class="select" id="dnc-rep"><option value="all">ทุกคน (${all.length})</option>${byRep.map(([id, n]) => `<option value="${esc(id)}" ${ui.dncRep === id ? 'selected' : ''}>${esc(rep(id)?.name || id)} (${n})</option>`).join('')}</select></div>
-      <div class="card table-wrap"><table><thead><tr><th>ชื่อ / เบอร์</th><th>แบรนด์</th><th>แคมเปญ</th><th>พนักงานขายที่แจ้ง</th><th>วันที่</th><th>สถานะตอนนี้</th><th>เหตุผล</th><th class="r">ยอดซื้อรวม</th><th></th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="9" class="empty">ยังไม่มีลูกค้าในถังนี้</td></tr>'}</tbody></table></div>`;
-    $('#dnc-rep').onchange = (e) => { ui.dncRep = e.target.value; renderDnc(); };
   }
 
   /* ---------- setup ---------- */
