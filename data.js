@@ -100,5 +100,12 @@
     l.purchases = JSON.parse(JSON.stringify(c.purchases));
     if (l.status === 'won') l.closedAmount = l.purchases[0].amount;
   });
+  // ตัวอย่าง: 2 ลีดอยู่ในถังไม่สะดวกให้โทร และ 1 ลีดถูกคัดออกโดยเซลล์ (กลับเข้าถังให้คนอื่น)
+  leads.filter(l => l.status !== 'new' && l.status !== 'won' && l.interactions.length).slice(0, 2).forEach(l => {
+    l.status = 'dnc'; l.dncAt = l.interactions[0].date.slice(0, 10); l.dncBy = l.owner || 'r4'; l.callback = null;
+    l.interactions[0].result = 'ไม่สะดวกให้โทร'; l.interactions[0].note = 'ลูกค้าแจ้งว่าไม่สะดวกให้โทรอีก';
+  });
+  const rel = leads.find(l => l.status === 'new' && l.owner && l.source === 'campaign');
+  if (rel) { rel.releasedBy = [rel.owner]; rel.owner = null; }
   window.DS_DATA = { reps, campaigns, leads, customers, today: iso(today) };
 })();

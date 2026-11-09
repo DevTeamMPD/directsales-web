@@ -374,3 +374,6 @@ tr.total td { border-top: 2px solid var(--border); background: var(--surface-2);
 .period-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .period .chip { padding: 5px 11px; }
 .pin { width: auto; min-width: 0; padding: 5px 8px; }
+
+.s-dnc { color: #fff; background: var(--bad); }
+.warn { border: 1px solid var(--bad); background: var(--bad-soft); color: var(--bad); border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 500; }

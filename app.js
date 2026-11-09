@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const KEY = 'mpd-directsale-preview-v4';
+  const KEY = 'mpd-directsale-preview-v5';
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const baht = (n) => Number(n || 0).toLocaleString('th-TH') + '.-';
@@ -9,7 +9,7 @@
 
   const STATUS = {
     new: 'ยังไม่ติดต่อ', following: 'กำลังติดตาม', callback: 'รอติดต่อ',
-    won: 'ปิดการขายแล้ว', lost: 'ไม่สนใจ', unreachable: 'ติดต่อไม่ได้',
+    won: 'ปิดการขายแล้ว', lost: 'ไม่สนใจ', unreachable: 'ติดต่อไม่ได้', dnc: 'ไม่สะดวกให้โทร',
   };
   const BRAND = { bebeplay: 'Bebeplay', hosttail: 'Hosttail' };
 
@@ -29,8 +29,11 @@
   const total = (l) => l.purchases.reduce((s, p) => s + p.amount, 0);
   const me = () => rep(state.meId);
   const isAdmin = () => me()?.role === 'admin';
-  const visible = (l) => isAdmin() || !l.owner || l.owner === state.meId; // เซลล์เห็นเฉพาะลีดว่างกับของตัวเอง
-  const mineOrAll = (l) => isAdmin() || l.owner === state.meId;
+  // ถังไม่สะดวกให้โทร (dnc) ไม่แสดงในหน้าไหนเลยนอกจากถังของหัวหน้า / คนที่คัดออกแล้วไม่เห็นลีดนั้นอีก (คนอื่นเห็นและจองได้)
+  const isDnc = (phone) => state.leads.some(l => l.phone === phone && l.status === 'dnc');
+  const releasedByMe = (l) => !isAdmin() && !!l.releasedBy?.includes(state.meId);
+  const visible = (l) => l.status !== 'dnc' && !releasedByMe(l) && (isAdmin() || !l.owner || l.owner === state.meId); // เซลล์เห็นเฉพาะลีดว่างกับของตัวเอง
+  const mineOrAll = (l) => l.status !== 'dnc' && (isAdmin() || l.owner === state.meId);
   /* ---------- ตัวกรองช่วงวันที่ (ใช้ร่วมทุกหน้า) ---------- */
   const hasPeriod = () => !!(ui.period.from || ui.period.to);
   const inPeriod = (d) => !!d && (!ui.period.from || d.slice(0, 10) >= ui.period.from) && (!ui.period.to || d.slice(0, 10) <= ui.period.to);
@@ -75,7 +78,7 @@
   const lastSeller = (l) => l.purchases.find(p => p.seller && rep(p.seller))?.seller || null;
   function applyAuto(campId, quiet) {
     let n = 0;
-    state.leads.filter(l => l.campaignId === campId && !l.owner).forEach(l => { const s = lastSeller(l); if (s) { l.owner = s; n++; } });
+    state.leads.filter(l => l.campaignId === campId && !l.owner && l.status !== 'dnc').forEach(l => { const s = lastSeller(l); if (s && !(l.releasedBy || []).includes(s)) { l.owner = s; n++; } }); // ไม่ส่งลีดที่คัดออกกลับไปหาคนที่คัดออก
     if (n) { save(); if (!quiet) toast(`จัดสรรอัตโนมัติ ${n} ลีด ไปยังเซลล์ที่ขายล่าสุด`); }
     return n;
   }
@@ -107,12 +110,15 @@
     leads: { title: 'Direct Sale', sub: 'ลูกค้าเก่า Direct Sale Lead', render: renderLeads },
     'campaign-bebeplay': { title: 'แคมเปญ Bebeplay', sub: '', render: () => renderCampaign('bebeplay') },
     'campaign-hosttail': { title: 'แคมเปญ Hosttail', sub: '', render: () => renderCampaign('hosttail') },
+    dnc: { title: 'ถังไม่สะดวกให้โทร', sub: 'เห็นเฉพาะหัวหน้า', render: renderDnc },
     dashboard: { title: 'Dashboard', sub: 'ภาพรวมทีม Direct Sale', render: renderDashboard },
     setup: { title: 'ตั้งค่า', sub: '', render: renderSetup },
   };
   function route() {
     state.campaigns.filter(c => c.claimMode === 'auto').forEach(c => applyAuto(c.id, true)); // แคมเปญแบบ auto เด้งเข้าถังเซลล์ทันทีที่มีข้อมูล
     const name = (location.hash || '#leads').slice(1);
+    if (name === 'dnc' && !isAdmin()) { location.hash = '#leads'; return; }
+    $('#nav-dnc').hidden = !isAdmin();
     const r = routes[name] || routes.leads;
     $('#page-title').textContent = r.title;
     $('#page-sub').textContent = r.sub;
@@ -126,6 +132,7 @@
     const mine = (l) => l.owner === state.meId;
     const open = (l) => l.status === 'new' || l.status === 'callback';
     const set = (id, n) => { const b = $(id); b.textContent = n || ''; };
+    set('#badge-dnc', state.leads.filter(l => l.status === 'dnc').length);
     set('#badge-leads', state.leads.filter(l => mine(l) && open(l)).length);
     ['bebeplay', 'hosttail'].forEach(b => {
       const n = state.leads.filter(l => l.brand === b && l.source === 'campaign' && l.status === 'new' && !l.owner).length;
@@ -175,7 +182,7 @@
         <td>${l.source === 'self' ? '<span class="tag self">เซลล์ขุดเอง</span>' : `<span class="camp-cell">${esc(camp(l.campaignId)?.name || '—')}</span>`}</td>
         <td>${o ? `<span class="rep-name">${esc(o.name)}</span>` : '<span class="sub">ยังไม่มีผู้ดูแล</span>'}${lastSeller(l) ? `<div class="sub">ขายล่าสุด: ${esc(rep(lastSeller(l))?.name || '')}</div>` : ''}</td>
         <td class="r num">${baht(total(l))}</td>
-        <td><span class="badge s-${l.status}">${STATUS[l.status]}</span>${dueHtml(l)}</td>
+        <td><span class="badge s-${l.status}">${STATUS[l.status]}</span>${dueHtml(l)}${isAdmin() && l.releasedBy?.length && !l.owner ? `<div class="sub">คัดออกโดย ${esc(l.releasedBy.map(id => rep(id)?.name || '').join(', '))}</div>` : ''}</td>
         <td class="note-cell">${noteCell(l)}</td>
         <td><div class="actions">
           <button class="btn sm primary" data-act="log" data-type="call" data-id="${l.id}">บันทึก</button>${claim}
@@ -336,6 +343,23 @@
     };
   }
 
+  /* ---------- ถังไม่สะดวกให้โทร (หัวหน้า) ---------- */
+  function renderDnc() {
+    const L = state.leads.filter(l => l.status === 'dnc');
+    const rows = L.map(l => {
+      const why = [...l.interactions].reverse().find(i => i.result === 'ไม่สะดวกให้โทร') || l.interactions[l.interactions.length - 1];
+      return `<tr><td><button class="cust-name" data-act="open" data-id="${l.id}">${esc(l.name)}</button><div class="sub mono">${esc(l.phone)}</div></td>
+        <td><span class="tag ${l.brand === 'bebeplay' ? 'bebe' : 'host'}">${BRAND[l.brand]}</span></td>
+        <td>${l.source === 'self' ? '<span class="tag self">เซลล์ขุดเอง</span>' : esc(camp(l.campaignId)?.name || '—')}</td>
+        <td>${esc(rep(l.dncBy)?.name || '—')}</td><td>${l.dncAt ? fmtDate(l.dncAt) : '—'}</td>
+        <td class="note-cell">${esc(why?.note || '—')}</td><td class="r num">${baht(total(l))}</td>
+        <td><button class="btn sm" data-act="dnc-restore" data-id="${l.id}">นำกลับเข้าถัง</button></td></tr>`;
+    }).join('');
+    $('#view').innerHTML = `<div class="demo-note">ลูกค้าที่แจ้งว่าไม่สะดวกให้โทร ถูกคัดออกถาวร เซลล์ไม่เห็นและไม่มีใครโทรได้ เห็นเฉพาะหัวหน้า ("นำกลับเข้าถัง" ใช้เมื่อกดผิด)</div>
+      <div class="card table-wrap"><table><thead><tr><th>ชื่อ / เบอร์</th><th>แบรนด์</th><th>แคมเปญ</th><th>แจ้งโดย</th><th>วันที่</th><th>เหตุผล</th><th class="r">ยอดซื้อรวม</th><th></th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="8" class="empty">ยังไม่มีลูกค้าในถังนี้</td></tr>'}</tbody></table></div>`;
+  }
+
   /* ---------- setup ---------- */
   function renderSetup() {
     $('#view').innerHTML = `<div class="settings">
@@ -410,18 +434,20 @@
         <div class="form-grid">
           <div class="field"><label for="f-res">ผลการติดต่อ</label><select class="select" id="f-res"></select></div>
           <div class="field"><label for="f-status">สถานะลูกค้าหลังบันทึก</label><select class="select" id="f-status">
-            ${Object.entries(STATUS).filter(([k]) => k !== 'new').map(([k, v]) => `<option value="${k}" ${k === (l.status === 'new' ? 'following' : l.status) ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+            ${Object.entries(STATUS).filter(([k]) => k !== 'new').map(([k, v]) => `<option value="${k}" ${k === (l.status === 'new' ? 'following' : l.status) ? 'selected' : ''}>${v}</option>`).join('')}<option value="release">คัดออก (คืนให้คนอื่นโทร)</option></select></div>
           <div class="field wide" id="cb-wrap"><label for="f-cb">วันที่นัดติดต่อ <span class="req">*</span></label><input class="input" type="date" id="f-cb" min="${today}" value="${l.callback && l.callback >= today ? l.callback : ''}"></div>
           <div class="field wide"><label for="f-interest">สินค้าที่ลูกค้าสนใจ</label><input class="input" id="f-interest" value="${esc(l.interest || '')}" placeholder="เช่น เตียงนอนเด็ก, ทรายแมว"></div>
           <div class="field wide" id="won-wrap"><label for="f-bills">เลขบิลที่ขายได้ (อ้างอิงตอนผูกข้อมูล คั่นหลายบิลด้วยจุลภาค)</label><input class="input" id="f-bills" value="${esc((l.closedBills || []).join(', '))}" placeholder="เช่น 312345, 312399">
             <label for="f-amount" style="margin-top:8px">ยอดที่ปิดได้ (บาท)</label><input class="input" id="f-amount" type="number" min="0" step="1" value="${l.closedAmount ?? ''}">
             <label for="f-closed" style="margin-top:8px">วันที่ปิดการขาย</label><input class="input" id="f-closed" type="date" value="${l.closedAt || today}"></div>
-          <div class="field wide"><label for="f-note">หมายเหตุ</label><textarea class="textarea" id="f-note" placeholder="สรุปสิ่งที่คุยกับลูกค้า"></textarea></div>
+          <div class="field wide" id="warn-wrap" hidden><div class="warn" id="warn-text"></div></div>
+          <div class="field wide"><label for="f-note">หมายเหตุ <span class="req" id="note-req" hidden>* ใส่เหตุผล</span></label><textarea class="textarea" id="f-note" placeholder="สรุปสิ่งที่คุยกับลูกค้า"></textarea></div>
         </div></div>
         <div class="modal-f"><button type="button" class="btn" data-close>ยกเลิก</button><button class="btn primary">บันทึก</button></div></form>`, 'sm');
     let cur = type;
     const fillRes = () => { $('#f-res').innerHTML = RES[cur].map(r => `<option>${r}</option>`).join(''); };
-    const cbToggle = () => { $('#cb-wrap').hidden = $('#f-status').value !== 'callback'; $('#won-wrap').hidden = $('#f-status').value !== 'won'; };
+    const WARN = { dnc: 'ลูกค้ารายนี้จะถูกคัดออกถาวร ไม่มีใครโทรได้อีก และเห็นได้เฉพาะหัวหน้า (ถังไม่สะดวกให้โทร)', release: 'ลูกค้ารายนี้จะออกจากรายการของคุณและกลับเข้าถังให้เซลล์คนอื่นโทร คุณจะไม่เห็นลูกค้ารายนี้อีก' };
+    const cbToggle = () => { const v = $('#f-status').value; $('#cb-wrap').hidden = v !== 'callback'; $('#won-wrap').hidden = v !== 'won'; $('#warn-wrap').hidden = !WARN[v]; $('#warn-text').textContent = WARN[v] || ''; $('#note-req').hidden = !WARN[v]; };
     fillRes(); cbToggle();
     $('#f-status').onchange = cbToggle;
     document.querySelectorAll('#seg button').forEach(b => b.onclick = () => {
@@ -431,6 +457,8 @@
       e.preventDefault();
       if ($('#f-status').value === 'callback' && !$('#f-cb').value) { toast('เลือกวันที่นัดติดต่อก่อนบันทึก'); $('#f-cb').focus(); return; }
       if ($('#f-status').value === 'callback' && $('#f-cb').value < today) { toast('วันที่นัดติดต่อต้องไม่ย้อนหลัง'); $('#f-cb').focus(); return; }
+      const sv = $('#f-status').value;
+      if ((sv === 'dnc' || sv === 'release') && !$('#f-note').value.trim()) { toast('ใส่เหตุผลในหมายเหตุก่อนบันทึก'); $('#f-note').focus(); return; }
       const billList = $('#f-bills').value.split(/[,\s]+/).map(x => x.trim()).filter(Boolean);
       if ($('#f-status').value === 'won' && !billList.length) { toast('ใส่เลขบิลที่ขายได้ก่อนปิดการขาย'); $('#f-bills').focus(); return; }
       const now = new Date(); const pad = (n) => String(n).padStart(2, '0');
@@ -441,6 +469,15 @@
       if (l.status === 'won') { l.closedBills = billList; l.closedAmount = $('#f-amount').value === '' ? null : Number($('#f-amount').value); l.closedAt = $('#f-closed').value || today; }
       l.callback = l.status === 'callback' ? ($('#f-cb').value || null) : null;
       if (!l.owner) l.owner = state.meId;
+      const last = l.interactions[l.interactions.length - 1];
+      if (sv === 'dnc') { // คัดออกถาวร -> ถังไม่สะดวกให้โทร (หัวหน้าเห็นคนเดียว)
+        Object.assign(l, { status: 'dnc', dncAt: today, dncBy: state.meId, callback: null }); last.result = 'ไม่สะดวกให้โทร';
+        save(); closeModal(); route(); return toast('ย้ายไปถังไม่สะดวกให้โทรแล้ว');
+      }
+      if (sv === 'release') { // โทรเท่าไหร่ก็ปิดไม่ได้ -> คืนเข้าถังให้คนอื่น
+        Object.assign(l, { status: 'new', callback: null, owner: null, releasedBy: [...new Set([...(l.releasedBy || []), state.meId])] }); last.result = 'คัดออก';
+        save(); closeModal(); route(); return toast('คัดออกแล้ว ลูกค้ากลับเข้าถังให้เซลล์คนอื่นโทร');
+      }
       save(); closeModal(); route(); toast('บันทึกแล้ว');
     };
   }
@@ -471,7 +508,11 @@
   const PAGE = 50;
   ui.pool = { brand: null, q: '', page: 0, rows: [], total: null, loaded: false, loading: false, err: '', live: false, t: null };
   const takenBy = (c) => state.leads.find(l => l.phone === c.phone && l.owner)?.owner || null;
-  const hiddenFromMe = (c) => { const o = takenBy(c); return !!o && !isAdmin() && o !== state.meId; }; // จองแล้ว คนอื่นต้องไม่เห็นชื่อ
+  const hiddenFromMe = (c) => {
+    if (isDnc(c.phone)) return true; // ไม่สะดวกให้โทร: ไม่มีใครเห็นในถัง
+    if (state.leads.some(l => l.phone === c.phone && releasedByMe(l))) return true; // คนที่คัดออกแล้วไม่เห็นอีก
+    const o = takenBy(c); return !!o && !isAdmin() && o !== state.meId; // จองแล้ว คนอื่นต้องไม่เห็นชื่อ
+  };
   const isLive = () => !!(typeof sb !== 'undefined' && sb && authUser);
   async function poolLoad(redraw, keepFocus) {
     const P = ui.pool; P.loading = true; P.err = '';
@@ -552,6 +593,8 @@
   function poolClaim(id) {
     const c = state.customers.find(x => x.id === id); if (!c) return;
     const ex = state.leads.find(l => l.phone === c.phone);
+    if (ex && ex.status === 'dnc') return toast('ลูกค้ารายนี้อยู่ในถังไม่สะดวกให้โทร');
+    if (ex && ex.releasedBy?.includes(state.meId)) return toast('คุณคัดออกลูกค้ารายนี้ไปแล้ว');
     if (ex && ex.owner && ex.owner !== state.meId) { ui.pool.loaded = false; route(); return toast('ลูกค้ารายนี้มีคนจองไปแล้ว'); }
     if (ex && ex.owner === state.meId) return toast('คุณจองลูกค้ารายนี้แล้ว');
     if (ex) ex.owner = state.meId; // มีลีดว่างอยู่แล้ว (จากแคมเปญ) จองลีดเดิม ไม่สร้างซ้ำ
@@ -620,7 +663,7 @@
   function campaignForm(brand) {
     const f = { tab: 'base', name: '', desc: '', active: true, start: '', end: '', brand, mode: 'self', max: '', crits: [], prev: false };
     const funnel = () => {
-      let cur = state.customers.filter(c => c.brand === f.brand);
+      let cur = state.customers.filter(c => c.brand === f.brand && !isDnc(c.phone));
       const steps = [{ label: `ลูกค้าทั้งหมด · ${BRAND[f.brand]}`, n: cur.length }];
       f.crits.forEach((cr, i) => { cur = cur.filter(c => matchOne(c, cr)); steps.push({ label: `เงื่อนไข ${i + 1} · ${CRIT[cr.type].label}`, n: cur.length }); });
       return { steps, result: cur };
@@ -705,6 +748,7 @@
     if (t.hasAttribute('data-close')) return closeModal();
     const id = t.dataset.id;
     if (t.dataset.act === 'open') customerModal(id);
+    if (t.dataset.act === 'dnc-restore') { const l = lead(id); Object.assign(l, { status: 'new', dncAt: null, dncBy: null, owner: null }); save(); route(); toast('นำกลับเข้าถังแล้ว'); }
     if (t.dataset.act === 'log') logModal(id, t.dataset.type);
     if (t.dataset.act === 'claim') {
       const l = lead(id), c = camp(l.campaignId);
