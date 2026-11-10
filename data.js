@@ -13,7 +13,10 @@
   ];
   const first = ['สุภาพร','วีรวัฒน์','นภัสสร','ธนากร','พิมพ์ชนก','ณัฐวุฒิ','ชลธิชา','อนุชา','กานต์ธิดา','ปิยะนุช','รัชนี','สมศักดิ์','ศิริพร','ภาคิน','จิราพร','เมธัส','อรอนงค์','พีรพัฒน์','ขวัญใจ','ธีรเดช'];
   const last = ['ใจดี','รุ่งเรือง','แสงทอง','สุขสวัสดิ์','มั่นคง','พงษ์ไทย','ศรีสุข','วัฒนา','เจริญผล','บุญมา'];
-  const shops = ['Loo_bebeplay','SH_bebeplay','SH_hosttail','Line_OA','TikTok_bebeplay','Lazada_hosttail'];
+  const SHOPS = { bebeplay: ['SH_bebeplay', 'LOA_bebeplay', 'FB_bebeplay', 'LA_bebeplay', 'TT_bebeplay', 'Web_bebeplay'], hosttail: ['SH_hosttail', 'LOA_hosttail', 'FB_hosttail', 'LA_hosttail', 'TT_hosttail', 'Web_hosttail'] };
+  const handles = ['baby_love', 'mom_ploy', 'nong_mint', 'cat_lover', 'kid_zone', 'happy_mom', 'pet_home', 'little_star', 'mama_bell'];
+  // ช่องทางที่ลูกค้าเคยสั่ง/คุยแชต: 1–3 ร้าน (ร้านแรกมักเป็น Shopee) พร้อมชื่อแชตของแต่ละช่องทาง
+  const makeChannels = (brand, i) => { const list = SHOPS[brand]; const n = 1 + Math.floor(rnd() * 3); const idx = [i % 5 === 0 ? 1 : 0]; while (idx.length < n) { const k = Math.floor(rnd() * list.length); if (!idx.includes(k)) idx.push(k); } return idx.map(k => ({ shop: list[k], chat: pick(handles) + (100 + i) + '_' + list[k].split('_')[0].toLowerCase() })); };
   const products = [
     ['BBP-PLAY-01','แผ่นรองคลาน Playtime 180x200',790],
     ['BBP-BED-03','เตียงนอนไม้พับได้ รุ่น Little Home',3290],
@@ -57,7 +60,7 @@
       name: first[i % first.length] + ' ' + last[(i * 3) % last.length],
       phone,
       address: 'เขต' + pick(['บางนา','ลาดพร้าว','หนองจอก','เมืองเชียงใหม่','บางกรวย']) + ' ' + pick(['กรุงเทพฯ','เชียงใหม่','นนทบุรี']),
-      shop: isHost ? pick(['SH_hosttail','Lazada_hosttail']) : pick(['Loo_bebeplay','SH_bebeplay','TikTok_bebeplay']),
+      shop: SHOPS[isHost ? 'hosttail' : 'bebeplay'][0],
       source: i % 5 === 0 ? 'self' : 'campaign',      // self = เซลล์ขุดเอง, campaign = ระบบตั้งให้
       brand: isHost ? 'hosttail' : 'bebeplay',
       campaignId: i % 5 === 0 ? null : (isHost ? 'c-host-nov' : (i % 7 === 0 ? 'c-bebe-oct' : 'c-bebe-nov')),
@@ -83,13 +86,13 @@
       pur.push({ date: addDays(-20 - Math.floor(rnd() * 540)), bill: String(200000 + Math.floor(rnd() * 799999)), seller: pick(reps).id, sku: p[0], product: p[1], amount: p[2] });
     }
     pur.sort((a, b) => b.date.localeCompare(a.date));
+    const chs = makeChannels(isHost ? 'hosttail' : 'bebeplay', i);
     customers.push({
       id: 'C' + (5000 + i), name: first[(i * 7 + 3) % first.length] + ' ' + last[(i * 11 + 1) % last.length],
       phone: '0' + pick(['81','86','89','92','95','64']) + String(2000000 + Math.floor(rnd() * 7999999)),
       address: 'เขต' + pick(['บางนา','ลาดพร้าว','หนองจอก','เมืองเชียงใหม่','บางกรวย']),
       brand: isHost ? 'hosttail' : 'bebeplay',
-      shop: isHost ? pick(['SH_hosttail','Lazada_hosttail']) : pick(['Loo_bebeplay','SH_bebeplay','TikTok_bebeplay']),
-      chatName: pick(['baby_love', 'mom_ploy', 'nong_mint', 'cat_lover', 'kid_zone', 'happy_mom', 'pet_home', 'little_star', 'mama_bell']) + (100 + i),
+      shop: chs[0].shop, chatName: chs[0].chat, channels: chs,
       purchases: pur,
     });
   }
@@ -97,7 +100,7 @@
   const usedC = new Set();
   leads.forEach(l => {
     const c = customers.find(x => x.brand === l.brand && !usedC.has(x.id)); if (!c) return;
-    usedC.add(c.id); l.name = c.name; l.phone = c.phone; l.address = c.address; l.shop = c.shop; l.chatName = c.chatName;
+    usedC.add(c.id); l.name = c.name; l.phone = c.phone; l.address = c.address; l.shop = c.shop; l.chatName = c.chatName; l.channels = JSON.parse(JSON.stringify(c.channels));
     l.purchases = JSON.parse(JSON.stringify(c.purchases));
     if (l.status === 'won') l.closedAmount = l.purchases[0].amount;
   });

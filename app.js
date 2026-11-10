@@ -96,7 +96,7 @@
     $('#unclaim-ok').onclick = () => {
       const mineOnlyMined = l.claimedBy === state.meId && l.source === 'self' && !l.campaignId && !l.interactions.length; // ลีดที่เกิดจากการจองในถังและยังไม่เคยบันทึก ลบทิ้ง
       if (mineOnlyMined) state.leads = state.leads.filter(x => x !== l);
-      else Object.assign(l, { owner: null, claimedBy: null, status: 'new', callback: null, autoSkip: !!l.campaignId || !!l.autoSkip }); // กันแคมเปญแบบ auto ส่งกลับมาหาเซลล์เดิมทันที
+      else Object.assign(l, { owner: null, claimedBy: null, claimedAt: null, chatCheck: null, status: 'new', callback: null, autoSkip: !!l.campaignId || !!l.autoSkip }); // กันแคมเปญแบบ auto ส่งกลับมาหาเซลล์เดิมทันที
       save(); closeModal(); ui.pool.loaded = false; route(); toast('ยกเลิกจองแล้ว');
     };
   }
@@ -193,13 +193,13 @@
       const claim = claimCell(l, opts.perCamp ? { ...opts, mode: camp(l.campaignId)?.claimMode || 'self' } : opts);
       return `<tr>
         <td><button class="cust-name" data-act="open" data-id="${l.id}">${esc(l.name)}</button>
-          <div class="sub mono">${esc(l.phone)}</div></td>
+          <div class="sub mono">${esc(l.phone)}</div>${contactBar(l, channelsOf(l), true)}</td>
         <td><div class="bills">${bills(l).map(b => `<span class="bill">${b}</span>`).join('')}</div></td>
         <td>${esc(l.shop)}</td>
         <td>${l.source === 'self' ? '<span class="tag self">เซลล์ขุดเอง</span>' : `<span class="camp-cell">${esc(camp(l.campaignId)?.name || '—')}</span>`}</td>
         <td>${o ? `<span class="rep-name">${esc(o.name)}</span>` : '<span class="sub">ยังไม่มีผู้ดูแล</span>'}${lastSeller(l) ? `<div class="sub">ขายล่าสุด: ${esc(rep(lastSeller(l))?.name || '')}</div>` : ''}</td>
         <td class="r num">${baht(total(l))}</td>
-        <td><span class="badge s-${l.status}">${STATUS[l.status]}</span>${dueHtml(l)}${l.noCall ? `<div><span class="tag nocall">ห้ามโทร · แชตเท่านั้น</span></div>${isAdmin() ? `<div class="sub">แจ้งโดย ${esc(rep(l.noCallBy)?.name || '—')}${l.noCallAt ? ' · ' + fmtDate(l.noCallAt) : ''}</div>` : ''}` : ''}${isAdmin() && l.releasedBy?.length && !l.owner ? `<div class="sub">คัดออกโดย ${esc(l.releasedBy.map(id => rep(id)?.name || '').join(', '))}</div>` : ''}</td>
+        <td><span class="badge s-${l.status}">${STATUS[l.status]}</span>${dueHtml(l)}${l.chatCheck?.sent ? '<div><span class="tag chat-ok">ทักแชทแล้ว ✓</span></div>' : ''}${l.noCall ? `<div><span class="tag nocall">ห้ามโทร · แชตเท่านั้น</span></div>${isAdmin() ? `<div class="sub">แจ้งโดย ${esc(rep(l.noCallBy)?.name || '—')}${l.noCallAt ? ' · ' + fmtDate(l.noCallAt) : ''}</div>` : ''}` : ''}${isAdmin() && l.releasedBy?.length && !l.owner ? `<div class="sub">คัดออกโดย ${esc(l.releasedBy.map(id => rep(id)?.name || '').join(', '))}</div>` : ''}</td>
         <td class="note-cell">${noteCell(l)}</td>
         <td><div class="actions">
           <button class="btn sm primary" data-act="log" data-type="${l.noCall ? 'chat' : 'call'}" data-id="${l.id}">${l.noCall ? 'บันทึกแชต' : 'บันทึก'}</button>${claim}${unclaimBtn(l)}${isAdmin() && l.noCall ? `<button class="btn sm" data-act="dnc-restore" data-id="${l.id}">ยกเลิกห้ามโทร</button>` : ''}
@@ -247,6 +247,7 @@
       const list = filtered(base);
       $('#view').innerHTML = `<div class="demo-note">ข้อมูลทั้งหมดเป็นตัวอย่างสำหรับ Preview — กดบันทึกได้จริง ข้อมูลเก็บในเบราว์เซอร์นี้เท่านั้น</div>${periodHtml()}${toolbar(base, true)}${tableHtml(list)}`;
       bindToolbar(draw);
+      verifyMine(() => draw()); // ล็อกอินจริง: ตรวจจาก JST ว่าลีดที่จองไว้มีการทักแชทแล้วหรือยัง
       if (keepFocus) { const q = $('#q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
     };
     draw();
@@ -385,11 +386,98 @@
     root.onmousedown = (e) => { if (e.target === root) closeModal(); };
     const f = root.querySelector('input,select,textarea,button.btn'); if (f) f.focus();
   }
-  function closeModal() { const r = $('#modal-root'); r.hidden = true; r.innerHTML = ''; }
+  function closeModal() { const r = $('#modal-root'); r.hidden = true; r.innerHTML = ''; if (ui.dirtyRows) { ui.dirtyRows = false; route(); } } // ผลตรวจแชตเปลี่ยน: วาดตารางใหม่ให้ป้ายตรงกัน
   const X = '<button class="icon-btn" data-close aria-label="ปิด"><svg viewBox="0 0 24 24"><path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7l1.4-1.4 6.3 6.3 6.3-6.3z"/></svg></button>';
+
+
+  /* ---------- ช่องทางแชต + ปุ่มโทร + เปิด JST ---------- */
+  const PLAT = { shopee: 'Shopee', line: 'LINE', facebook: 'Facebook', lazada: 'Lazada', tiktok: 'TikTok', instagram: 'Instagram', website: 'เว็บไซต์', other: 'อื่นๆ' };
+  // รหัสร้านตาม cdp.shops: SH_=Shopee, LOA_=LINE OA, LA_=Lazada, TT_=TikTok, FB_=Facebook, Web_=เว็บไซต์
+  const platformOf = (shop) => ({ SH: 'shopee', LOA: 'line', LA: 'lazada', TT: 'tiktok', FB: 'facebook', WEB: 'website', IG: 'instagram' })[String(shop || '').split('_')[0].toUpperCase()] || 'other';
+  const lineFirst = (a, b) => (b.platform === 'line') - (a.platform === 'line');
+  const channelsOf = (x) => (x.channels && x.channels.length ? x.channels : (x.shop ? [{ shop: x.shop, chat: x.chatName }] : []))
+    .map(c => ({ shop: c.shop || '', chat: c.chat || c.chat_name || '', platform: c.platform || platformOf(c.shop), ms_id: c.ms_id || null })).sort(lineFirst); // LINE ขึ้นก่อน
+  const icon = (p, size = 22) => `<img class="ch-ico" width="${size}" height="${size}" alt="${esc(PLAT[p] || p)}" src="${esc((window.DS_ICONS || {})[p] || (window.DS_ICONS || {}).other || '')}">`;
+  const jstTarget = (x, c) => ({ phone: x.phone, name: x.name, brand: x.brand, platform: c.platform, shop: c.shop, chat: c.chat || x.chatName || x.name, ms_id: c.ms_id || null });
+  const PHONE_PATH = 'M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z';
+  const callBtn = (phone) => `<a class="ch-btn call" href="tel:${esc(phone)}" data-call="${esc(phone)}" title="โทร ${esc(phone)}" aria-label="โทร ${esc(phone)}"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="${PHONE_PATH}"/></svg></a>`;
+  const chatBtn = (x, c, size) => `<button type="button" class="ch-btn" data-act="jst" data-t="${esc(JSON.stringify(jstTarget(x, c)))}" title="${esc(PLAT[c.platform] + (c.shop ? ' · ' + c.shop : '') + ' — เปิดแชตใน JST')}" aria-label="เปิดแชต ${esc(PLAT[c.platform])} ${esc(c.shop)} ใน JST">${icon(c.platform, size)}</button>`;
+  const contactBar = (x, chans = channelsOf(x), mini = false) => `<span class="ch-bar ${mini ? 'mini' : ''}">${callBtn(x.phone)}${chans.slice(0, mini ? 4 : 8).map(c => chatBtn(x, c, mini ? 16 : 22)).join('')}</span>`;
+  const channelRow = (x, chans) => chans.length
+    ? `<div class="ch-chips">${chans.map(c => `<button type="button" class="ch-chip" data-act="jst" data-t="${esc(JSON.stringify(jstTarget(x, c)))}" title="เปิดแชตใน JST">${icon(c.platform, 18)}<span>${esc(c.shop || PLAT[c.platform])}</span></button>`).join('')}</div>`
+    : '<span class="sub">ไม่พบช่องทางแชต</span>';
+  const nowStamp = () => { const d = new Date(), p = (n) => String(n).padStart(2, '0'); return `${today}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+
+  // เปิดแชตของลูกค้าใน JST: 1) ตัวช่วยบนเครื่องเซลล์ 2) ลิงก์ตรง (ถ้าตั้งรูปแบบไว้) 3) สำรอง: คัดลอกชื่อแชตให้ไปวางค้นหา
+  async function jstOpen(t, { auto = false } = {}) {
+    const cfg = (window.DS_CONFIG || {}).jst || {};
+    const payload = { ...t, rep: me()?.name || '' };
+    if (cfg.helper) {
+      const ac = new AbortController(), timer = setTimeout(() => ac.abort(), 2500);
+      try {
+        const r = await fetch(cfg.helper + '/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: ac.signal });
+        clearTimeout(timer);
+        if (r.ok) { if (!auto) toast('เปิดแชตใน JST แล้ว'); return true; }
+      } catch (e) { clearTimeout(timer); }
+    }
+    if (cfg.urlTemplate) {
+      const u = cfg.urlTemplate.replace(/\{(\w+)\}/g, (_, k) => encodeURIComponent(payload[k] ?? ''));
+      window.open(u, '_blank', 'noopener'); return true;
+    }
+    if (!auto) {
+      const txt = payload.chat || payload.phone || '';
+      navigator.clipboard?.writeText(txt).then(() => toast('ยังไม่ได้รันตัวช่วย JST บนเครื่อง · คัดลอกชื่อแชตแล้ว นำไปค้นหาใน JST'), () => toast('ยังไม่ได้รันตัวช่วย JST · ค้นหาใน JST ด้วย: ' + txt));
+    }
+    return false;
+  }
+
+  // ตรวจว่าเซลล์ทักแชทจริงไหม: ล็อกอินจริง = นับข้อความ dir='admin' ใน iim_messages หลังเวลาที่จอง / โหมดตัวอย่าง = นับจากบันทึกแชตในแอป
+  async function chatCheckFor(l) {
+    const since = l.claimedAt || null;
+    if (typeof sb !== 'undefined' && sb && authUser) {
+      try {
+        const { data, error } = await sb.rpc('dsales_customer_chats', { p_phone: l.phone, p_since: since });
+        if (error) throw error;
+        const sessions = data || [], count = sessions.reduce((s, x) => s + Number(x.admin_msgs || 0), 0);
+        const lastS = sessions.filter(x => x.last_admin_time).sort((a, b) => String(b.last_admin_time).localeCompare(String(a.last_admin_time)))[0];
+        return { live: true, sessions, found: sessions.length, count, sent: count > 0, last: lastS?.last_admin_time, by: lastS?.last_admin_sender };
+      } catch (e) { return { err: 'ตรวจไม่สำเร็จ: ' + (e.message || e) }; }
+    }
+    const chats = l.interactions.filter(i => i.type === 'chat' && (!since || i.date >= since));
+    const last = chats[chats.length - 1];
+    return { live: false, sessions: [], found: 1, count: chats.length, sent: chats.length > 0, last: last?.date, by: rep(last?.rep)?.name };
+  }
+  async function renderChatCheck(l) {
+    const box = $('#chk-body'); if (!box) return;
+    box.innerHTML = '<span class="sub">กำลังตรวจจาก JST…</span>';
+    const res = await chatCheckFor(l);
+    if (!$('#chk-body')) return; // ปิด popup ไปแล้ว
+    if (!res.err) { if (!!l.chatCheck?.sent !== !!res.sent) ui.dirtyRows = true; l.chatCheck = { at: nowStamp(), sent: !!res.sent, count: res.count || 0 }; save(); }
+    const badge = res.err ? '<span class="badge s-lost plain">ตรวจไม่ได้</span>' : res.sent ? '<span class="badge s-won">ทักแชทแล้ว</span>' : res.found ? '<span class="badge s-callback plain">ยังไม่พบข้อความที่ส่ง</span>' : '<span class="badge s-new plain">ไม่พบแชตใน JST</span>';
+    const since = l.claimedAt ? ` หลังจอง (${fmtDT(l.claimedAt)})` : '';
+    const detail = res.err ? esc(res.err) : res.sent ? `เซลล์ส่ง ${res.count} ข้อความ${since} · ล่าสุด ${fmtDT(String(res.last))}${res.by ? ' โดย ' + esc(res.by) : ''}`
+      : res.found ? `เซลล์ยังไม่ได้ส่งข้อความ${since}` : 'จับคู่แชตของลูกค้ารายนี้ไม่พบ (จับคู่ด้วยชื่อแชต/ชื่อผู้ซื้อ) ลองตรวจใน JST เอง';
+    const list = (res.sessions || []).length ? `<ul class="chk-list">${res.sessions.map(x => `<li>${icon((x.channel || '').toLowerCase() === 'line' ? 'line' : (x.channel || 'other').toLowerCase().replace('webchat', 'other'), 16)} <b>${esc(x.page || x.channel || '')}</b> <span class="sub">ล่าสุด ${x.last_admin_time ? 'เซลล์ ' + fmtDT(String(x.last_admin_time)) : (x.last_time ? fmtDT(String(x.last_time)) : '—')}${x.last_admin_sender ? ' · ' + esc(x.last_admin_sender) : ''} · ส่ง ${x.admin_msgs ?? 0}</span></li>`).join('')}</ul>` : '';
+    box.innerHTML = `${badge} <span>${detail}</span>${list}${res.live ? '' : '<div class="sub">ข้อมูลตัวอย่าง: นับจากบันทึกแชตในแอป ตอนล็อกอินจริงจะตรวจจาก JST (iim_messages)</div>'}`;
+  }
+  // ตรวจอัตโนมัติ (ล็อกอินจริง): ลีดของฉันที่จองแล้วแต่ยังไม่พบว่าทักแชท
+  let verifying = false;
+  async function verifyMine(done) {
+    if (verifying || typeof sb === 'undefined' || !sb || !authUser) return;
+    const todo = state.leads.filter(l => l.owner === state.meId && l.claimedAt && !l.chatCheck?.sent && !l.noCall).slice(0, 10);
+    if (!todo.length) return;
+    verifying = true; let changed = 0;
+    for (const l of todo) {
+      const res = await chatCheckFor(l); if (res.err) continue;
+      const was = !!l.chatCheck?.sent; l.chatCheck = { at: nowStamp(), sent: !!res.sent, count: res.count || 0 };
+      if (!was && res.sent) changed++;
+    }
+    verifying = false; if (todo.length) save(); if (changed && done) done();
+  }
 
   function customerModal(id, tab = 'buy') {
     const l = lead(id); if (!l) return;
+    const chansL = channelsOf(l);
     const lastBuy = l.purchases[0]?.date;
     const buyRows = l.purchases.map(p => `<tr><td>${fmtDate(p.date)}</td><td class="mono">${esc(p.sku)}</td><td>${esc(p.product)}<div class="sub">บิล ${esc(p.bill)} · ขายโดย ${esc(rep(p.seller)?.name || '—')}</div></td><td class="r num">${baht(p.amount)}</td></tr>`).join('');
     const hist = [...l.interactions].sort((a, b) => b.date.localeCompare(a.date)).map(i => `<li>
@@ -397,7 +485,7 @@
       <div style="flex:1;min-width:0"><div class="tl-head"><b>${i.type === 'call' ? 'โทร' : 'แชต'}</b><span class="sub">${fmtDT(i.date)} · ${esc(rep(i.rep)?.name || '')}</span><span class="tag">${esc(i.result)}</span>${i.due ? `<span class="tag s-callback">นัดติดต่อ ${fmtDate(i.due)}</span>` : ''}</div><div class="tl-note">${esc(i.note)}</div></div></li>`).join('');
     openModal(`
       <div class="modal-h"><h3>${esc(l.name)}</h3><span class="badge s-${l.status}">${STATUS[l.status]}</span>
-        <span class="tag ${l.brand === 'bebeplay' ? 'bebe' : 'host'}">${BRAND[l.brand]}</span>${X}</div>
+        <span class="tag ${l.brand === 'bebeplay' ? 'bebe' : 'host'}">${BRAND[l.brand]}</span>${contactBar(l, chansL)}${X}</div>
       <div class="modal-b">
         <dl class="info-grid" style="margin:0">
           <div><dt>ชื่อ</dt><dd>${esc(l.name)}</dd></div>
@@ -409,7 +497,9 @@
           <div><dt>ผู้ดูแล</dt><dd>${esc(rep(l.owner)?.name || '—')}</dd></div>
           <div><dt>สินค้าที่สนใจ</dt><dd>${esc(l.interest || '—')}</dd></div>
           <div><dt>เลขบิลที่ปิดได้</dt><dd class="mono">${l.closedBills?.length ? esc(l.closedBills.join(', ')) : '—'}</dd></div>
-          <div><dt>วันที่ปิดการขาย</dt><dd>${l.closedAt ? fmtDate(l.closedAt) : '—'}</dd></div></dl>
+          <div><dt>วันที่ปิดการขาย</dt><dd>${l.closedAt ? fmtDate(l.closedAt) : '—'}</dd></div>
+          <div class="wide"><dt>ช่องทางแชต (แยกตามร้าน)</dt><dd>${channelRow(l, chansL)}</dd></div></dl>
+        <div class="chk"><div class="chk-h"><b>การทักแชท (ตรวจจาก JST)</b><button type="button" class="btn sm" id="chk-refresh">ตรวจอีกครั้ง</button></div><div id="chk-body"></div></div>
         <div class="tabs" role="tablist"><button class="tab ${tab === 'buy' ? 'active' : ''}" data-tab="buy">ประวัติการซื้อ (${l.purchases.length})</button>
           <button class="tab ${tab === 'talk' ? 'active' : ''}" data-tab="talk">ประวัติการโทร/แชต (${l.interactions.length})</button></div>
         ${tab === 'buy'
@@ -420,6 +510,8 @@
     const m = $('.modal');
     m.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => customerModal(id, b.dataset.tab));
     m.querySelectorAll('[data-log]').forEach(b => b.onclick = () => logModal(id, b.dataset.log));
+    $('#chk-refresh').onclick = () => renderChatCheck(l);
+    renderChatCheck(l);
     m.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => {
       navigator.clipboard?.writeText(b.dataset.copy).then(() => toast('คัดลอกเบอร์แล้ว'), () => toast(b.dataset.copy));
     });
@@ -591,20 +683,23 @@
     if (ex && ex.releasedBy?.includes(state.meId)) return toast('คุณคัดออกลูกค้ารายนี้ไปแล้ว');
     if (ex && ex.owner && ex.owner !== state.meId) { ui.pool.loaded = false; route(); return toast('ลูกค้ารายนี้มีคนจองไปแล้ว'); }
     if (ex && ex.owner === state.meId) return toast('คุณจองลูกค้ารายนี้แล้ว');
-    if (ex) { ex.owner = state.meId; ex.claimedBy = state.meId; } // มีลีดว่างอยู่แล้ว (จากแคมเปญ) จองลีดเดิม ไม่สร้างซ้ำ
-    else state.leads.unshift({ id: 'L' + Date.now(), name: c.name, phone: c.phone, address: c.address, shop: c.shop, source: 'self', brand: c.brand, campaignId: null, owner: state.meId, claimedBy: state.meId,
+    if (ex) { ex.owner = state.meId; ex.claimedBy = state.meId; ex.claimedAt = nowStamp(); ex.chatCheck = null; } // มีลีดว่างอยู่แล้ว (จากแคมเปญ) จองลีดเดิม ไม่สร้างซ้ำ
+    else state.leads.unshift({ id: 'L' + Date.now(), name: c.name, phone: c.phone, address: c.address, shop: c.shop, source: 'self', brand: c.brand, campaignId: null, owner: state.meId, claimedBy: state.meId, claimedAt: nowStamp(), channels: JSON.parse(JSON.stringify(c.channels || [])), chatName: c.chatName,
       status: 'new', callback: null, purchases: JSON.parse(JSON.stringify(c.purchases)), interactions: [], interest: '', closedBills: [], closedAmount: null, closedAt: null });
     save(); closeModal(); ui.pool.loaded = false; route(); toast('จองแล้ว ลูกค้าย้ายเข้าหน้า Direct Sale ของคุณ');
+    const ch1 = channelsOf(c)[0]; if (ch1) jstOpen(jstTarget(c, ch1), { auto: true }); // ขุด > เด้งไปแชตของลูกค้าใน JST
   }
   async function poolDetail(id) {
     const r = ui.pool.rows.find(x => x.id === id); if (!r) return;
     const cu = state.customers.find(c => c.id === id);
     let lines = null, err = '';
+    const tx = { phone: r.phone, name: r.name, brand: r.brands[0] || '', chatName: r.chat };
+    let chans = cu ? channelsOf(cu) : (r.chat ? [{ shop: '', platform: 'other', chat: r.chat }] : []);
     const render = () => {
       const body = lines === null ? '<div class="empty">กำลังโหลดประวัติการซื้อ…</div>' : err ? `<div class="login-err">${esc(err)}</div>`
         : lines.length ? `<div class="mini-table table-wrap"><table><thead><tr><th>วัน/เดือน/ปี</th><th>SKU</th><th>ชื่อสินค้า</th><th class="r">ยอดซื้อ</th></tr></thead><tbody>${lines.map(p => `<tr><td>${fmtDate(p.date)}</td><td class="mono">${esc(p.sku || '—')}</td><td>${esc(p.product || '—')}<div class="sub">บิล ${esc(p.bill || '—')}${p.seller ? ' · ขายโดย ' + esc(p.seller) : ''}</div></td><td class="r num">${p.amount == null ? '—' : baht(p.amount)}</td></tr>`).join('')}</tbody></table></div>`
         : '<div class="empty">ไม่พบประวัติการซื้อรายรายการ</div>';
-      openModal(`<div class="modal-h"><h3>${esc(r.name)}</h3>${r.brands.map(b => `<span class="tag ${b === 'bebeplay' ? 'bebe' : b === 'hosttail' ? 'host' : ''}">${esc(BRAND[b] || b)}</span>`).join(' ')}${r.taken ? `<span class="badge s-new plain">จองโดย ${esc(rep(r.taken)?.name || '')}</span>` : ''}${X}</div>
+      openModal(`<div class="modal-h"><h3>${esc(r.name)}</h3>${r.brands.map(b => `<span class="tag ${b === 'bebeplay' ? 'bebe' : b === 'hosttail' ? 'host' : ''}">${esc(BRAND[b] || b)}</span>`).join(' ')}${r.taken ? `<span class="badge s-new plain">จองโดย ${esc(rep(r.taken)?.name || '')}</span>` : ''}${contactBar(tx, chans)}${X}</div>
         <div class="modal-b"><dl class="info-grid" style="margin:0">
           <div><dt>เบอร์</dt><dd class="mono">${esc(r.phone)} <button class="copy" data-copy="${esc(r.phone)}">คัดลอก</button></dd></div>
           <div><dt>กลุ่มลูกค้า</dt><dd>${esc(r.segment || '—')}</dd></div>
@@ -612,7 +707,8 @@
           <div><dt>จำนวนออเดอร์</dt><dd class="num">${r.orders ?? '—'}</dd></div>
           <div><dt>ซื้อล่าสุด</dt><dd>${r.last ? fmtDate(r.last) : '—'}</dd></div>
           <div><dt>ชื่อแชต</dt><dd>${esc(r.chat || '—')}</dd></div>
-          <div><dt>ที่อยู่</dt><dd>${esc(cu?.address || '—')}</dd></div></dl>
+          <div><dt>ที่อยู่</dt><dd>${esc(cu?.address || '—')}</dd></div>
+          <div class="wide"><dt>ช่องทางแชต (แยกตามร้าน)</dt><dd>${channelRow(tx, chans)}</dd></div></dl>
           <div class="sub"><b>ประวัติการซื้อ</b></div>${body}</div>
         ${!isLive() && !r.taken ? `<div class="modal-f"><button class="btn primary" data-pool-claim="${esc(id)}">จอง</button></div>` : ''}${!isLive() && r.taken === state.meId && r.mineReserved ? `<div class="modal-f"><button class="btn danger" data-act="unclaim" data-id="${esc(r.leadId)}">ยกเลิกจอง</button></div>` : ''}`);
       const m = $('.modal');
@@ -624,6 +720,7 @@
       const { data, error } = await sb.rpc('dsales_customer_purchases', { p_phone: r.phone });
       if (error) err = 'โหลดประวัติการซื้อไม่สำเร็จ'; else lines = data.map(x => ({ date: x.txn_date, bill: x.bill_no || x.order_no, sku: x.sku, product: x.product_name, amount: x.amount }));
       if (lines === null) lines = [];
+      try { const ch = await sb.rpc('dsales_customer_channels', { p_phone: r.phone }); if (!ch.error && ch.data?.length) chans = ch.data.map(x => ({ platform: x.platform, shop: x.shop, chat: x.chat_name || '' })).sort(lineFirst); } catch (e) {}
     } else lines = (cu?.purchases || []).map(p => ({ date: p.date, bill: p.bill, sku: p.sku, product: p.product, amount: p.amount, seller: rep(p.seller)?.name }));
     render();
   }
@@ -726,7 +823,7 @@
           const { result } = funnel();
           const c = { id: 'c' + Date.now(), brand: f.brand, name: f.name.trim(), note: f.desc.trim(), start: f.start || today, end: f.end || '', claimMode: f.mode, maxPerRep: f.max ? Number(f.max) : null, active: f.active, criteria: f.crits };
           state.campaigns.push(c);
-          result.forEach((cu, k) => state.leads.push({ id: 'L' + Date.now() + k, name: cu.name, phone: cu.phone, address: cu.address, shop: cu.shop, source: 'campaign', brand: c.brand, campaignId: c.id, owner: null,
+          result.forEach((cu, k) => state.leads.push({ id: 'L' + Date.now() + k, name: cu.name, phone: cu.phone, address: cu.address, shop: cu.shop, chatName: cu.chatName, channels: JSON.parse(JSON.stringify(cu.channels || [])), source: 'campaign', brand: c.brand, campaignId: c.id, owner: null,
             status: 'new', callback: null, purchases: JSON.parse(JSON.stringify(cu.purchases)), interactions: [], interest: '', closedBills: [], closedAmount: null }));
           if (c.claimMode === 'auto') applyAuto(c.id, true);
           ui.selCamp = c.id; ui.status = 'all'; save(); closeModal();
@@ -745,13 +842,15 @@
     const id = t.dataset.id;
     if (t.dataset.act === 'open') customerModal(id);
     if (t.dataset.act === 'unclaim') confirmUnclaim(id);
+    if (t.dataset.act === 'jst') { try { jstOpen(JSON.parse(t.dataset.t)); } catch (err) {} }
     if (t.dataset.act === 'dnc-restore') { Object.assign(lead(id), { noCall: false, noCallAt: null, noCallBy: null }); save(); route(); toast('ยกเลิกห้ามโทรแล้ว'); }
     if (t.dataset.act === 'log') logModal(id, t.dataset.type);
     if (t.dataset.act === 'claim') {
       const l = lead(id), c = camp(l.campaignId);
       if (l.owner) { route(); return toast('ลีดนี้มีคนจองไปแล้ว'); }
       if (c?.maxPerRep && state.leads.filter(x => x.campaignId === c.id && x.owner === state.meId).length >= c.maxPerRep) return toast(`จองได้สูงสุด ${c.maxPerRep} ลีดต่อคนในแคมเปญนี้`);
-      l.owner = state.meId; l.claimedBy = state.meId; save(); route(); toast('จองลีดแล้ว ลีดนี้ย้ายเข้าหน้า Direct Sale ของคุณ');
+      l.owner = state.meId; l.claimedBy = state.meId; l.claimedAt = nowStamp(); save(); route(); toast('จองลีดแล้ว ลีดนี้ย้ายเข้าหน้า Direct Sale ของคุณ');
+      const ch0 = channelsOf(l)[0]; if (ch0) jstOpen(jstTarget(l, ch0), { auto: true }); // ขุด > เด้งไปแชตของลูกค้าใน JST
     }
   });
   document.addEventListener('change', (e) => {
@@ -759,6 +858,10 @@
     if (a && a.value) { const l = lead(a.dataset.assign); l.owner = a.value; save(); route(); toast('มอบหมายแล้ว: ' + (rep(a.value)?.name || '')); }
     const m = e.target.closest('[data-claimmode]');
     if (m) { camp(m.dataset.claimmode).claimMode = m.value; save(); toast('บันทึกวิธีจองลีดแล้ว'); }
+  });
+  document.addEventListener('click', (e) => { // ปุ่มโทร: เปิดแอปโทร (tel:) พร้อมคัดลอกเบอร์ เผื่อเครื่องคอมไม่มีแอปโทร
+    const a = e.target.closest('[data-call]'); if (!a) return;
+    navigator.clipboard?.writeText(a.dataset.call).catch(() => {}); toast('โทร ' + a.dataset.call + ' · คัดลอกเบอร์แล้ว');
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
   $('#menu-btn').onclick = openMenu;
