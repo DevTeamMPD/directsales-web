@@ -382,3 +382,21 @@ tr.total td { border-top: 2px solid var(--border); background: var(--surface-2);
 
 .btn.danger.solid { background: var(--bad); border-color: var(--bad); color: #fff; }
 .btn.danger.solid:hover { color: #fff; filter: brightness(1.08); }
+
+/* ---------- ปุ่มโทร / ช่องทางแชต / JST ---------- */
+.ch-bar { display: inline-flex; align-items: center; gap: 6px; margin-left: 4px; flex-wrap: wrap; }
+.ch-bar.mini { margin: 6px 0 0; gap: 4px; display: flex; }
+.ch-btn { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); cursor: pointer; text-decoration: none; color: var(--fg); }
+.ch-btn:hover { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.ch-btn.call { background: var(--ok); border-color: var(--ok); color: #fff; }
+.ch-btn.call svg { fill: #fff; }
+.ch-bar.mini .ch-btn { width: 26px; height: 26px; border-radius: 7px; }
+.ch-ico { display: block; object-fit: contain; border-radius: 5px; }
+.ch-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.ch-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 6px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); cursor: pointer; font-size: 13px; }
+.ch-chip:hover { border-color: var(--accent); }
+.chk { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--surface-2); display: flex; flex-direction: column; gap: 6px; }
+.chk-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.chk-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.chk-list li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tag.chat-ok { color: var(--ok); border-color: currentColor; font-weight: 600; }
