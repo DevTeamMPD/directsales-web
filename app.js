@@ -19,15 +19,16 @@
   state.meId = state.meId || 'r4';
   state.customers = state.customers || JSON.parse(JSON.stringify(window.DS_DATA.customers));
   state.leads.forEach(l => { if (l.status === 'dnc') { l.noCall = true; l.noCallAt = l.dncAt; l.noCallBy = l.dncBy; l.status = 'following'; } }); // ย้ายข้อมูลรุ่นเก่า
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
+  let LIVE = false; // ล็อกอินแล้ว: ข้อมูลทั้งหมดอยู่ใน Supabase ไม่เขียน localStorage
+  const save = () => { if (LIVE) return; try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
   save();
-  const today = state.today;
+  let today = state.today;
 
   const ui = { q: '', status: 'all', camp: 'all', rep: 'all', selCamp: null, sort: 'due', dashBrand: 'all', period: { from: '', to: '', key: 'all' } };
   const rep = (id) => state.reps.find(r => r.id === id);
   const camp = (id) => state.campaigns.find(c => c.id === id);
   const lead = (id) => state.leads.find(l => l.id === id);
-  const total = (l) => l.purchases.reduce((s, p) => s + p.amount, 0);
+  const total = (l) => l.total != null ? Number(l.total) : l.purchases.reduce((s, p) => s + p.amount, 0);
   const me = () => rep(state.meId);
   const isAdmin = () => me()?.role === 'admin';
   // ถังไม่สะดวกให้โทร (dnc) ไม่แสดงในหน้าไหนเลยนอกจากถังของหัวหน้า / คนที่คัดออกแล้วไม่เห็นลีดนั้นอีก (คนอื่นเห็นและจองได้)
@@ -78,6 +79,7 @@
   const MODES = { self: 'เซลล์จองเอง', assign: 'หัวหน้ามอบหมาย', auto: 'เด้งเข้าเซลล์ที่ขายล่าสุด' };
   const lastSeller = (l) => l.purchases.find(p => p.seller && rep(p.seller))?.seller || null;
   function applyAuto(campId, quiet) {
+    if (LIVE) return 0; // ใช้งานจริง: ยังไม่มีข้อมูลผู้ขายล่าสุดผูกกับเซลล์ จึงให้จองเอง
     let n = 0;
     state.leads.filter(l => l.campaignId === campId && !l.owner && !l.noCall && !l.autoSkip).forEach(l => { const s = lastSeller(l); if (s && !(l.releasedBy || []).includes(s)) { l.owner = s; n++; } }); // ไม่ส่งลีดที่คัดออกกลับไปหาคนที่คัดออก
     if (n) { save(); if (!quiet) toast(`จัดสรรอัตโนมัติ ${n} ลีด ไปยังเซลล์ที่ขายล่าสุด`); }
@@ -94,6 +96,7 @@
         <p class="help">ลูกค้าจะกลับเข้าถังให้เซลล์คนอื่นจองได้ ประวัติที่บันทึกไว้ยังอยู่</p></div>
       <div class="modal-f"><button class="btn" data-close>ไม่ยกเลิก</button><button class="btn danger solid" id="unclaim-ok">ยืนยันยกเลิกจอง</button></div>`, 'sm');
     $('#unclaim-ok').onclick = () => {
+      if (LIVE) { mut('dsales_unclaim_lead', { p_lead: id }).then(nl => { if (nl && !nl.campaignId && !isAdmin()) state.leads = state.leads.filter(x => x.id !== id); closeModal(); ui.pool.loaded = false; route(); toast('ยกเลิกจองแล้ว'); }).catch(err => toast(err.message)); return; }
       const mineOnlyMined = l.claimedBy === state.meId && l.source === 'self' && !l.campaignId && !l.interactions.length; // ลีดที่เกิดจากการจองในถังและยังไม่เคยบันทึก ลบทิ้ง
       if (mineOnlyMined) state.leads = state.leads.filter(x => x !== l);
       else Object.assign(l, { owner: null, claimedBy: null, claimedAt: null, chatCheck: null, status: 'new', callback: null, autoSkip: !!l.campaignId || !!l.autoSkip }); // กันแคมเปญแบบ auto ส่งกลับมาหาเซลล์เดิมทันที
@@ -116,7 +119,7 @@
     bits.push(`<div>${esc(last || '—')}</div>`);
     return bits.join('');
   }
-  const bills = (l) => [...new Set(l.purchases.map(p => p.bill))];
+  const bills = (l) => l.bills ? l.bills : [...new Set(l.purchases.map(p => p.bill))];
 
   function toast(msg) {
     const t = $('#toast'); t.textContent = msg; t.hidden = false;
@@ -373,7 +376,7 @@
         <p class="help" style="margin-top:10px">สร้างแคมเปญใหม่ได้ที่เมนู แคมเปญ → Bebeplay / Hosttail (เฉพาะหัวหน้า)</p></div></div>
       <div class="panel"><div class="panel-h"><h2>ข้อมูลตัวอย่าง</h2></div><div class="panel-b">
         <p class="help">ล้างสิ่งที่บันทึกไว้ในเบราว์เซอร์นี้ แล้วกลับไปใช้ข้อมูลตัวอย่างตั้งต้น</p><br><button class="btn danger" id="reset">รีเซ็ตข้อมูลตัวอย่าง</button></div></div></div>`;
-    $('#rep-form').onsubmit = (e) => { e.preventDefault(); const n = $('#rep-name').value.trim(); if (!n) return;
+    $('#rep-form').onsubmit = (e) => { e.preventDefault(); const n = $('#rep-name').value.trim(); if (!n) return; if (LIVE) return toast('ทีมเซลล์มาจาก Supabase: ผู้ใช้ที่ล็อกอินครั้งแรกจะถูกเพิ่มเป็นเซลล์อัตโนมัติ');
       state.reps.push({ id: 'r' + Date.now(), name: n, initials: n.slice(0, 2), role: $('#rep-role').value }); save(); fillMe(); renderSetup(); toast('เพิ่มเซลล์แล้ว'); };
     $('#reset').onclick = () => { try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); };
   }
@@ -477,8 +480,9 @@
 
   function customerModal(id, tab = 'buy') {
     const l = lead(id); if (!l) return;
+    if (LIVE && !l._pl) { l._pl = 'loading'; loadPurchases(l).then(() => { if ($('.modal') && !$('#modal-root').hidden) customerModal(id, tab); }); }
     const chansL = channelsOf(l);
-    const lastBuy = l.purchases[0]?.date;
+    const lastBuy = l.lastBuy || l.purchases[0]?.date;
     const buyRows = l.purchases.map(p => `<tr><td>${fmtDate(p.date)}</td><td class="mono">${esc(p.sku)}</td><td>${esc(p.product)}<div class="sub">บิล ${esc(p.bill)} · ขายโดย ${esc(rep(p.seller)?.name || '—')}</div></td><td class="r num">${baht(p.amount)}</td></tr>`).join('');
     const hist = [...l.interactions].sort((a, b) => b.date.localeCompare(a.date)).map(i => `<li>
       <span class="feed-ic ${i.type}"><svg viewBox="0 0 24 24"><path d="${i.type === 'call' ? 'M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z' : 'M4 4h16v12H7l-3 3z'}"/></svg></span>
@@ -500,7 +504,7 @@
           <div><dt>วันที่ปิดการขาย</dt><dd>${l.closedAt ? fmtDate(l.closedAt) : '—'}</dd></div>
           <div class="wide"><dt>ช่องทางแชต (แยกตามร้าน)</dt><dd>${channelRow(l, chansL)}</dd></div></dl>
         <div class="chk"><div class="chk-h"><b>การทักแชท (ตรวจจาก JST)</b><button type="button" class="btn sm" id="chk-refresh">ตรวจอีกครั้ง</button></div><div id="chk-body"></div></div>
-        <div class="tabs" role="tablist"><button class="tab ${tab === 'buy' ? 'active' : ''}" data-tab="buy">ประวัติการซื้อ (${l.purchases.length})</button>
+        <div class="tabs" role="tablist"><button class="tab ${tab === 'buy' ? 'active' : ''}" data-tab="buy">ประวัติการซื้อ (${l.purchases.length || l.orders || 0})</button>
           <button class="tab ${tab === 'talk' ? 'active' : ''}" data-tab="talk">ประวัติการโทร/แชต (${l.interactions.length})</button></div>
         ${tab === 'buy'
           ? `<div class="mini-table table-wrap"><table><thead><tr><th>วัน/เดือน/ปี</th><th>SKU</th><th>ชื่อสินค้า</th><th class="r">ยอดซื้อ</th></tr></thead><tbody>${buyRows}</tbody></table></div>`
@@ -557,6 +561,23 @@
       if ((sv === 'dnc' || sv === 'release') && !$('#f-note').value.trim()) { toast('ใส่เหตุผลในหมายเหตุก่อนบันทึก'); $('#f-note').focus(); return; }
       const billList = $('#f-bills').value.split(/[,\s]+/).map(x => x.trim()).filter(Boolean);
       if ($('#f-status').value === 'won' && !billList.length) { toast('ใส่เลขบิลที่ขายได้ก่อนปิดการขาย'); $('#f-bills').focus(); return; }
+      if (LIVE) {
+        (async () => {
+          try {
+            const note = $('#f-note').value.trim() || '(ไม่มีหมายเหตุ)', interest = $('#f-interest').value.trim();
+            const cb = sv === 'callback' ? $('#f-cb').value : null, amt = $('#f-amount').value === '' ? null : Number($('#f-amount').value);
+            let st = sv, res = $('#f-res').value;
+            if (sv === 'dnc') { st = prevStatus === 'new' ? 'following' : prevStatus; res = 'ไม่สะดวกให้โทร'; }
+            if (sv === 'release') { st = 'new'; res = 'คัดออก'; }
+            await mut('dsales_log', { p_lead: l.id, p_type: cur, p_result: res, p_note: note, p_status: st, p_callback: cb, p_interest: interest, p_bills: st === 'won' ? billList : [], p_amount: st === 'won' ? amt : null });
+            let msg = 'บันทึกแล้ว';
+            if (sv === 'dnc') { await mut('dsales_set_nocall', { p_lead: l.id, p_on: true }); msg = 'ทำเครื่องหมายห้ามโทรแล้ว ติดต่อลูกค้ารายนี้ทางแชตเท่านั้น'; }
+            if (sv === 'release') { await mut('dsales_unclaim_lead', { p_lead: l.id }); msg = 'คัดออกแล้ว ลูกค้ากลับเข้าถังให้เซลล์คนอื่นโทร'; }
+            closeModal(); ui.pool.loaded = false; route(); toast(msg);
+          } catch (err) { toast(err.message); }
+        })();
+        return;
+      }
       const now = new Date(); const pad = (n) => String(n).padStart(2, '0');
       l.interactions.push({ id: 'i' + Date.now(), type: cur, date: `${today}T${pad(now.getHours())}:${pad(now.getMinutes())}`, rep: state.meId,
         result: $('#f-res').value, due: $('#f-status').value === 'callback' ? $('#f-cb').value : null, note: $('#f-note').value.trim() || '(ไม่มีหมายเหตุ)' });
@@ -607,10 +628,10 @@
         if (!g.error) { P.grand = g.data.length ? Number(g.data[0].total_count) : 0; P.grandFor = P.brand; }
       }
       if (isLive()) {
-        const { data, error } = await sb.rpc('dsales_customer_pool_v3', { p_search: P.q.trim() || null, p_limit: PAGE, p_offset: P.page * PAGE, p_brand: P.brand || null, ...(hasPeriod() ? { p_from: ui.period.from || null, p_to: ui.period.to || null } : {}) });
+        const { data, error } = await sb.rpc('dsales_customer_pool_v4', { p_search: P.q.trim() || null, p_limit: PAGE, p_offset: P.page * PAGE, p_brand: P.brand || null, ...(hasPeriod() ? { p_from: ui.period.from || null, p_to: ui.period.to || null } : {}) });
         if (error) throw error;
         P.live = true; P.total = data.length ? Number(data[0].total_count) : 0;
-        P.rows = data.map(r => ({ id: r.identity_id, name: r.name, phone: r.phone, segment: r.rfm_segment || r.segment || '', ltv: r.ltv, orders: r.order_count, last: r.last_order_date, brands: r.brands || [], chat: r.chat_name }));
+        P.rows = data.map(r => ({ id: r.identity_id, name: r.name, phone: r.phone, segment: r.rfm_segment || r.segment || '', ltv: r.ltv, orders: r.order_count, last: r.last_order_date, brands: r.brands || [], chat: r.chat_name, leadId: r.lead_id, mine: !!r.mine, noCall: !!r.no_call, takenName: r.reserved_by || '', taken: r.taken ? (r.mine ? state.meId : (r.reserved_by ? 'other' : 'other')) : null }));
       } else {
         const q = P.q.trim().toLowerCase(), qd = q.replace(/\D/g, '');
         const all = state.customers.filter(c => (!P.brand || c.brand === P.brand) && !hiddenFromMe(c) && (!q || c.name.toLowerCase().includes(q) || (c.chatName || '').toLowerCase().includes(q) || (qd && c.phone.includes(qd)) || c.purchases.some(p => p.bill.includes(q))))
@@ -671,12 +692,18 @@
     return names.length ? names.map(n => `<div class="camp-cell">${esc(n)}</div>`).join('') : '<span class="sub">ยังไม่เข้าแคมเปญ</span>';
   }
   function poolAction(r) {
-    if (isLive()) return '<button class="btn sm outline" disabled title="ยังไม่ได้เชื่อมการจองกับฐานข้อมูลจริง">จอง</button>';
+    if (isLive()) {
+      if (r.noCall) return '<button class="btn sm" disabled>ไม่สะดวกให้โทร</button>';
+      if (r.mine) { const L = lead(r.leadId); return L && canUnclaimAny(L) ? `<button class="btn sm danger" data-act="unclaim" data-id="${esc(r.leadId)}">ยกเลิกจอง</button>` : '<button class="btn sm" disabled>จองแล้ว</button>'; }
+      if (r.taken) return `<button class="btn sm" disabled>${isAdmin() && r.takenName ? 'จองโดย ' + esc(r.takenName) : 'จองแล้ว'}</button>`;
+      return `<button class="btn sm outline" data-pool-claim="${esc(r.id)}">จอง</button>`;
+    }
     if (r.releasedByMe) return '<button class="btn sm" disabled>คัดออกแล้ว</button>';
     if (r.taken) return r.taken === state.meId ? (r.mineReserved ? `<button class="btn sm danger" data-act="unclaim" data-id="${esc(r.leadId)}">ยกเลิกจอง</button>` : '<button class="btn sm" disabled>จองแล้ว</button>') : `<button class="btn sm" disabled>${isAdmin() ? 'จองโดย ' + esc(rep(r.taken)?.name || '') : 'จองแล้ว'}</button>`;
     return `<button class="btn sm outline" data-pool-claim="${esc(r.id)}">จอง</button>`;
   }
   function poolClaim(id) {
+    if (LIVE) return poolClaimLive(id);
     const c = state.customers.find(x => x.id === id); if (!c) return;
     const ex = state.leads.find(l => l.phone === c.phone);
     if (ex && ex.noCall) return toast('ลูกค้ารายนี้ไม่สะดวกให้โทร จองไม่ได้');
@@ -699,7 +726,7 @@
       const body = lines === null ? '<div class="empty">กำลังโหลดประวัติการซื้อ…</div>' : err ? `<div class="login-err">${esc(err)}</div>`
         : lines.length ? `<div class="mini-table table-wrap"><table><thead><tr><th>วัน/เดือน/ปี</th><th>SKU</th><th>ชื่อสินค้า</th><th class="r">ยอดซื้อ</th></tr></thead><tbody>${lines.map(p => `<tr><td>${fmtDate(p.date)}</td><td class="mono">${esc(p.sku || '—')}</td><td>${esc(p.product || '—')}<div class="sub">บิล ${esc(p.bill || '—')}${p.seller ? ' · ขายโดย ' + esc(p.seller) : ''}</div></td><td class="r num">${p.amount == null ? '—' : baht(p.amount)}</td></tr>`).join('')}</tbody></table></div>`
         : '<div class="empty">ไม่พบประวัติการซื้อรายรายการ</div>';
-      openModal(`<div class="modal-h"><h3>${esc(r.name)}</h3>${r.brands.map(b => `<span class="tag ${b === 'bebeplay' ? 'bebe' : b === 'hosttail' ? 'host' : ''}">${esc(BRAND[b] || b)}</span>`).join(' ')}${r.taken ? `<span class="badge s-new plain">จองโดย ${esc(rep(r.taken)?.name || '')}</span>` : ''}${contactBar(tx, chans)}${X}</div>
+      openModal(`<div class="modal-h"><h3>${esc(r.name)}</h3>${r.brands.map(b => `<span class="tag ${b === 'bebeplay' ? 'bebe' : b === 'hosttail' ? 'host' : ''}">${esc(BRAND[b] || b)}</span>`).join(' ')}${r.taken ? `<span class="badge s-new plain">${r.taken === 'other' && !(isAdmin() && r.takenName) ? 'จองแล้ว' : 'จองโดย ' + esc(rep(r.taken)?.name || r.takenName || '')}</span>` : ''}${contactBar(tx, chans)}${X}</div>
         <div class="modal-b"><dl class="info-grid" style="margin:0">
           <div><dt>เบอร์</dt><dd class="mono">${esc(r.phone)} <button class="copy" data-copy="${esc(r.phone)}">คัดลอก</button></dd></div>
           <div><dt>กลุ่มลูกค้า</dt><dd>${esc(r.segment || '—')}</dd></div>
@@ -710,7 +737,7 @@
           <div><dt>ที่อยู่</dt><dd>${esc(cu?.address || '—')}</dd></div>
           <div class="wide"><dt>ช่องทางแชต (แยกตามร้าน)</dt><dd>${channelRow(tx, chans)}</dd></div></dl>
           <div class="sub"><b>ประวัติการซื้อ</b></div>${body}</div>
-        ${!isLive() && !r.taken ? `<div class="modal-f"><button class="btn primary" data-pool-claim="${esc(id)}">จอง</button></div>` : ''}${!isLive() && r.taken === state.meId && r.mineReserved ? `<div class="modal-f"><button class="btn danger" data-act="unclaim" data-id="${esc(r.leadId)}">ยกเลิกจอง</button></div>` : ''}`);
+        ${!r.taken && !r.noCall ? `<div class="modal-f"><button class="btn primary" data-pool-claim="${esc(id)}">จอง</button></div>` : ''}${r.taken === state.meId && (isLive() ? (lead(r.leadId) && canUnclaimAny(lead(r.leadId))) : r.mineReserved) ? `<div class="modal-f"><button class="btn danger" data-act="unclaim" data-id="${esc(r.leadId)}">ยกเลิกจอง</button></div>` : ''}`);
       const m = $('.modal');
       m.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => { navigator.clipboard?.writeText(b.dataset.copy).then(() => toast('คัดลอกเบอร์แล้ว'), () => toast(b.dataset.copy)); });
       m.querySelectorAll('[data-pool-claim]').forEach(b => b.onclick = () => poolClaim(b.dataset.poolClaim));
@@ -821,6 +848,14 @@
         else if (a === 'create') {
           if (!f.name.trim()) { f.tab = 'base'; draw(); return toast('ใส่ชื่อแคมเปญก่อน'); }
           const { result } = funnel();
+          if (LIVE) {
+            sb.from('dsales_campaigns').insert({ brand: f.brand, name: f.name.trim(), description: f.desc.trim() || null, start_date: f.start || null, end_date: f.end || null, claim_mode: f.mode, max_per_rep: f.max ? Number(f.max) : null, active: !!f.active, criteria: f.crits }).select().single().then(({ data: d, error }) => {
+              if (error) return toast('สร้างแคมเปญไม่สำเร็จ: ' + error.message);
+              const c2 = mapCampaign(d); state.campaigns.push(c2); ui.selCamp = c2.id; ui.status = 'all'; closeModal();
+              location.hash = '#campaign-' + c2.brand; route(); toast('สร้างแคมเปญแล้ว · เลือกลูกค้าเข้าแคมเปญจากถัง "ลูกค้าทั้งหมด" ด้วยปุ่ม จอง');
+            });
+            return;
+          }
           const c = { id: 'c' + Date.now(), brand: f.brand, name: f.name.trim(), note: f.desc.trim(), start: f.start || today, end: f.end || '', claimMode: f.mode, maxPerRep: f.max ? Number(f.max) : null, active: f.active, criteria: f.crits };
           state.campaigns.push(c);
           result.forEach((cu, k) => state.leads.push({ id: 'L' + Date.now() + k, name: cu.name, phone: cu.phone, address: cu.address, shop: cu.shop, chatName: cu.chatName, channels: JSON.parse(JSON.stringify(cu.channels || [])), source: 'campaign', brand: c.brand, campaignId: c.id, owner: null,
@@ -843,20 +878,24 @@
     if (t.dataset.act === 'open') customerModal(id);
     if (t.dataset.act === 'unclaim') confirmUnclaim(id);
     if (t.dataset.act === 'jst') { try { jstOpen(JSON.parse(t.dataset.t)); } catch (err) {} }
+    if (t.dataset.act === 'dnc-restore' && LIVE) { mut('dsales_set_nocall', { p_lead: id, p_on: false }).then(() => { route(); toast('ยกเลิกห้ามโทรแล้ว'); }).catch(err => toast(err.message)); return; }
     if (t.dataset.act === 'dnc-restore') { Object.assign(lead(id), { noCall: false, noCallAt: null, noCallBy: null }); save(); route(); toast('ยกเลิกห้ามโทรแล้ว'); }
     if (t.dataset.act === 'log') logModal(id, t.dataset.type);
     if (t.dataset.act === 'claim') {
       const l = lead(id), c = camp(l.campaignId);
       if (l.owner) { route(); return toast('ลีดนี้มีคนจองไปแล้ว'); }
       if (c?.maxPerRep && state.leads.filter(x => x.campaignId === c.id && x.owner === state.meId).length >= c.maxPerRep) return toast(`จองได้สูงสุด ${c.maxPerRep} ลีดต่อคนในแคมเปญนี้`);
+      if (LIVE) { mut('dsales_claim_lead', { p_lead: id }).then(nl => { route(); toast('จองลีดแล้ว ลีดนี้ย้ายเข้าหน้า Direct Sale ของคุณ'); const c0 = channelsOf(nl)[0]; if (c0) jstOpen(jstTarget(nl, c0), { auto: true }); }).catch(err => { toast(err.message); route(); }); return; }
       l.owner = state.meId; l.claimedBy = state.meId; l.claimedAt = nowStamp(); save(); route(); toast('จองลีดแล้ว ลีดนี้ย้ายเข้าหน้า Direct Sale ของคุณ');
       const ch0 = channelsOf(l)[0]; if (ch0) jstOpen(jstTarget(l, ch0), { auto: true }); // ขุด > เด้งไปแชตของลูกค้าใน JST
     }
   });
   document.addEventListener('change', (e) => {
     const a = e.target.closest('[data-assign]');
+    if (a && a.value && LIVE) { mut('dsales_assign_lead', { p_lead: a.dataset.assign, p_user: a.value }).then(() => { route(); toast('มอบหมายแล้ว: ' + (rep(a.value)?.name || '')); }).catch(err => toast(err.message)); return; }
     if (a && a.value) { const l = lead(a.dataset.assign); l.owner = a.value; save(); route(); toast('มอบหมายแล้ว: ' + (rep(a.value)?.name || '')); }
     const m = e.target.closest('[data-claimmode]');
+    if (m && LIVE) { camp(m.dataset.claimmode).claimMode = m.value; sb.from('dsales_campaigns').update({ claim_mode: m.value }).eq('id', m.dataset.claimmode).then(r => toast(r.error ? 'บันทึกไม่สำเร็จ' : 'บันทึกวิธีจองลีดแล้ว')); return; }
     if (m) { camp(m.dataset.claimmode).claimMode = m.value; save(); toast('บันทึกวิธีจองลีดแล้ว'); }
   });
   document.addEventListener('click', (e) => { // ปุ่มโทร: เปิดแอปโทร (tel:) พร้อมคัดลอกเบอร์ เผื่อเครื่องคอมไม่มีแอปโทร
@@ -895,6 +934,51 @@
     $('#login').hidden = false;
     const err = $('#l-err'); err.hidden = !msg; err.textContent = msg || '';
   }
+
+  /* ---------- โหมดใช้งานจริง (Supabase) ---------- */
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const localStamp = (iso) => { if (!iso) return iso; const d = new Date(iso); return isNaN(d) ? iso : `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+  const mapCampaign = (c) => ({ id: c.id, brand: c.brand, name: c.name, note: c.description || '', start: c.start_date || '', end: c.end_date || '', claimMode: c.claim_mode === 'auto' ? 'self' : c.claim_mode, maxPerRep: c.max_per_rep, active: c.active, criteria: c.criteria || [] });
+  function mapLead(j) {
+    return { ...j, address: j.address || '', shop: j.shop || '', chatName: j.chatName || '', channels: j.channels || [], interest: j.interest || '', closedBills: j.closedBills || [], releasedBy: j.releasedBy || [], bills: j.bills || [], purchases: [], claimedAt: localStamp(j.claimedAt),
+      interactions: (j.interactions || []).map(i => ({ ...i, date: localStamp(i.date), note: i.note || '', result: i.result || '' })) };
+  }
+  function upsertLead(j) {
+    const m = mapLead(j), i = state.leads.findIndex(x => x.id === m.id);
+    if (i >= 0) { const o = state.leads[i]; m.purchases = o.purchases; m._pl = o._pl; m.chatCheck = o.chatCheck; state.leads[i] = m; } else state.leads.unshift(m);
+    return m;
+  }
+  const LIVE_ERR = { taken: 'ลูกค้ารายนี้มีคนจองไปแล้ว', no_call: 'ลูกค้ารายนี้ไม่สะดวกให้โทร', forbidden: 'ไม่มีสิทธิ์ทำรายการนี้', bill_required: 'ใส่เลขบิลก่อนปิดการขาย', not_found: 'ไม่พบข้อมูลรายการนี้', invalid_phone: 'เบอร์โทรของลูกค้าไม่ถูกต้อง', customer_not_found: 'ไม่พบลูกค้ารายนี้', invalid_user: 'ผู้ใช้ไม่ถูกต้อง', invalid_brand: 'ไม่ทราบแบรนด์ของการจอง' };
+  async function mut(fn, args) {
+    const { data, error } = await sb.rpc(fn, args);
+    if (error) { const k = Object.keys(LIVE_ERR).find(x => (error.message || '').includes(x)); throw new Error(k ? LIVE_ERR[k] : (error.message || 'ทำรายการไม่สำเร็จ')); }
+    return data && typeof data === 'object' ? upsertLead(data) : null;
+  }
+  async function loadPurchases(l) {
+    try { const { data, error } = await sb.rpc('dsales_customer_purchases', { p_phone: l.phone }); l.purchases = error ? [] : data.map(x => ({ date: x.txn_date, bill: x.bill_no || x.order_no || '', sku: x.sku || '', product: x.product_name || '', amount: Number(x.amount || 0), seller: null })); l._pl = 'done'; } catch (e) { l._pl = 'done'; }
+  }
+  async function poolClaimLive(id) {
+    const r = ui.pool.rows.find(x => x.id === id); if (!r) return;
+    try {
+      const l = await mut('dsales_claim_customer', { p_phone: r.phone, p_brand: ui.pool.brand || r.brands[0] || '' });
+      closeModal(); ui.pool.loaded = false; route(); toast('จองแล้ว ลูกค้าย้ายเข้าหน้า Direct Sale ของคุณ');
+      let ch = []; try { const c = await sb.rpc('dsales_customer_channels', { p_phone: r.phone }); if (!c.error && c.data) ch = c.data.map(x => ({ platform: x.platform, shop: x.shop, chat: x.chat_name || '' })).sort(lineFirst); } catch (e) {}
+      l.channels = ch; l.chatName = r.chat || '';
+      const c1 = channelsOf(l)[0]; if (c1) jstOpen(jstTarget(l, c1), { auto: true });
+    } catch (err) { toast(err.message); ui.pool.loaded = false; route(); }
+  }
+  async function loadLive(user, nm, admin) {
+    const reg = await sb.rpc('dsales_register'); if (reg.error) throw reg.error;
+    const [t, c, ls] = await Promise.all([sb.rpc('dsales_team'), sb.from('dsales_campaigns').select('*').order('created_at'), sb.rpc('dsales_my_leads', { p_limit: 1000, p_offset: 0 })]);
+    const bad = t.error || c.error || ls.error; if (bad) throw bad;
+    const reps = t.data.map(r => ({ id: r.user_id, name: r.display_name || (r.email || '').split('@')[0], initials: (r.display_name || r.email || '?').slice(0, 2).toUpperCase(), role: r.role === 'admin' ? 'admin' : 'sales', email: r.email }));
+    let meR = reps.find(r => r.id === user.id);
+    if (!meR) { meR = { id: user.id, email: user.email }; reps.push(meR); }
+    Object.assign(meR, { name: nm, initials: nm.slice(0, 2).toUpperCase(), role: admin ? 'admin' : 'sales' });
+    const d = new Date(); today = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    Object.assign(state, { reps, campaigns: c.data.map(mapCampaign), leads: ls.data.map(mapLead), customers: [], meId: user.id, today });
+    LIVE = true;
+  }
   async function enterAuth(user) {
     authUser = user.email;
     let name = null, admin = null;
@@ -904,10 +988,7 @@
     } catch (e) {}
     if (admin === null) admin = user.email.toLowerCase() === 'dev@mpdgroup.co'; // สำรองเมื่อเรียกฟังก์ชันไม่ได้
     const nm = name || user.email.split('@')[0];
-    let r = state.reps.find(x => x.email === user.email);
-    if (!r) { r = { id: 'u' + user.id.slice(0, 8), email: user.email }; state.reps.push(r); }
-    Object.assign(r, { name: nm, initials: nm.slice(0, 2).toUpperCase(), role: admin ? 'admin' : 'sales' });
-    state.meId = r.id; save();
+    await loadLive(user, nm, admin);
   }
   $('#login-form').onsubmit = async (e) => {
     e.preventDefault();
@@ -916,17 +997,18 @@
     const { data, error } = await sb.auth.signInWithPassword({ email: $('#l-email').value.trim(), password: $('#l-pass').value });
     $('#l-submit').disabled = false;
     if (error || !data?.user) return showLogin('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
-    await enterAuth(data.user); start();
+    try { await enterAuth(data.user); } catch (err) { authUser = null; return showLogin('โหลดข้อมูลจาก Supabase ไม่สำเร็จ: ' + (err.message || err)); }
+    start();
   };
   $('#l-demo').onclick = () => { authUser = null; if (me()?.email) { state.meId = 'r4'; save(); } start(); }; // โหมดตัวอย่างไม่ใช้ตัวตนของผู้ใช้จริง
-  $('#logout').onclick = async () => { if (sb && authUser) await sb.auth.signOut(); authUser = null; $('#l-pass').value = ''; showLogin(''); };
+  $('#logout').onclick = async () => { const was = LIVE; if (sb && authUser) await sb.auth.signOut(); authUser = null; $('#l-pass').value = ''; if (was) return location.reload(); showLogin(''); };
 
   (async function boot() {
     if (!wantAuth) return start();
     if (!sb) return showLogin('โหลดระบบล็อกอินไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่ หรือเลือกดูตัวอย่าง');
     try {
       const { data } = await sb.auth.getSession();
-      if (data?.session?.user) { await enterAuth(data.session.user); return start(); }
+      if (data?.session?.user) { try { await enterAuth(data.session.user); } catch (err) { authUser = null; return showLogin('โหลดข้อมูลจาก Supabase ไม่สำเร็จ: ' + (err.message || err)); } return start(); }
     } catch (e) {}
     showLogin('');
   })();
