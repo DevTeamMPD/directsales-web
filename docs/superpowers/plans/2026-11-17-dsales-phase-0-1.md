@@ -819,6 +819,27 @@ git commit -m "feat(db): add dsales_customer_base with dormancy and JST tag owne
 
 ---
 
+### Task 8b: แก้คุณภาพข้อมูลฐานลูกค้า (จาก review ของ Task 7–8)
+
+**Files:**
+- Create: `supabase/migrations/20261117090510_dsales_customer_base_quality.sql` (create or replace function เท่านั้น รูปตารางไม่เปลี่ยน)
+- Create: `supabase/tests/04b_customer_base_quality.sql`
+- Modify: `supabase/tests/03_chat_links.sql`
+
+**สิ่งที่เปลี่ยน:**
+- เพิ่ม `dsales.dsales_norm_phone(text)` (IMMUTABLE): ตัดอักขระที่ไม่ใช่ตัวเลข, `66` + 9 หลัก หรือ `660` + 9 หลัก → `0` + 9 หลัก, มือถือ 9 หลักขึ้นต้น 6/8/9 → เติม `0`, เบอร์ที่มี `*` (ถูกปิดบัง) หรือไม่ผ่าน `dsales_valid_phone` → `null` ใช้แปลงเบอร์จากทุกแหล่ง (`order_tracking`, `customer_identities`, `lendi_customer_value`, `lds_customers`) ก่อน join
+- บิลจริงผูกด้วย `sales_transaction.bill_no` **หรือ** `order_no` = `order_tracking.online_order` (2 equi-join ต่อด้วย union all แล้ว group ไม่ใช้ join แบบ OR) และตัดเลขที่สั้นกว่า 8 ตัว (ชนกันข้ามออร์เดอร์)
+- `dsales_seed_chat_links_by_name()` ลบลิงก์ `chat_name` เดิมแล้วสร้างใหม่ทุกครั้ง (วิธีอื่นไม่แตะ) และไม่ใช้ชื่อคำเดียวที่สั้นกว่า 6 ตัว, `facebook user`, ชื่อที่มี `*`, ชื่อที่เป็นตัวเลขล้วน
+- `order_count` = `greatest(lendi.order_count, จำนวนบิลจริง)` (lendi เก็บ 0 ไว้หลายเบอร์)
+- `name` = `customer_identities.display_name` → `order_tracking.buyer_name` ล่าสุดที่ไม่ว่าง → `'ไม่ระบุชื่อ'`; `chat_name` = `lds_customers.jst_chat_name` → ชื่อห้องแชตล่าสุดที่ผูกกับเบอร์
+- tag = tag `Admin_*` ตัวแรกของห้องล่าสุดที่มี tag `Admin_*` (เรียง `last_time` แล้ว `ms_id`)
+- `dsales_refresh_customer_base()` ล็อก `pg_advisory_xact_lock` กันรันซ้อน, ใช้วันที่ไทย `(now() at time zone 'Asia/Bangkok')::date`, และ raise exception ถ้าไม่มีค่า `dormant_days`
+- test 03 รันซ้ำได้ (seed ครั้งที่สองได้จำนวนเท่าครั้งแรก) และตรวจว่าไม่มีห้องที่ผูกด้วยชื่อหลวม; test 04b ตรวจการแปลงเบอร์, ลูกค้าที่เพิ่งซื้อไม่ eligible, จำนวน `last_order_date is null` ลดลงอย่างน้อย 1,000 และ error เมื่อไม่มี `dormant_days`
+
+**ผลกับข้อมูลจริง (2026-11-17):** ลิงก์ชื่อแชต 2,376 → 2,289 · ลูกค้า 18,740 → 18,744 · ไม่มี `last_order_date` 11,424 → 9,458 · eligible 6,630 → 8,612 · มี tag 1,755 → 1,694 (eligible 1,308 → 1,408) · มี `chat_name` 1 → 2,083 · seed ~1.1 s, refresh ~1.8 s
+
+---
+
 ### Task 9: RPC หน้า "ลูกค้าของฉัน / ถังกลาง", ผูก tag และการจองที่เคารพเจ้าของตาม tag
 
 **Files:**
