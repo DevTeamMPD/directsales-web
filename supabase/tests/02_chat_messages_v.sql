@@ -14,5 +14,8 @@ begin
   from dsales.dsales_chat_messages_v v join public.iim_sessions s on s.ms_id = v.ms_id
   where v.time >= now() - interval '30 days' and v.time > s.fetched_at + interval '5 minutes';
   assert v_late <= 5, format('corrected times should not be after the fetch time, found %s', v_late);
+  assert pg_get_functiondef('dsales.dsales_customer_chats(text, timestamptz)'::regprocedure) ~ 'dsales_chat_messages_v'
+     and pg_get_functiondef('dsales.dsales_customer_chats(text, timestamptz)'::regprocedure) !~ 'public\.iim_messages',
+         'dsales_customer_chats must read the corrected view';
 end $$;
 rollback;
