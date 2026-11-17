@@ -55,3 +55,9 @@ test('buildMigration drops unused pool functions, moves tables and functions, th
   assert.ok(sql.indexOf('set local search_path') < sql.indexOf('alter function'));
   assert.ok(sql.lastIndexOf('alter function') < sql.indexOf('CREATE OR REPLACE FUNCTION dsales.dsales_is_admin'));
 });
+
+test('buildMigration normalizes CRLF input to LF output', () => {
+  const sql = buildMigration(BASELINE.replace(/\n/g, '\r\n'));
+  assert.ok(!sql.includes('\r'));
+  assert.match(sql, /alter function public\.dsales_lead_json\(l dsales_leads\) set schema dsales;/);
+});

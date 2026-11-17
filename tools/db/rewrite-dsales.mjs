@@ -8,6 +8,7 @@ export const SKIP = new Set(['dsales_customer_pool', 'dsales_customer_pool_v2'])
 export const TABLES = ['dsales_members', 'dsales_campaigns', 'dsales_leads', 'dsales_interactions'];
 
 export function splitFunctions(sql) {
+  sql = sql.replace(/\r\n/g, '\n');
   const marks = [...sql.matchAll(/^-- FUNCTION: (\w+)\((.*)\)$/gm)];
   return marks.map((m, i) => ({
     name: m[1],
