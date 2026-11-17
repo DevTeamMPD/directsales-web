@@ -439,7 +439,7 @@
     const since = l.claimedAt || null;
     if (typeof sb !== 'undefined' && sb && authUser) {
       try {
-        const { data, error } = await sb.rpc('dsales_customer_chats', { p_phone: l.phone, p_since: since });
+        const { data, error } = await db.rpc('dsales_customer_chats', { p_phone: l.phone, p_since: since });
         if (error) throw error;
         const sessions = data || [], count = sessions.reduce((s, x) => s + Number(x.admin_msgs || 0), 0);
         const lastS = sessions.filter(x => x.last_admin_time).sort((a, b) => String(b.last_admin_time).localeCompare(String(a.last_admin_time)))[0];
@@ -624,11 +624,11 @@
     await Promise.resolve(); // ให้การวาดหน้าที่เรียกมาเสร็จก่อน (กันวาดซ้อนกันสองรอบจนโฟกัสหาย)
     try {
       if (isLive() && P.grandFor !== P.brand) { // จำนวนลูกค้าทั้งแบรนด์ (ไม่ขึ้นกับคำค้น/ช่วงวันที่)
-        const g = await sb.rpc('dsales_customer_pool_v3', { p_limit: 1, p_offset: 0, p_brand: P.brand || null });
+        const g = await db.rpc('dsales_customer_pool_v3', { p_limit: 1, p_offset: 0, p_brand: P.brand || null });
         if (!g.error) { P.grand = g.data.length ? Number(g.data[0].total_count) : 0; P.grandFor = P.brand; }
       }
       if (isLive()) {
-        const { data, error } = await sb.rpc('dsales_customer_pool_v4', { p_search: P.q.trim() || null, p_limit: PAGE, p_offset: P.page * PAGE, p_brand: P.brand || null, ...(hasPeriod() ? { p_from: ui.period.from || null, p_to: ui.period.to || null } : {}) });
+        const { data, error } = await db.rpc('dsales_customer_pool_v4', { p_search: P.q.trim() || null, p_limit: PAGE, p_offset: P.page * PAGE, p_brand: P.brand || null, ...(hasPeriod() ? { p_from: ui.period.from || null, p_to: ui.period.to || null } : {}) });
         if (error) throw error;
         P.live = true; P.total = data.length ? Number(data[0].total_count) : 0;
         P.rows = data.map(r => ({ id: r.identity_id, name: r.name, phone: r.phone, segment: r.rfm_segment || r.segment || '', ltv: r.ltv, orders: r.order_count, last: r.last_order_date, brands: r.brands || [], chat: r.chat_name, leadId: r.lead_id, mine: !!r.mine, noCall: !!r.no_call, takenName: r.reserved_by || '', taken: r.taken ? (r.mine ? state.meId : (r.reserved_by ? 'other' : 'other')) : null }));
@@ -744,10 +744,10 @@
     };
     if (isLive()) {
       render();
-      const { data, error } = await sb.rpc('dsales_customer_purchases', { p_phone: r.phone });
+      const { data, error } = await db.rpc('dsales_customer_purchases', { p_phone: r.phone });
       if (error) err = 'โหลดประวัติการซื้อไม่สำเร็จ'; else lines = data.map(x => ({ date: x.txn_date, bill: x.bill_no || x.order_no, sku: x.sku, product: x.product_name, amount: x.amount }));
       if (lines === null) lines = [];
-      try { const ch = await sb.rpc('dsales_customer_channels', { p_phone: r.phone }); if (!ch.error && ch.data?.length) chans = ch.data.map(x => ({ platform: x.platform, shop: x.shop, chat: x.chat_name || '' })).sort(lineFirst); } catch (e) {}
+      try { const ch = await db.rpc('dsales_customer_channels', { p_phone: r.phone }); if (!ch.error && ch.data?.length) chans = ch.data.map(x => ({ platform: x.platform, shop: x.shop, chat: x.chat_name || '' })).sort(lineFirst); } catch (e) {}
     } else lines = (cu?.purchases || []).map(p => ({ date: p.date, bill: p.bill, sku: p.sku, product: p.product, amount: p.amount, seller: rep(p.seller)?.name }));
     render();
   }
@@ -849,7 +849,7 @@
           if (!f.name.trim()) { f.tab = 'base'; draw(); return toast('ใส่ชื่อแคมเปญก่อน'); }
           const { result } = funnel();
           if (LIVE) {
-            sb.from('dsales_campaigns').insert({ brand: f.brand, name: f.name.trim(), description: f.desc.trim() || null, start_date: f.start || null, end_date: f.end || null, claim_mode: f.mode, max_per_rep: f.max ? Number(f.max) : null, active: !!f.active, criteria: f.crits }).select().single().then(({ data: d, error }) => {
+            db.from('dsales_campaigns').insert({ brand: f.brand, name: f.name.trim(), description: f.desc.trim() || null, start_date: f.start || null, end_date: f.end || null, claim_mode: f.mode, max_per_rep: f.max ? Number(f.max) : null, active: !!f.active, criteria: f.crits }).select().single().then(({ data: d, error }) => {
               if (error) return toast('สร้างแคมเปญไม่สำเร็จ: ' + error.message);
               const c2 = mapCampaign(d); state.campaigns.push(c2); ui.selCamp = c2.id; ui.status = 'all'; closeModal();
               location.hash = '#campaign-' + c2.brand; route(); toast('สร้างแคมเปญแล้ว · เลือกลูกค้าเข้าแคมเปญจากถัง "ลูกค้าทั้งหมด" ด้วยปุ่ม จอง');
@@ -895,7 +895,7 @@
     if (a && a.value && LIVE) { mut('dsales_assign_lead', { p_lead: a.dataset.assign, p_user: a.value }).then(() => { route(); toast('มอบหมายแล้ว: ' + (rep(a.value)?.name || '')); }).catch(err => toast(err.message)); return; }
     if (a && a.value) { const l = lead(a.dataset.assign); l.owner = a.value; save(); route(); toast('มอบหมายแล้ว: ' + (rep(a.value)?.name || '')); }
     const m = e.target.closest('[data-claimmode]');
-    if (m && LIVE) { camp(m.dataset.claimmode).claimMode = m.value; sb.from('dsales_campaigns').update({ claim_mode: m.value }).eq('id', m.dataset.claimmode).then(r => toast(r.error ? 'บันทึกไม่สำเร็จ' : 'บันทึกวิธีจองลีดแล้ว')); return; }
+    if (m && LIVE) { camp(m.dataset.claimmode).claimMode = m.value; db.from('dsales_campaigns').update({ claim_mode: m.value }).eq('id', m.dataset.claimmode).then(r => toast(r.error ? 'บันทึกไม่สำเร็จ' : 'บันทึกวิธีจองลีดแล้ว')); return; }
     if (m) { camp(m.dataset.claimmode).claimMode = m.value; save(); toast('บันทึกวิธีจองลีดแล้ว'); }
   });
   document.addEventListener('click', (e) => { // ปุ่มโทร: เปิดแอปโทร (tel:) พร้อมคัดลอกเบอร์ เผื่อเครื่องคอมไม่มีแอปโทร
@@ -910,6 +910,7 @@
   const cfg = window.DS_CONFIG || {};
   const wantAuth = !!(cfg.url && cfg.key);
   const sb = wantAuth && window.supabase ? window.supabase.createClient(cfg.url, cfg.key) : null;
+  const db = sb ? sb.schema('dsales') : null; // ข้อมูล Direct Sale ทั้งหมดอยู่ใน schema dsales (sb ใช้เฉพาะ auth)
   let authUser = null, started = false;
 
   function fillMe() {
@@ -950,26 +951,26 @@
   }
   const LIVE_ERR = { taken: 'ลูกค้ารายนี้มีคนจองไปแล้ว', no_call: 'ลูกค้ารายนี้ไม่สะดวกให้โทร', forbidden: 'ไม่มีสิทธิ์ทำรายการนี้', bill_required: 'ใส่เลขบิลก่อนปิดการขาย', not_found: 'ไม่พบข้อมูลรายการนี้', invalid_phone: 'เบอร์โทรของลูกค้าไม่ถูกต้อง', customer_not_found: 'ไม่พบลูกค้ารายนี้', invalid_user: 'ผู้ใช้ไม่ถูกต้อง', invalid_brand: 'ไม่ทราบแบรนด์ของการจอง' };
   async function mut(fn, args) {
-    const { data, error } = await sb.rpc(fn, args);
+    const { data, error } = await db.rpc(fn, args);
     if (error) { const k = Object.keys(LIVE_ERR).find(x => (error.message || '').includes(x)); throw new Error(k ? LIVE_ERR[k] : (error.message || 'ทำรายการไม่สำเร็จ')); }
     return data && typeof data === 'object' ? upsertLead(data) : null;
   }
   async function loadPurchases(l) {
-    try { const { data, error } = await sb.rpc('dsales_customer_purchases', { p_phone: l.phone }); l.purchases = error ? [] : data.map(x => ({ date: x.txn_date, bill: x.bill_no || x.order_no || '', sku: x.sku || '', product: x.product_name || '', amount: Number(x.amount || 0), seller: null })); l._pl = 'done'; } catch (e) { l._pl = 'done'; }
+    try { const { data, error } = await db.rpc('dsales_customer_purchases', { p_phone: l.phone }); l.purchases = error ? [] : data.map(x => ({ date: x.txn_date, bill: x.bill_no || x.order_no || '', sku: x.sku || '', product: x.product_name || '', amount: Number(x.amount || 0), seller: null })); l._pl = 'done'; } catch (e) { l._pl = 'done'; }
   }
   async function poolClaimLive(id) {
     const r = ui.pool.rows.find(x => x.id === id); if (!r) return;
     try {
       const l = await mut('dsales_claim_customer', { p_phone: r.phone, p_brand: ui.pool.brand || r.brands[0] || '' });
       closeModal(); ui.pool.loaded = false; route(); toast('จองแล้ว ลูกค้าย้ายเข้าหน้า Direct Sale ของคุณ');
-      let ch = []; try { const c = await sb.rpc('dsales_customer_channels', { p_phone: r.phone }); if (!c.error && c.data) ch = c.data.map(x => ({ platform: x.platform, shop: x.shop, chat: x.chat_name || '' })).sort(lineFirst); } catch (e) {}
+      let ch = []; try { const c = await db.rpc('dsales_customer_channels', { p_phone: r.phone }); if (!c.error && c.data) ch = c.data.map(x => ({ platform: x.platform, shop: x.shop, chat: x.chat_name || '' })).sort(lineFirst); } catch (e) {}
       l.channels = ch; l.chatName = r.chat || '';
       const c1 = channelsOf(l)[0]; if (c1) jstOpen(jstTarget(l, c1), { auto: true });
     } catch (err) { toast(err.message); ui.pool.loaded = false; route(); }
   }
   async function loadLive(user, nm, admin) {
-    const reg = await sb.rpc('dsales_register'); if (reg.error) throw reg.error;
-    const [t, c, ls] = await Promise.all([sb.rpc('dsales_team'), sb.from('dsales_campaigns').select('*').order('created_at'), sb.rpc('dsales_my_leads', { p_limit: 1000, p_offset: 0 })]);
+    const reg = await db.rpc('dsales_register'); if (reg.error) throw reg.error;
+    const [t, c, ls] = await Promise.all([db.rpc('dsales_team'), db.from('dsales_campaigns').select('*').order('created_at'), db.rpc('dsales_my_leads', { p_limit: 1000, p_offset: 0 })]);
     const bad = t.error || c.error || ls.error; if (bad) throw bad;
     const reps = t.data.map(r => ({ id: r.user_id, name: r.display_name || (r.email || '').split('@')[0], initials: (r.display_name || r.email || '?').slice(0, 2).toUpperCase(), role: r.role === 'admin' ? 'admin' : 'sales', email: r.email }));
     let meR = reps.find(r => r.id === user.id);
@@ -983,7 +984,7 @@
     authUser = user.email;
     let name = null, admin = null;
     try { // ชื่อจาก profiles ของพนักงาน สิทธิ์หัวหน้าจาก dsales_members (ฝั่ง Supabase)
-      const { data, error } = await sb.rpc('dsales_me');
+      const { data, error } = await db.rpc('dsales_me');
       if (!error && data && data[0]) { name = data[0].display_name; admin = !!data[0].is_admin; }
     } catch (e) {}
     if (admin === null) admin = user.email.toLowerCase() === 'dev@mpdgroup.co'; // สำรองเมื่อเรียกฟังก์ชันไม่ได้
