@@ -18,9 +18,11 @@ export function splitFunctions(sql) {
 }
 
 export function rewriteDef(def) {
-  return def
+  const out = def
     .replace(/\bpublic\.(dsales_\w+)/g, 'dsales.$1')
     .replace(/SET search_path TO 'public'/g, "SET search_path TO 'dsales', 'public'");
+  if (/public\.dsales_/i.test(out)) throw new Error('rewriteDef: leftover public.dsales_ reference');
+  return out;
 }
 
 export function buildMigration(baseline) {

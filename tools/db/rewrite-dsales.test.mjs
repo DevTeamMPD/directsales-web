@@ -46,7 +46,7 @@ test('buildMigration drops unused pool functions, moves tables and functions, th
   assert.match(sql, /create schema if not exists dsales;/);
   assert.match(sql, /drop function if exists public\.dsales_customer_pool\(p_search text, p_limit integer, p_offset integer\);/);
   for (const t of ['dsales_members', 'dsales_campaigns', 'dsales_leads', 'dsales_interactions']) {
-    assert.match(sql, new RegExp(`alter table public\.${t} set schema dsales;`));
+    assert.match(sql, new RegExp(`alter table public\\.${t} set schema dsales;`));
   }
   assert.match(sql, /set local search_path = dsales, public;/);
   assert.match(sql, /alter function public\.dsales_lead_json\(l dsales_leads\) set schema dsales;/);
@@ -60,4 +60,8 @@ test('buildMigration normalizes CRLF input to LF output', () => {
   const sql = buildMigration(BASELINE.replace(/\n/g, '\r\n'));
   assert.ok(!sql.includes('\r'));
   assert.match(sql, /alter function public\.dsales_lead_json\(l dsales_leads\) set schema dsales;/);
+});
+
+test('rewriteDef throws if a public.dsales_ reference survives the rewrite', () => {
+  assert.throws(() => rewriteDef('select PUBLIC.dsales_leads'), /public\.dsales_/i);
 });
