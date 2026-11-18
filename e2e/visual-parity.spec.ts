@@ -195,3 +195,234 @@ for (const s of SIZES) {
     });
   });
 }
+
+/* ---------- แผน B: หน้า /leads และ popup A–D ---------- */
+const DEMO_KEY = 'mpd-directsale-preview-v5';
+// ความต่างที่ตั้งใจ (spec ข้อ 2) และวิธีจัดการใน test นี้:
+// - .demo-note (หมายเหตุโหมดตัวอย่างบนหน้า Direct Sale) และ <div class="sub">ข้อมูลตัวอย่าง: …</div> ท้าย #chk-body
+//   ไม่มีในเว็บใหม่ → ซ่อน/ลบฝั่ง prototype ก่อนเก็บสถานะและถ่ายภาพ (LEGACY_DEMO_ONLY + remove ใน compareSteps)
+// - ช่องค้นหา #q: prototype วาดใหม่แล้วย้าย caret ไปท้ายทุกตัวอักษร เว็บใหม่คง caret ตามที่พิมพ์ — ไม่มีผลกับภาพ
+//   (test ไม่พิมพ์ในช่องค้นหา และถ่ายภาพด้วย caret: 'hide')
+// - โหมด fixture ไม่เขียนข้อมูล (แสดง toast แทน RPC) → test แค่เปิด popup / สลับแท็บ / เลือกตัวเลือก ไม่กดบันทึก
+const LEGACY_DEMO_ONLY = '.demo-note, #chk-body > div.sub { display: none !important; }';
+// PARITY_MEASURE=1 → maxDiffPixels = 0 ทุกภาพของแผน B เพื่ออ่านจำนวนพิกเซลที่ต่างจริงจากผลรัน (Step 6)
+const MEASURE = !!process.env.PARITY_MEASURE;
+// maxDiffPixels ต่อภาพที่ threshold 0.1 (ความต่าง anti-alias ของฟอนต์ CDN กับ next/font กระจายตามขอบตัวอักษร) ห้ามขยายเพื่อให้ผ่าน
+// วัด 3 รอบ 2026-11-18 (Chromium ของ Playwright 1.65.1): ค่าเท่ากันทุกรอบ ตั้ง = ค่าที่วัดได้ × 1.25 ปัดขึ้นหลัก 50 (ทุกภาพ < 0.5% ของพื้นที่)
+// ค่าที่วัดได้: view 11884/5571, topbar 81/57, customer-buy 1060/617, customer-talk 870/617, customer-nocall 993/785,
+// log-call 281/281, log-won 454/486, log-dnc 553/560, log-chat 314/320, unclaim 298/298, bucket 360/361 (desktop/mobile)
+const MAX_DIFF: Record<string, number> = {
+  'leads-view-desktop': 14900, 'leads-view-mobile': 7000, 'leads-topbar-desktop': 150, 'leads-topbar-mobile': 100,
+  'customer-buy-desktop': 1350, 'customer-buy-mobile': 800, 'customer-talk-desktop': 1100, 'customer-talk-mobile': 800,
+  'customer-nocall-desktop': 1250, 'customer-nocall-mobile': 1000,
+  'log-call-desktop': 400, 'log-call-mobile': 400, 'log-won-desktop': 600, 'log-won-mobile': 650,
+  'log-dnc-desktop': 700, 'log-dnc-mobile': 700, 'log-chat-desktop': 400, 'log-chat-mobile': 400,
+  'unclaim-desktop': 400, 'unclaim-mobile': 400, 'bucket-desktop': 450, 'bucket-mobile': 500,
+};
+const shot = (name: string) => ({ maxDiffPixels: MEASURE ? 0 : (MAX_DIFF[name] ?? 0), threshold: 0.1 }) as const;
+
+async function settleWork(page: Page) {
+  await page.mouse.move(0, 0); // ไม่ให้ :hover ของแถว/ปุ่มติดในภาพ
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+  });
+  await page.waitForTimeout(200);
+}
+
+/**
+ * .main เป็นกล่อง scroll สูงเท่าจอ (prototype.css) element screenshot ของ #view จึงได้แค่ส่วนที่อยู่ในจอ (~3 แถวแรก ที่เหลือว่าง)
+ * และ topbar (sticky) ทับขอบบน — ปลดให้ทั้งหน้ายาวตามเนื้อหาทั้งสองฝั่งเท่ากัน เพื่อให้ภาพครอบคลุมตารางครบ 28 แถว
+ */
+async function unclipView(page: Page) {
+  await page.addStyleTag({
+    content: 'html, body, .app, .main { height: auto !important; } .main { overflow: visible !important; } .topbar { position: static !important; }',
+  });
+  await settleWork(page);
+}
+
+/** prototype โหมดตัวอย่างที่หน้า Direct Sale; claim = ทำเหมือน Dev MPD จองลีดนั้น (แก้ state ใน localStorage แล้วโหลดใหม่) */
+async function openLegacyLeads(page: Page, claim?: string) {
+  await page.goto(LEGACY);
+  await page.locator('#l-demo').click();
+  await expect(page.locator('#login')).toBeHidden();
+  if (claim) {
+    await page.evaluate(({ key, id }) => {
+      const s = JSON.parse(localStorage.getItem(key) ?? '{}');
+      const l = s.leads.find((x: { id: string }) => x.id === id);
+      Object.assign(l, { owner: 'r4', claimedBy: 'r4', claimedAt: '2026-11-04T10:00' });
+      localStorage.setItem(key, JSON.stringify(s));
+    }, { key: DEMO_KEY, id: claim });
+    await page.reload();
+    await page.locator('#l-demo').click();
+    await expect(page.locator('#login')).toBeHidden();
+  }
+  await page.addStyleTag({ content: LEGACY_DEMO_ONLY });
+  await expect(page.locator('#view tbody tr')).toHaveCount(28);
+  await settleWork(page);
+}
+
+async function openAppLeads(page: Page, claim?: string) {
+  await page.goto(`${APP}/leads${claim ? `?claim=${claim}` : ''}`);
+  await expect(page.locator('#view tbody tr')).toHaveCount(28, { timeout: 60_000 });
+  if (INJECT) await page.addStyleTag({ content: INJECT });
+  await settleWork(page);
+}
+
+// ข้อความ/คลาส/สีของหน้า /leads เทียบตรงตัว (ภาพอาจไม่จับตัวเลขหรือสีที่ต่างเล็กน้อย)
+async function leadsText(page: Page) {
+  return page.evaluate(() => {
+    // innerText = ข้อความที่แสดงผลจริง: prototype สร้าง markup จาก template string จึงมี whitespace ระหว่าง block ที่ไม่แสดงผล
+    // (textContent ได้ "ชื่อ 08…") ส่วน JSX ไม่มี ("ชื่อ08…") ทั้งที่หน้าจอเหมือนกัน
+    const t = (el: Element | null) => ((el instanceof HTMLElement ? el.innerText : el?.textContent) ?? '').replace(/\s+/g, ' ').trim();
+    const cls = (el: Element) => (typeof el.className === 'string' ? el.className : '').split(/\s+/).filter(Boolean).join(' ');
+    const cs = (el: Element | null) => (el ? getComputedStyle(el) : null);
+    const view = document.querySelector('#view');
+    const all = (sel: string) => Array.from(view?.querySelectorAll(sel) ?? []);
+    return {
+      period: all('.period [data-pk]').map((b) => `${cls(b)}|${t(b)}`),
+      periodNote: t(view?.querySelector('.period > .sub') ?? null),
+      periodYear: all('#p-year option').map(t),
+      chips: all('[data-chip]').map((b) => ({ text: t(b), cls: cls(b), dot: cs(b.querySelector('.dot'))?.backgroundColor ?? null })),
+      selects: all('.toolbar select').map((s) => ({
+        id: s.id, options: Array.from((s as HTMLSelectElement).options).map((o) => o.text), value: (s as HTMLSelectElement).value,
+      })),
+      search: (view?.querySelector('#q') as HTMLInputElement | null)?.placeholder ?? null,
+      head: all('thead th').map(t),
+      // ความกว้างคอลัมน์: บนมือถือตารางล้นจอ (table-wrap เลื่อนแนวนอน) ภาพเห็นแค่ 2–3 คอลัมน์แรก
+      cols: all('thead th').map((th) => Math.round(th.getBoundingClientRect().width * 10) / 10),
+      rows: all('tbody tr').map((tr) => Array.from(tr.children).map(t)),
+      badges: all('tbody .badge').map((b) => ({ cls: cls(b), bg: cs(b)?.backgroundColor, color: cs(b)?.color })),
+      actions: all('tbody .actions').map((a) => Array.from(a.children).map((b) => `${cls(b)}|${t(b)}`)),
+      icons: all('tbody .ch-bar').map((bar) => Array.from(bar.querySelectorAll('img')).map((i) => i.getAttribute('alt'))),
+      topbar: Array.from(document.querySelectorAll('#topbar-actions > *')).map((b) => `${cls(b)}|${t(b)}`),
+    };
+  });
+}
+
+// สถานะของ popup ที่เปิดอยู่: ข้อความทั้งหมด, ค่าในช่องกรอก, [hidden], ปุ่ม, element ที่ถูก focus
+async function modalState(page: Page) {
+  return page.evaluate(() => {
+    // innerText เหมือน leadsText (ข้อความที่แสดงผลจริง)
+    const t = (el: Element | null) => ((el instanceof HTMLElement ? el.innerText : el?.textContent) ?? '').replace(/\s+/g, ' ').trim();
+    const cls = (el: Element) => (typeof el.className === 'string' ? el.className : '').split(/\s+/).filter(Boolean).join(' ');
+    const m = document.querySelector('.modal');
+    const all = (sel: string) => Array.from(m?.querySelectorAll(sel) ?? []);
+    const active = document.activeElement;
+    return {
+      cls: m ? cls(m) : null,
+      text: t(m),
+      // เนื้อหาทั้งหมดรวมส่วนที่ซ่อนอยู่ (innerText ข้าม [hidden]) ตัด whitespace ทิ้ง เทียบเนื้อหาโดยไม่ขึ้นกับการจัด markup
+      source: (m?.textContent ?? '').replace(/\s+/g, ''),
+      fields: all('input, select, textarea').map((el) => {
+        const f = el as HTMLInputElement;
+        return { id: f.id, value: f.value, disabled: f.disabled, shown: !f.closest('[hidden]') };
+      }),
+      hidden: all('[id]').map((el) => `${el.id}:${(el as HTMLElement).hidden}`),
+      buttons: all('button, a.ch-btn').map((b) => `${cls(b)}|${t(b)}|${b.getAttribute('title') ?? ''}|${(b as HTMLButtonElement).disabled ?? ''}`),
+      focused: active && m?.contains(active) ? active.id || cls(active) : null,
+      // สี/ขนาดตัวอักษรที่ภาพ (threshold 0.1) อาจไม่จับเมื่อต่างเล็กน้อย เช่นสีแท็บที่เลือก, badge, ปุ่ม, หัว popup
+      styles: all('.modal-h h3, .tab, .badge, .tag, .btn, .seg button, label').map((el) => {
+        const c = getComputedStyle(el);
+        return `${el.tagName}.${cls(el)}|${c.color}|${c.backgroundColor}|${c.fontSize}|${c.fontWeight}|${c.letterSpacing}`;
+      }),
+    };
+  });
+}
+
+type Step = { name: string; act: (page: Page) => Promise<void> };
+
+/** ปิด popup เดิม (ถ้ามี) แล้วคลิก selector และรอ ready */
+const press = (selector: string, ready: string) => async (page: Page) => {
+  await page.keyboard.press('Escape');
+  await page.locator(selector).click();
+  await expect(page.locator(ready).first()).toBeVisible();
+};
+const openCustomer = (id: string) => press(`[data-act=open][data-id=${id}]`, '#chk-body .badge');
+const customerTab = (tab: 'buy' | 'talk') => async (page: Page) => {
+  await page.locator(`.modal [data-tab=${tab}]`).click();
+  await expect(page.locator(`.modal .tab.active[data-tab=${tab}]`)).toBeVisible();
+  await page.waitForTimeout(150); // รอรอบตรวจแชตใหม่หลังสลับแท็บ
+  await expect(page.locator('#chk-body .badge')).toBeVisible();
+};
+const openLog = (id: string) => press(`[data-act=log][data-id=${id}]`, '#log-form');
+const logStatus = (value: string) => async (page: Page) => {
+  await page.locator('#f-status').selectOption(value);
+};
+
+/** ทำ steps กับ prototype (เก็บสถานะ + ถ่าย baseline) แล้วทำซ้ำกับ Next และเทียบทีละ step */
+async function compareSteps(page: Page, steps: Step[], opts: { claim?: string; view?: boolean } = {}) {
+  await openLegacyLeads(page, opts.claim);
+  const view = opts.view ? await leadsText(page) : null;
+  const legacy: Awaited<ReturnType<typeof modalState>>[] = [];
+  for (const st of steps) {
+    await st.act(page);
+    await page.evaluate(() => document.querySelector('#chk-body > div.sub')?.remove());
+    await settleWork(page);
+    legacy.push(await modalState(page));
+    await shootLegacy(page, st.name, '.modal');
+  }
+  await openAppLeads(page, opts.claim);
+  if (view) expect(await leadsText(page)).toEqual(view);
+  for (const [i, st] of steps.entries()) {
+    await st.act(page);
+    await settleWork(page);
+    expect.soft(await modalState(page), st.name).toEqual(legacy[i]);
+    await expect.soft(page.locator('.modal')).toHaveScreenshot(`${st.name}.png`, shot(st.name));
+  }
+}
+
+for (const s of SIZES) {
+  test.describe(`leads ${s.tag} ${s.width}x${s.height}`, () => {
+    test.use({ viewport: { width: s.width, height: s.height } });
+
+    test('leads page matches the prototype', async ({ page }) => {
+      await openLegacyLeads(page);
+      const legacy = await leadsText(page);
+      expect(legacy.rows).toHaveLength(28);
+      expect(legacy.chips.length).toBe(10);
+      await shootLegacy(page, `leads-topbar-${s.tag}`, '.topbar');
+      await unclipView(page);
+      await shootLegacy(page, `leads-view-${s.tag}`, '#view');
+      await openAppLeads(page);
+      expect(await leadsText(page)).toEqual(legacy);
+      await expect.soft(page.locator('.topbar')).toHaveScreenshot(`leads-topbar-${s.tag}.png`, shot(`leads-topbar-${s.tag}`));
+      await unclipView(page);
+      await expect.soft(page.locator('#view')).toHaveScreenshot(`leads-view-${s.tag}.png`, shot(`leads-view-${s.tag}`));
+    });
+
+    test('customer modal matches the prototype (both tabs)', async ({ page }) => {
+      await compareSteps(page, [
+        { name: `customer-buy-${s.tag}`, act: openCustomer('L1014') },
+        { name: `customer-talk-${s.tag}`, act: customerTab('talk') },
+        {
+          name: `customer-nocall-${s.tag}`,
+          act: async (p) => {
+            await openCustomer('L1011')(p);
+            await customerTab('talk')(p);
+          },
+        },
+      ]);
+    });
+
+    test('log modal matches the prototype (call and chat)', async ({ page }) => {
+      await compareSteps(page, [
+        { name: `log-call-${s.tag}`, act: openLog('L1014') },
+        { name: `log-won-${s.tag}`, act: logStatus('won') },
+        { name: `log-dnc-${s.tag}`, act: logStatus('dnc') },
+        { name: `log-chat-${s.tag}`, act: openLog('L1011') },
+      ]);
+    });
+
+    test('unclaim confirm matches the prototype', async ({ page }) => {
+      await compareSteps(page, [{ name: `unclaim-${s.tag}`, act: press('[data-act=unclaim][data-id=L1002]', '#unclaim-ok') }], { claim: 'L1002', view: true });
+    });
+
+    test('pick-from-bucket matches the prototype and opens the brand pool', async ({ page }) => {
+      await compareSteps(page, [{ name: `bucket-${s.tag}`, act: press('#add-lead', '[data-open-bucket=bebeplay]') }]);
+      await page.locator('[data-open-bucket=bebeplay]').click();
+      await expect(page).toHaveURL(`${APP}/campaigns/bebeplay`);
+      await expect(page.locator('#page-title')).toHaveText('แคมเปญ Bebeplay');
+      await expect(page.locator('#modal-root')).toBeHidden();
+    });
+  });
+}

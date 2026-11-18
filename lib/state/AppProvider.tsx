@@ -74,7 +74,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_FIXTURES === '1') {
           const { fixturePayload } = await import('@/lib/fixtures/load');
-          action = { type: 'loaded', payload: fixturePayload() };
+          action = { type: 'loaded', payload: fixturePayload(window.location.search) };
         } else {
           action = await loadLive();
         }
