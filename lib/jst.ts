@@ -177,6 +177,15 @@ export function nextChatCheck(prev: ChatCheck | null | undefined, res: ChatCheck
 export const verifyTodo = (leads: ReadonlyArray<Lead>, meId: string): Lead[] =>
   leads.filter((l) => l.owner === meId && l.claimedAt && !l.chatCheck?.sent && !l.noCall).slice(0, 10);
 
+/** เว้นระยะขั้นต่ำระหว่างรอบตรวจชุดลีดเดิม (กันยิง RPC ถี่บนฐานข้อมูล production ที่ใช้ร่วมกับระบบอื่น) */
+export const VERIFY_MIN_INTERVAL_MS = 30_000;
+
+/** ควรเริ่มรอบตรวจใหม่หรือไม่: ล็อกอินจริง + มีรายต้องตรวจ + ไม่มีรอบที่กำลังรัน; ชุดลีดเปลี่ยน = รันทันที, ชุดเดิม = ต้องห่างอย่างน้อย 30 วินาที */
+export function shouldStartVerify(a: { live: boolean; key: string; lastKey: string; lastRunAt: number; now: number; verifying: boolean }): boolean {
+  if (!a.live || !a.key || a.verifying) return false;
+  return a.key !== a.lastKey || a.now - a.lastRunAt >= VERIFY_MIN_INTERVAL_MS;
+}
+
 /** L472-478: ตรวจทีละรายตามลำดับ ข้ามรายที่ error คืนเฉพาะรายที่เปลี่ยนจากยังไม่ทักเป็นทักแล้ว */
 export async function runVerify(
   todo: ReadonlyArray<Lead>, check: (l: Lead) => Promise<ChatCheckResult>, at: () => string,

@@ -6,7 +6,7 @@ vi.mock('@/lib/supabase/client', () => ({ db: () => ({ rpc }) }));
 import type { ChatSessionJson, Lead } from '@/lib/api/types';
 import { fixturePayload } from '@/lib/fixtures/load';
 import {
-  chatAria, chatCheckFor, chatCheckView, channelsOf, chatTitle, jstOpen, jstTarget, JST_TIMEOUT_MS, localChatCheck, nextChatCheck, platformOf,
+  chatAria, chatCheckFor, chatCheckView, channelsOf, chatTitle, jstOpen, jstTarget, JST_TIMEOUT_MS, localChatCheck, nextChatCheck, platformOf, shouldStartVerify,
   runVerify, summarizeChats, verifyTodo, type ChatCheckResult, type JstDeps, type JstTarget,
 } from './jst';
 
@@ -173,6 +173,16 @@ describe('chat check (prototype L438-479)', () => {
     expect(v.detail).toContain('ล่าสุด 17/11/2026 15:00');
     expect(v.sessions[0].meta).toContain('ล่าสุด เซลล์ 17/11/2026 15:00');
     expect(v.sessions[1].meta).toContain('ล่าสุด 17/11/2026 08:00');
+  });
+  it('shouldStartVerify: live only, never overlapping, 30 s gap only for an unchanged set', () => {
+    const base = { live: true, key: 'a,b', lastKey: '', lastRunAt: 0, now: 1_000_000, verifying: false };
+    expect(shouldStartVerify(base)).toBe(true);
+    expect(shouldStartVerify({ ...base, live: false })).toBe(false);
+    expect(shouldStartVerify({ ...base, key: '' })).toBe(false);
+    expect(shouldStartVerify({ ...base, verifying: true })).toBe(false);
+    expect(shouldStartVerify({ ...base, lastKey: 'a,b', lastRunAt: base.now - 29_999 })).toBe(false);
+    expect(shouldStartVerify({ ...base, lastKey: 'a,b', lastRunAt: base.now - 30_000 })).toBe(true);
+    expect(shouldStartVerify({ ...base, lastKey: 'a', lastRunAt: base.now - 1 })).toBe(true);
   });
   it('nextChatCheck marks the table dirty only when "sent" changes (ui.dirtyRows)', () => {
     const res = summarizeChats(SESSIONS);
