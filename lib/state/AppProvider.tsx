@@ -57,7 +57,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (async () => {
       let action: Action | null;
       try {
-        action = await loadLive();
+        if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_FIXTURES === '1') {
+          const { fixturePayload } = await import('@/lib/fixtures/load');
+          action = { type: 'loaded', payload: fixturePayload() };
+        } else {
+          action = await loadLive();
+        }
       } catch (e) {
         action = { type: 'failed', error: `โหลดข้อมูลจาก Supabase ไม่สำเร็จ: ${e instanceof Error ? e.message : String(e)}` };
       }
@@ -83,7 +88,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ออกจากระบบแล้วโหลดหน้าใหม่ทั้งหน้า (prototype L1005)
   const logout = useCallback(async () => {
-    await supabase().auth.signOut();
+    if (!(process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_FIXTURES === '1')) await supabase().auth.signOut();
     window.location.href = '/login';
   }, []);
 
