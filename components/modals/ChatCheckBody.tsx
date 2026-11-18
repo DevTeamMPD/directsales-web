@@ -10,11 +10,18 @@ import { useActions, useAppState } from '@/lib/state/AppProvider';
 /**
  * เนื้อหา #chk-body: ตรวจใหม่ทุกครั้งที่ runKey เปลี่ยน (prototype ตรวจใหม่ทุกครั้งที่วาด popup: เปิด, สลับแท็บ, ประวัติซื้อโหลดเสร็จ, กดตรวจอีกครั้ง)
  * ผลตรวจเก็บไว้ใน ref แล้ว patchLead ตอน popup ปิด เฉพาะเมื่อ "ทักแชทแล้ว" เปลี่ยน = ui.dirtyRows (ตารางวาดใหม่ตอนปิด popup)
+ * blankKey เปลี่ยน (= prototype เปิด popup ใหม่) → วาด #chk-body ว่างก่อน แล้วค่อย "กำลังตรวจ…" ใน effect เหมือน openModal → renderChatCheck
  */
-export function ChatCheckBody({ lead, runKey }: { lead: Lead; runKey: string }) {
+export function ChatCheckBody({ lead, runKey, blankKey }: { lead: Lead; runKey: string; blankKey: string }) {
   const { live, reps, today } = useAppState();
   const { patchLead } = useActions();
-  const [view, setView] = useState<ChatCheckView | null>(null);
+  // undefined = ว่าง (popup เพิ่งวาด), null = กำลังตรวจ
+  const [view, setView] = useState<ChatCheckView | null | undefined>(undefined);
+  const [blank, setBlank] = useState(blankKey);
+  if (blank !== blankKey) {
+    setBlank(blankKey);
+    setView(undefined);
+  }
   const box = useRef<{ dirty: boolean; pending: ChatCheck | null }>({ dirty: false, pending: null });
 
   useEffect(() => {
@@ -62,9 +69,9 @@ export function ChatCheckBody({ lead, runKey }: { lead: Lead; runKey: string }) 
             </ul>
           ) : null}
         </>
-      ) : (
+      ) : view === null ? (
         <span className="sub">กำลังตรวจจาก JST…</span>
-      )}
+      ) : null}
     </div>
   );
 }

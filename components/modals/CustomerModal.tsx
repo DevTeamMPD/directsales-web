@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChannelRow, ContactBar } from '@/components/leads/ContactBar';
 import { CloseButton } from '@/components/ui/CloseButton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -46,11 +46,15 @@ function CustomerDetail({ lead: l }: { lead: Lead }) {
   const lastBuy = l.lastBuy || l.purchases[0]?.date;
   const hist = [...l.interactions].sort((a, b) => b.date.localeCompare(a.date));
   const logType = l.noCall ? 'chat' : 'call';
-  // prototype สลับแท็บด้วยการเปิด popup ใหม่ → โฟกัสปุ่มแรก (#chk-refresh) และตรวจแชตใหม่
-  const switchTab = (t: Tab) => {
-    setTab(t);
+  const plDone = l._pl === 'done';
+  // prototype สลับแท็บ / โหลดประวัติซื้อเสร็จ ด้วยการเปิด popup ใหม่ (L515, L483): popup ใหม่เริ่มบนสุด, #chk-body ยังว่าง
+  // แล้วโฟกัสปุ่มแรก (#chk-refresh) ซึ่งเลื่อน popup ตามตำแหน่งปุ่มและความสูงเนื้อหาขณะนั้น → ทำใน layout effect หลังวาดแท็บใหม่
+  // (ChatCheckBody ล้าง #chk-body ให้ว่างตอน blankKey เปลี่ยน) ตำแหน่งเลื่อนบนมือถือจึงเท่า prototype
+  useLayoutEffect(() => {
+    refreshRef.current?.closest('.modal')?.scrollTo(0, 0);
     refreshRef.current?.focus();
-  };
+  }, [tab, plDone]);
+  const switchTab = (t: Tab) => setTab(t);
   const copyPhone = () => {
     navigator.clipboard?.writeText(l.phone).then(() => toast('คัดลอกเบอร์แล้ว'), () => toast(l.phone));
   };
@@ -86,7 +90,7 @@ function CustomerDetail({ lead: l }: { lead: Lead }) {
             <b>การทักแชท (ตรวจจาก JST)</b>
             <button type="button" className="btn sm" id="chk-refresh" ref={refreshRef} onClick={() => setChecks((n) => n + 1)}>ตรวจอีกครั้ง</button>
           </div>
-          <ChatCheckBody lead={l} runKey={`${tab}|${l._pl === 'done'}|${checks}`} />
+          <ChatCheckBody lead={l} blankKey={`${tab}|${plDone}`} runKey={`${tab}|${plDone}|${checks}`} />
         </div>
         <div className="tabs" role="tablist">
           <button className={`tab ${tab === 'buy' ? 'active' : ''}`} data-tab="buy" onClick={() => switchTab('buy')}>
