@@ -124,7 +124,9 @@ function ClaimCell({ l, mode, ctx }: { l: Lead; mode?: ClaimMode; ctx: RowCtx })
       aria-label="มอบหมายให้"
       defaultValue=""
       onChange={(e) => {
-        if (e.target.value) void ctx.act.assign(l.id, e.target.value);
+        const sel = e.currentTarget;
+        // มอบหมายไม่สำเร็จ/โหมด fixture: คืนช่องเลือกเป็นค่าว่างเหมือน prototype ที่วาดตารางใหม่ (route())
+        if (sel.value) void ctx.act.assign(l.id, sel.value).finally(() => { if (sel.isConnected) sel.value = ''; });
       }}
     >
       <option value="">มอบหมายให้…</option>
