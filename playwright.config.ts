@@ -24,7 +24,7 @@ export default defineConfig({
     {
       command: 'npx next dev -p 3100 -H 127.0.0.1',
       url: 'http://127.0.0.1:3100/login',
-      reuseExistingServer: false,
+      reuseExistingServer: !process.env.CI,
       timeout: 180_000,
       env: { NEXT_PUBLIC_FIXTURES: '1' },
     },
