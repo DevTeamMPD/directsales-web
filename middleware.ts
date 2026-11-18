@@ -18,7 +18,8 @@ export async function middleware(request: NextRequest) {
 
   // getUser() ต่ออายุ session ใน cookie (ห้ามมีโค้ดอื่นคั่นระหว่าง createServerClient กับบรรทัดนี้)
   const { data: { user } } = await supabase.auth.getUser();
-  const onLogin = request.nextUrl.pathname.startsWith('/login');
+  const path = request.nextUrl.pathname;
+  const onLogin = path === '/login' || path.startsWith('/login/');
   if (!user && !onLogin) return redirectKeepingCookies(request, response, '/login');
   if (user && onLogin) return redirectKeepingCookies(request, response, '/leads');
   return response;
@@ -34,5 +35,5 @@ function redirectKeepingCookies(request: NextRequest, from: NextResponse, pathna
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|woff2?)$).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|woff2?)$).*)'],
 };
