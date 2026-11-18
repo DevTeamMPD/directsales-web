@@ -1,0 +1,82 @@
+import { PAGE, type Brand, type ClaimMode, type Role } from '@/lib/constants';
+import { normalizeSearchPhone } from '@/lib/phone';
+import { db } from '@/lib/supabase/client';
+import { toThaiError } from './errors';
+import { rowsTotal } from './map';
+import type {
+  CampaignRow, ChannelRowJson, ChatSessionJson, ContactType, JstTagRow, LeadJson, LeadStatus, MeRow, MemberJson, MemberTagsRow,
+  NewCampaign, PoolRowJson, PurchaseRowJson, TeamRow,
+} from './types';
+
+type Result<T> = { data: T | null; error: { message: string } | null };
+
+function unwrap<T>({ data, error }: Result<T>): T {
+  if (error) throw new Error(toThaiError(error.message));
+  return data as T;
+}
+
+async function call<T>(fn: string, args?: Record<string, unknown>): Promise<T> {
+  return unwrap<T>(await db().rpc(fn, args));
+}
+
+/* ---------- ตัวตน / ทีม ---------- */
+export async function getMe(): Promise<MeRow | null> {
+  const rows = await call<MeRow[]>('dsales_me');
+  return rows?.[0] ?? null;
+}
+export const getTeam = () => call<TeamRow[]>('dsales_team');
+export const addMember = (email: string, role: Role) => call<MemberJson>('dsales_add_member', { p_email: email.trim(), p_role: role });
+export async function setMemberActive(userId: string, active: boolean): Promise<void> {
+  await call<null>('dsales_set_member_active', { p_user: userId, p_active: active });
+}
+export const getJstAdminTags = () => call<JstTagRow[]>('dsales_jst_admin_tags');
+export const getMemberTags = () => call<MemberTagsRow[]>('dsales_member_tags');
+export const setMemberTags = (userId: string, tags: string[]) => call<string[]>('dsales_set_member_tags', { p_user: userId, p_tags: tags });
+
+/* ---------- ลีด ---------- */
+export const getMyLeads = (limit = 1000, offset = 0) => call<LeadJson[]>('dsales_my_leads', { p_limit: limit, p_offset: offset });
+export const claimLead = (leadId: string) => call<LeadJson>('dsales_claim_lead', { p_lead: leadId });
+export const unclaimLead = (leadId: string) => call<LeadJson>('dsales_unclaim_lead', { p_lead: leadId });
+export const assignLead = (leadId: string, userId: string) => call<LeadJson>('dsales_assign_lead', { p_lead: leadId, p_user: userId });
+export const setNoCall = (leadId: string, on: boolean) => call<LeadJson>('dsales_set_nocall', { p_lead: leadId, p_on: on });
+export interface LogInput {
+  leadId: string; type: ContactType; result: string; note: string; status: LeadStatus;
+  callback: string | null; interest: string; bills: string[]; amount: number | null;
+}
+export const logContact = (x: LogInput) =>
+  call<LeadJson>('dsales_log', {
+    p_lead: x.leadId, p_type: x.type, p_result: x.result, p_note: x.note, p_status: x.status,
+    p_callback: x.callback, p_interest: x.interest, p_bills: x.bills, p_amount: x.amount,
+  });
+
+/* ---------- ลูกค้า / ถัง ---------- */
+export const claimCustomer = (phone: string, brand: Brand) => call<LeadJson>('dsales_claim_customer', { p_phone: phone, p_brand: brand });
+export async function getPoolGrandTotal(brand: Brand | null): Promise<number> {
+  return rowsTotal(await call<PoolRowJson[]>('dsales_customer_pool_v3', { p_limit: 1, p_offset: 0, p_brand: brand || null }));
+}
+export interface PoolQuery { search?: string | null; limit?: number; offset?: number; brand?: Brand | null; from?: string | null; to?: string | null }
+export const getCustomerPool = (q: PoolQuery) =>
+  call<PoolRowJson[]>('dsales_customer_pool_v4', {
+    p_search: q.search?.trim() || null, p_limit: q.limit ?? PAGE, p_offset: q.offset ?? 0, p_brand: q.brand || null,
+    ...(q.from || q.to ? { p_from: q.from || null, p_to: q.to || null } : {}),
+  });
+export type BaseScope = 'mine' | 'pool' | 'team';
+export const getBaseCustomers = (scope: BaseScope, q: Omit<PoolQuery, 'from' | 'to'>) =>
+  call<PoolRowJson[]>('dsales_base_customers', {
+    p_scope: scope, p_search: normalizeSearchPhone(q.search ?? '') || null, p_limit: q.limit ?? PAGE, p_offset: q.offset ?? 0, p_brand: q.brand || null,
+  });
+export const getCustomerPurchases = (phone: string) => call<PurchaseRowJson[]>('dsales_customer_purchases', { p_phone: phone });
+export const getCustomerChannels = (phone: string) => call<ChannelRowJson[]>('dsales_customer_channels', { p_phone: phone });
+export const getCustomerChats = (phone: string, sinceIso: string | null) =>
+  call<ChatSessionJson[]>('dsales_customer_chats', { p_phone: phone, p_since: sinceIso });
+
+/* ---------- แคมเปญ (ตาราง) ---------- */
+export async function listCampaigns(): Promise<CampaignRow[]> {
+  return unwrap<CampaignRow[]>(await db().from('dsales_campaigns').select('*').order('created_at'));
+}
+export async function createCampaign(input: NewCampaign): Promise<CampaignRow> {
+  return unwrap<CampaignRow>(await db().from('dsales_campaigns').insert(input).select().single());
+}
+export async function setCampaignClaimMode(id: string, mode: ClaimMode): Promise<void> {
+  unwrap(await db().from('dsales_campaigns').update({ claim_mode: mode }).eq('id', id));
+}
