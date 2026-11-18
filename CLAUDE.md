@@ -129,9 +129,15 @@ TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtu
 4. **TypeScript strict** ห้าม `any`; logic ที่ทดสอบได้อยู่ใน `lib/` เป็นฟังก์ชันล้วนพร้อม `*.test.ts` (เขียน test ก่อน)
 5. **Client Component** เฉพาะส่วนที่มี state/effect; state กลางอยู่ใน `AppProvider` (`useApp()`)
 6. **Commit:** ข้อความอังกฤษแบบ conventional (`feat(web): …`, `feat(db): …`) จบด้วยบรรทัดว่าง + `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` ผู้เขียน git = DevTeamMPD ห้าม push/merge หรือเปลี่ยนการตั้งค่า Vercel โดยไม่ถามผู้ใช้
+7. **ห้าม push branch หลัก (`claude/serene-meitner-cprt82`) จนกว่าจะถึงขั้น deploy ของแผน C:** Vercel deploy จาก branch นี้ และโค้ดในเครื่องย้าย `index.html` ไป `legacy/` แล้ว push ก่อนเวลา = เว็บบน Vercel พังจนกว่าจะเปลี่ยน Framework Preset เป็น Next.js
+8. **Tailwind:** ห้ามใช้ utility ที่ชื่อชนกับ class ของ prototype (มีใน `blocklist` ของ `tailwind.config.ts` เช่น `outline`) เจอชื่อชนเพิ่มให้เพิ่มใน blocklist
+9. อย่ารัน `npm run test:e2e` ขณะเปิด `npm start` อยู่ (ใช้ `.next` ร่วมกัน)
 
 ## งานค้างเล็กน้อยสำหรับแผน B
 
 - แยก context ของแอปเป็นส่วน actions ที่คงที่ กับส่วน toast/modal state ก่อนทำตารางใหญ่ (กัน re-render ทั้งตาราง)
 - เคลียร์ timer ของ toast ตอน unmount
 - พอร์ตพฤติกรรม `ui.dirtyRows` ของ legacy (re-render แถวหลังปิด modal เช็กแชต)
+- error จาก RPC ระหว่างใช้งานหน้า ให้แสดงด้วย `toast` ไม่ใช้ action `failed` (ซึ่งแทนทั้ง Shell ด้วยการ์ด error)
+- `AppProvider` (`loadLive`): ถ้า `getUser()` ล้มเพราะเครือข่าย ห้าม redirect ไป `/login` (อาจวนกับ middleware) ให้แสดงการ์ด "โหลดไม่สำเร็จ" แทน — redirect เฉพาะเมื่อไม่มี session จริง
+- `docs/DATABASE.md` และ `README.md` ยังอธิบายโครงสร้างเดิม (public/`index.html`/ลงทะเบียนอัตโนมัติ) ต้องอัปเดตในแผน C
