@@ -34,6 +34,14 @@ describe('upsertLead', () => {
     expect(l._pl).toBe('done');
     expect(l.chatCheck).toEqual({ at: '2026-11-04T09:10', sent: true, count: 2 });
   });
+  it('drops chatCheck when the lead is unclaimed or claimed by someone else, keeps it for same owner', () => {
+    const cc = { at: '2026-11-04T09:10', sent: true, count: 2 };
+    const old = { ...mapLead(leadJson({ owner: 'u1' })), chatCheck: cc };
+    expect(upsertLead([old], leadJson({ owner: null }))[0].chatCheck).toBeUndefined();
+    expect(upsertLead([old], leadJson({ owner: 'u2' }))[0].chatCheck).toBeUndefined();
+    expect(upsertLead([old], leadJson({ owner: 'u1', claimedAt: '2026-11-05T02:00:00+00:00' }))[0].chatCheck).toBeUndefined();
+    expect(upsertLead([old], leadJson({ owner: 'u1', status: 'won' }))[0].chatCheck).toEqual(cc);
+  });
   it('does not mutate the input array', () => {
     const list = [mapLead(leadJson())];
     const copy = [...list];

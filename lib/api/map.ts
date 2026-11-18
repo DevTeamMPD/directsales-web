@@ -29,7 +29,9 @@ export function upsertLead(leads: Lead[], j: LeadJson): Lead[] {
   if (i < 0) return [m, ...leads];
   const o = leads[i];
   const next = leads.slice();
-  next[i] = { ...m, purchases: o.purchases, _pl: o._pl, chatCheck: o.chatCheck };
+  // ผลตรวจแชตผูกกับการจอง: เปลี่ยนเจ้าของ/จองใหม่/ยกเลิกจอง → ทิ้ง (prototype ล้าง chatCheck ตอน claim/unclaim L102, L713)
+  const sameClaim = m.owner === o.owner && m.claimedAtIso === o.claimedAtIso;
+  next[i] = { ...m, purchases: o.purchases, _pl: o._pl, chatCheck: sameClaim ? o.chatCheck : undefined };
   return next;
 }
 
