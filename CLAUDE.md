@@ -59,7 +59,7 @@ docs/                           # spec, plan, DATABASE.md
 ดึงข้อมูลฝั่ง client เป็นหลักเหมือน prototype: ทุก RPC เรียกผ่าน `lib/api/rpc.ts` (โยน `Error` ข้อความไทยจาก `toThaiError`) และหลังแก้ข้อมูลให้ `upsertLead(lead)` แทนการโหลดใหม่ทั้งหน้า แล้ว `dispatch({ type: 'invalidatePool' })` (ถังลูกค้าโหลดใหม่ = `ui.pool.loaded = false` ของ prototype)
 - component ที่ไม่ต้องอ่าน state ใช้ `useActions()` (คงที่ ไม่ re-render) อ่าน state ด้วย `useAppState()`; toast/modal อยู่คนละ context
 - error ระหว่างใช้งานหน้าแสดงด้วย `toastError(e)` เท่านั้น (reducer ไม่รับ `failed` หลัง phase `ready`)
-- ตรวจแชตอัตโนมัติ (`useVerifyMine`) ตั้งใจให้รันเฉพาะตอนเข้าหน้า / เมื่อชุดลีดที่ต้องตรวจเปลี่ยน และไม่ถี่กว่าทุก 30 วินาที ห้ามแก้กลับเป็นตรวจทุกครั้งที่ render (ฐานข้อมูล production ใช้ร่วมกัน)
+- ตรวจแชตอัตโนมัติ (`useVerifyMine`) ตั้งใจให้รันเฉพาะตอนเข้าหน้า / เมื่อชุดลีดที่ต้องตรวจเปลี่ยน โดยชุดลีดเดิมต้องห่างกันอย่างน้อย 30 วินาที ส่วนชุดที่เปลี่ยนรันทันที (รอรอบที่กำลังรันจบก่อน) ห้ามแก้กลับเป็นตรวจทุกครั้งที่ render (ฐานข้อมูล production ใช้ร่วมกัน)
 
 ## Supabase (ใช้ร่วมกับระบบอื่น — ระวัง)
 
@@ -152,3 +152,7 @@ TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtu
 - `docs/DATABASE.md` และ `README.md` ยังอธิบายโครงสร้างเดิม (public/`index.html`/ลงทะเบียนอัตโนมัติ) ต้องอัปเดต
 - หน้าแคมเปญใช้ `LeadTable` กับ `opts.mode` / `opts.perCamp` (ปุ่มจอง + `maxPerRep` + เปิด JST อัตโนมัติ, select มอบหมาย มีแล้ว) และโหลดถังใหม่เมื่อ `state.poolVersion` เปลี่ยน; ถ้า `ui.focusSearch` เป็นจริงให้ล้างคำค้นถัง โฟกัสช่อง `#pool-q` จนโหลดเสร็จแล้วตั้งกลับเป็น false
 - รายการแผน C ที่เหลือ (แคมเปญ/ถังลูกค้า/popup E,F/Dashboard/ตั้งค่า/`/mine`/`/pool`/รอบมือถือ/deploy) ดู "สิ่งที่แผนนี้ยังไม่ทำ" ใน `docs/superpowers/plans/2026-11-18-nextjs-plan-b-leads.md`
+- กันกดซ้ำ (double-click) ยังไม่มีใน `restoreNoCall` / `claim` / `assign` (ปุ่ม claim สำคัญที่สุดตอนทำถังลูกค้า) ให้ใช้ ref `busy` แบบเดียวกับ LogModal / ConfirmUnclaimModal
+- LogModal: ถ้า RPC สำเร็จแค่บางขั้น (เช่น logContact ผ่านแต่ setNoCall/unclaim ล้ม) แล้วกดบันทึกซ้ำ จะบันทึกประวัติซ้ำ 2 รอบ
+- error จากเครือข่าย (fetch ล้ม / offline) ยังไม่ถูกแปลเป็นข้อความไทยใน `toThaiError`
+- `today` (`useAppState().today`) ตั้งครั้งเดียวตอนโหลดหน้า ถ้าเปิดค้างข้ามเที่ยงคืนจะยังเป็นวันเดิม
