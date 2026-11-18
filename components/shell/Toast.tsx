@@ -1,8 +1,8 @@
 'use client';
 
-import { useApp } from '@/lib/state/AppProvider';
+import { useToastMsg } from '@/lib/state/AppProvider';
 
 export function Toast() {
-  const { toastMsg } = useApp();
-  return <div className="toast" id="toast" hidden={!toastMsg}>{toastMsg}</div>;
+  const msg = useToastMsg();
+  return <div className="toast" id="toast" hidden={!msg}>{msg}</div>;
 }

@@ -27,3 +27,9 @@ export function toThaiError(message: string | null | undefined): string {
   }
   return msg || 'ทำรายการไม่สำเร็จ';
 }
+
+/** ข้อความของ error ที่ catch ได้ (rpc.ts โยน Error ข้อความไทยแล้ว) สำหรับ toast */
+export function errorMessage(e: unknown): string {
+  const msg = e instanceof Error ? e.message : e == null ? '' : String(e);
+  return msg || 'ทำรายการไม่สำเร็จ';
+}

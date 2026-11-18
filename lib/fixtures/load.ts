@@ -12,6 +12,7 @@ export function fixturePayload(): LoadedPayload {
     email: 'dev@fixtures.test',
     meId: me.id,
     isAdmin: me.role === 'admin',
+    live: false,
     reps: d.reps,
     campaigns: d.campaigns.map((c) => ({ ...c, maxPerRep: null, active: true, criteria: [] })),
     leads: d.leads,

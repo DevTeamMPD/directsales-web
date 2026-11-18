@@ -4,7 +4,7 @@ import type { Campaign } from '@/lib/api/types';
 import { initialState, reducer, type AppState, type LoadedPayload } from './reducer';
 
 const payload: LoadedPayload = {
-  email: 'a@example.com', meId: 'u1', isAdmin: true, reps: [{ id: 'u1', name: 'Dev MPD', initials: 'DE', role: 'admin' }],
+  email: 'a@example.com', meId: 'u1', isAdmin: true, live: true, reps: [{ id: 'u1', name: 'Dev MPD', initials: 'DE', role: 'admin' }],
   campaigns: [], leads: [], today: '2026-11-04',
 };
 const ready: AppState = reducer(initialState, { type: 'loaded', payload });
@@ -37,5 +37,13 @@ describe('reducer', () => {
     const c: Campaign = { id: 'c1', brand: 'bebeplay', name: 'A', note: '', start: '', end: '', claimMode: 'self', maxPerRep: null, active: true, criteria: [] };
     const s2 = reducer(reducer(s, { type: 'upsertCampaign', campaign: c }), { type: 'upsertCampaign', campaign: { ...c, name: 'B' } });
     expect(s2.campaigns).toEqual([{ ...c, name: 'B' }]);
+  });
+  it('failed after ready is ignored — errors while using a page go to the toast', () => {
+    expect(reducer(ready, { type: 'failed', error: 'boom' })).toBe(ready);
+  });
+  it('invalidatePool bumps poolVersion; live and focusSearch start false', () => {
+    expect(initialState).toMatchObject({ live: false, poolVersion: 0, ui: { focusSearch: false } });
+    expect(ready.live).toBe(true);
+    expect(reducer(reducer(ready, { type: 'invalidatePool' }), { type: 'invalidatePool' }).poolVersion).toBe(2);
   });
 });

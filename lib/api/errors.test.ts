@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toThaiError } from './errors';
+import { errorMessage, toThaiError } from './errors';
 
 describe('toThaiError', () => {
   it('maps every prototype LIVE_ERR key', () => {
@@ -38,5 +38,14 @@ describe('toThaiError', () => {
     expect(toThaiError('constructor')).toBe('constructor');
     expect(toThaiError('')).toBe('ทำรายการไม่สำเร็จ');
     expect(toThaiError(undefined)).toBe('ทำรายการไม่สำเร็จ');
+  });
+});
+
+describe('errorMessage', () => {
+  it('reads Error.message or a string, and falls back to the generic text', () => {
+    expect(errorMessage(new Error('ลูกค้ารายนี้มีคนจองไปแล้ว'))).toBe('ลูกค้ารายนี้มีคนจองไปแล้ว');
+    expect(errorMessage('boom')).toBe('boom');
+    expect(errorMessage(new Error(''))).toBe('ทำรายการไม่สำเร็จ');
+    expect(errorMessage(undefined)).toBe('ทำรายการไม่สำเร็จ');
   });
 });
