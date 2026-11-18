@@ -27,6 +27,9 @@ describe('toThaiError', () => {
   it('names the tag in tag_taken', () => {
     expect(toThaiError('tag_taken: Admin_Ploy')).toBe('tag Admin_Ploy เป็นของเซลล์คนอื่นแล้ว');
   });
+  it('names the tag even when the message is prefixed', () => {
+    expect(toThaiError('ERROR: tag_taken: Admin_X')).toBe('tag Admin_X เป็นของเซลล์คนอื่นแล้ว');
+  });
   it('finds the key inside a longer message', () => {
     expect(toThaiError('ERROR: not_member (SQLSTATE 42501)')).toBe('บัญชีนี้ยังไม่มีสิทธิ์ใช้งาน ติดต่อหัวหน้า');
   });

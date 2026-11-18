@@ -20,7 +20,7 @@ export const ERROR_TEXT: Readonly<Record<string, string>> = {
 
 export function toThaiError(message: string | null | undefined): string {
   const msg = (message ?? '').trim();
-  const tag = /^tag_taken:\s*(.+)$/.exec(msg);
+  const tag = /tag_taken:\s*(.+)$/.exec(msg);
   if (tag) return `tag ${tag[1]} เป็นของเซลล์คนอื่นแล้ว`;
   for (const token of msg.match(/[a-z_]+/g) ?? []) {
     if (Object.prototype.hasOwnProperty.call(ERROR_TEXT, token)) return ERROR_TEXT[token];
