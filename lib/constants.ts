@@ -40,6 +40,9 @@ export const CRIT: Record<CritType, { label: string; fields: readonly CritField[
 export const JST_HELPER_URL = process.env.NEXT_PUBLIC_JST_HELPER_URL || 'http://127.0.0.1:47321';
 export const JST_URL_TEMPLATE = process.env.NEXT_PUBLIC_JST_URL_TEMPLATE || '';
 
+/** โหมด fixture (next dev เท่านั้น): ปุ่มที่เขียนข้อมูลไม่เรียก RPC เพื่อไม่ให้ id ตัวอย่างวิ่งไป Supabase จริง */
+export const FIXTURE_NO_WRITE = 'โหมด fixture: ไม่ได้บันทึกลง Supabase';
+
 /** path ของ SVG 24x24 ที่ prototype ใช้ (index.html และ app.js) + เมนูใหม่ 2 รายการ */
 export const PATHS = {
   phone: 'M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z',
