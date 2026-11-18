@@ -21,5 +21,8 @@ export function classifySession(p: SessionProbe): SessionCheck {
   const err = p.sessionError ?? p.userError;
   if (!err) return p.hasSession ? { kind: 'error', message: 'ไม่พบข้อมูลผู้ใช้' } : { kind: 'login' };
   if (err.name === SESSION_MISSING) return { kind: 'login' };
+  // session ตายแล้ว (refresh token ถูกเพิกถอน/ไม่ถูกต้อง, JWT เสีย) = 4xx จาก Auth API → ต้องล็อกอินใหม่
+  // ส่วนเน็ตล้ม (status 0 / AuthRetryableFetchError) และ 5xx ยังเป็น error card เหมือนเดิม
+  if (err.name !== 'AuthRetryableFetchError' && typeof err.status === 'number' && err.status >= 400 && err.status < 500) return { kind: 'login' };
   return { kind: 'error', message: err.message || 'ตรวจสอบการเข้าสู่ระบบไม่สำเร็จ' };
 }
