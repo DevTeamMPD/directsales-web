@@ -165,6 +165,15 @@ describe('chat check (prototype L438-479)', () => {
       detail: 'จับคู่แชตของลูกค้ารายนี้ไม่พบ (จับคู่ด้วยชื่อแชต/ชื่อผู้ซื้อ) ลองตรวจใน JST เอง', sessions: [],
     });
   });
+  it('chatCheckView shows timestamptz values in Bangkok time, but last_time as stored (already Thai wall-clock)', () => {
+    const v = chatCheckView(
+      { live: true, sessions: [S({ last_admin_time: '2026-11-17T08:00:00+00:00', last_time: '2026-11-17T08:00:00+00:00' }), S({ last_admin_time: null, last_time: '2026-11-17T08:00:00+00:00' })], found: 2, count: 1, sent: true, last: '2026-11-17T08:00:00+00:00', by: 'Mint' },
+      null,
+    );
+    expect(v.detail).toContain('ล่าสุด 17/11/2026 15:00');
+    expect(v.sessions[0].meta).toContain('ล่าสุด เซลล์ 17/11/2026 15:00');
+    expect(v.sessions[1].meta).toContain('ล่าสุด 17/11/2026 08:00');
+  });
   it('nextChatCheck marks the table dirty only when "sent" changes (ui.dirtyRows)', () => {
     const res = summarizeChats(SESSIONS);
     expect(nextChatCheck(null, res, '2026-11-04T12:00')).toEqual({ chatCheck: { at: '2026-11-04T12:00', sent: true, count: 3 }, dirty: true });

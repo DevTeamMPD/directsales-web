@@ -2,7 +2,7 @@ import { errorMessage } from '@/lib/api/errors';
 import { getCustomerChats } from '@/lib/api/rpc';
 import type { Channel, ChatCheck, ChatSessionJson, Lead, Rep } from '@/lib/api/types';
 import { JST_HELPER_URL, JST_URL_TEMPLATE, PLAT, type Brand, type Platform } from '@/lib/constants';
-import { fmtDT } from '@/lib/format';
+import { fmtDT, localStamp } from '@/lib/format';
 
 // การเชื่อม JST ของ prototype (legacy/app.js L397-479): ช่องทางแชต, เปิดแชต, ตรวจว่าเซลล์ทักแชทแล้วหรือยัง
 
@@ -143,6 +143,10 @@ export interface ChatCheckView {
   sessions: Array<{ key: string; icon: string; page: string; meta: string }>;
 }
 
+const HAS_OFFSET = /(Z|[+-]\d{2}(:?\d{2})?)$/i;
+/** timestamptz (มี offset) → เวลาไทย; ข้อความไม่มี offset (fixture) คงเดิม */
+const bkk = (s: string | null | undefined): string | null | undefined => (s && s.length > 10 && HAS_OFFSET.test(s) ? localStamp(s) : s);
+
 /** เนื้อหา #chk-body (renderChatCheck L459-463) */
 export function chatCheckView(res: ChatCheckResult, claimedAt: string | null | undefined): ChatCheckView {
   if ('err' in res) return { badge: { cls: 's-lost plain', text: 'ตรวจไม่ได้' }, detail: res.err, sessions: [] };
@@ -151,13 +155,14 @@ export function chatCheckView(res: ChatCheckResult, claimedAt: string | null | u
     ? { cls: 's-won', text: 'ทักแชทแล้ว' }
     : res.found ? { cls: 's-callback plain', text: 'ยังไม่พบข้อความที่ส่ง' } : { cls: 's-new plain', text: 'ไม่พบแชตใน JST' };
   const detail = res.sent
-    ? `เซลล์ส่ง ${res.count} ข้อความ${since} · ล่าสุด ${fmtDT(res.last)}${res.by ? ' โดย ' + res.by : ''}`
+    ? `เซลล์ส่ง ${res.count} ข้อความ${since} · ล่าสุด ${fmtDT(bkk(res.last))}${res.by ? ' โดย ' + res.by : ''}`
     : res.found ? `เซลล์ยังไม่ได้ส่งข้อความ${since}` : 'จับคู่แชตของลูกค้ารายนี้ไม่พบ (จับคู่ด้วยชื่อแชต/ชื่อผู้ซื้อ) ลองตรวจใน JST เอง';
   const sessions = res.sessions.map((x, i) => ({
     key: `${x.ms_id}-${i}`,
     icon: sessionIcon(x.channel),
     page: x.page || x.channel || '',
-    meta: `ล่าสุด ${x.last_admin_time ? 'เซลล์ ' + fmtDT(x.last_admin_time) : x.last_time ? fmtDT(x.last_time) : '—'}${x.last_admin_sender ? ' · ' + x.last_admin_sender : ''} · ส่ง ${x.admin_msgs ?? 0}`,
+    // last_time มาจาก iim_sessions.last_time ซึ่งใน DB เป็นเวลาไทยจริงที่ถูกเก็บเป็น UTC (เร็วกว่าจริง 7 ชม.) จึงแสดงตามที่เก็บ (ตัดข้อความ) ไม่แปลงเขตเวลาซ้ำ
+    meta: `ล่าสุด ${x.last_admin_time ? 'เซลล์ ' + fmtDT(bkk(x.last_admin_time)) : x.last_time ? fmtDT(x.last_time) : '—'}${x.last_admin_sender ? ' · ' + x.last_admin_sender : ''} · ส่ง ${x.admin_msgs ?? 0}`,
   }));
   return { badge, detail, sessions };
 }
