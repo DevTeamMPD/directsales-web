@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
 vi.mock('@/lib/supabase/client', () => ({ db: () => ({ rpc }) }));
 
-import { addMember, claimCustomer, getBaseCustomers, getMe } from './rpc';
+import { addMember, claimCustomer, getBaseCustomers, getMe, logContact } from './rpc';
 
 beforeEach(() => rpc.mockReset());
 
@@ -32,5 +32,12 @@ describe('rpc wrappers', () => {
   it('throws the Thai message of the RPC error', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'customer_not_found' } });
     await expect(claimCustomer('0812345678', 'bebeplay')).rejects.toThrow('ไม่พบลูกค้ารายนี้');
+  });
+  it('logContact passes the dsales_log arguments of the prototype (L572)', async () => {
+    rpc.mockResolvedValue({ data: { id: 'L1' }, error: null });
+    await logContact({ leadId: 'L1', type: 'chat', result: 'ตอบกลับแล้ว', note: 'n', status: 'won', callback: null, interest: 'i', bills: ['1'], amount: 990 });
+    expect(rpc).toHaveBeenCalledWith('dsales_log', {
+      p_lead: 'L1', p_type: 'chat', p_result: 'ตอบกลับแล้ว', p_note: 'n', p_status: 'won', p_callback: null, p_interest: 'i', p_bills: ['1'], p_amount: 990,
+    });
   });
 });
