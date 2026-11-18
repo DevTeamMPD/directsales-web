@@ -8,7 +8,7 @@ import { FIXTURE_NO_WRITE } from '@/lib/constants';
 import {
   buildLogSave, initialLogForm, LOG_RESULTS, logSections, logStatusOptions, validateLog, type LogField, type LogForm, type LogStatus,
 } from '@/lib/domain/log';
-import { useActions, useAppState } from '@/lib/state/AppProvider';
+import { useActions, useAppState, useModalSeq } from '@/lib/state/AppProvider';
 
 export function LogModal({ id, type }: { id: string; type: ContactType }) {
   const { leads } = useAppState();
@@ -22,6 +22,7 @@ function LogFormView({ lead: l, type }: { lead: Lead; type: ContactType }) {
   const [f, setF] = useState<LogForm>(() => initialLogForm(l, type, today));
   const [prevStatus] = useState(l.status);
   const busy = useRef(false);
+  const seq = useModalSeq();
   const cbRef = useRef<HTMLInputElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
   const billsRef = useRef<HTMLInputElement>(null);
@@ -48,7 +49,7 @@ function LogFormView({ lead: l, type }: { lead: Lead; type: ContactType }) {
       upsertLead(await logContact(plan.input));
       if (plan.then === 'dnc') upsertLead(await setNoCall(l.id, true));
       if (plan.then === 'release') upsertLead(await unclaimLead(l.id));
-      closeModal();
+      closeModal(seq);
       dispatch({ type: 'invalidatePool' });
       toast(plan.msg);
     } catch (err) {

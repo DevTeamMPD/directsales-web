@@ -13,7 +13,9 @@ import { initialState, reducer, type Action, type AppState, type UiFilters } fro
 import { classifySession } from './session';
 import { createToaster } from './toast';
 
-export interface ModalState { node: ReactNode; cls: string; seq: number }
+import { closeModalState, type ModalState } from './modal';
+
+export type { ModalState };
 
 /** ฟังก์ชันที่คงที่ตลอดอายุ provider — component ที่ใช้แค่ส่วนนี้ไม่ re-render ตาม state / toast / modal */
 export interface AppActions {
@@ -22,7 +24,8 @@ export interface AppActions {
   /** error ระหว่างใช้งานหน้า (RPC ล้ม) → toast เสมอ */
   toastError: (e: unknown) => void;
   openModal: (node: ReactNode, cls?: string) => void;
-  closeModal: () => void;
+  /** ไม่ระบุ seq = ปิดเสมอ; ระบุ seq (จาก useModalSeq) = ปิดเฉพาะเมื่อ popup นั้นยังเปิดอยู่ */
+  closeModal: (seq?: number) => void;
   logout: () => Promise<void>;
   upsertLead: (lead: LeadJson) => void;
   patchLead: (id: string, patch: Partial<Lead>) => void;
@@ -101,7 +104,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         seq += 1;
         setModal({ node, cls, seq });
       },
-      closeModal: () => setModal(null),
+      closeModal: (seq) => setModal((m) => closeModalState(m, seq)),
       // ออกจากระบบแล้วโหลดหน้าใหม่ทั้งหน้า (prototype L1005)
       logout: async () => {
         if (!(process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_FIXTURES === '1')) await supabase().auth.signOut();
@@ -140,6 +143,12 @@ export function useToastMsg(): string | null {
   const v = useContext(ToastContext);
   if (v === undefined) throw new Error('useToastMsg ต้องอยู่ใน <AppProvider>');
   return v;
+}
+
+/** ลำดับของ popup ที่ครอบ component นี้อยู่ (ModalRoot ใส่ให้) ใช้กับ closeModal(seq) หลัง await */
+export const ModalSeqContext = createContext<number | undefined>(undefined);
+export function useModalSeq(): number | undefined {
+  return useContext(ModalSeqContext);
 }
 
 export function useModalState(): ModalState | null {

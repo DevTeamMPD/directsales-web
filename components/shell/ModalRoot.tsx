@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useActions, useModalState } from '@/lib/state/AppProvider';
+import { ModalSeqContext, useActions, useModalState } from '@/lib/state/AppProvider';
 
 /** popup ตาม prototype openModal/closeModal (L385-393): mousedown ที่พื้นหลัง, Esc, [data-close] ปิด; เปิดแล้ว focus ช่องแรก */
 export function ModalRoot() {
@@ -37,7 +37,7 @@ export function ModalRoot() {
     >
       {modal ? (
         <div key={modal.seq} className={`modal ${modal.cls}`.trim()} role="dialog" aria-modal="true">
-          {modal.node}
+          <ModalSeqContext.Provider value={modal.seq}>{modal.node}</ModalSeqContext.Provider>
         </div>
       ) : null}
     </div>

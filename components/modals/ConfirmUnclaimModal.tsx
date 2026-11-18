@@ -4,12 +4,13 @@ import { useRef } from 'react';
 import { CloseButton } from '@/components/ui/CloseButton';
 import { unclaimLead } from '@/lib/api/rpc';
 import { FIXTURE_NO_WRITE } from '@/lib/constants';
-import { useActions, useAppState } from '@/lib/state/AppProvider';
+import { useActions, useAppState, useModalSeq } from '@/lib/state/AppProvider';
 
 export function ConfirmUnclaimModal({ id }: { id: string }) {
   const { leads, isAdmin, live } = useAppState();
   const { closeModal, toast, toastError, upsertLead, dispatch } = useActions();
   const busy = useRef(false);
+  const seq = useModalSeq();
   const l = leads.find((x) => x.id === id);
   if (!l) return null;
 
@@ -25,7 +26,7 @@ export function ConfirmUnclaimModal({ id }: { id: string }) {
       // ลีดที่เซลล์ขุดเอง (ไม่มีแคมเปญ) หายจากรายการของเซลล์ (L99)
       if (!nl.campaignId && !isAdmin) dispatch({ type: 'removeLead', id });
       else upsertLead(nl);
-      closeModal();
+      closeModal(seq);
       dispatch({ type: 'invalidatePool' });
       toast('ยกเลิกจองแล้ว');
     } catch (e) {
