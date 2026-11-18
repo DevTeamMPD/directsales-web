@@ -1,0 +1,30 @@
+'use client';
+
+import { useMemo } from 'react';
+import { TopbarActions } from '@/components/shell/TopbarActions';
+import { PickFromBucketModal } from '@/components/modals/PickFromBucketModal';
+import { filtered, mineOrAll } from '@/lib/domain/leads';
+import { useActions, useAppState } from '@/lib/state/AppProvider';
+import { LeadTable } from './LeadTable';
+import { LeadToolbar } from './LeadToolbar';
+import { PeriodCard } from './PeriodCard';
+import { useVerifyMine } from './useVerifyMine';
+
+/** หน้า Direct Sale: หัวหน้าเห็นทุกลีด เซลล์เห็นเฉพาะของตัวเอง (mineOrAll) */
+export function LeadsPage() {
+  const { leads, meId, isAdmin, ui, today } = useAppState();
+  const { openModal } = useActions();
+  const base = useMemo(() => leads.filter((l) => mineOrAll(l, { meId, isAdmin })), [leads, meId, isAdmin]);
+  const list = useMemo(() => filtered(base, { ...ui, today }), [base, ui, today]);
+  useVerifyMine();
+  return (
+    <>
+      <TopbarActions>
+        <button className="btn primary" id="add-lead" onClick={() => openModal(<PickFromBucketModal />, 'sm')}>+ เพิ่มลูกค้าจากถังลูกค้าทั้งหมด</button>
+      </TopbarActions>
+      <PeriodCard />
+      <LeadToolbar base={base} withCampSelect />
+      <LeadTable list={list} />
+    </>
+  );
+}

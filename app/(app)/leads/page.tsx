@@ -1,5 +1,5 @@
-import { Placeholder } from '@/components/shell/Placeholder';
+import { LeadsPage } from '@/components/leads/LeadsPage';
 
-export default function LeadsPage() {
-  return <Placeholder plan="B" />;
+export default function Page() {
+  return <LeadsPage />;
 }
