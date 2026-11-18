@@ -29,7 +29,7 @@ export function CallButton({ phone }: { phone: string }) {
 function ChatButton({ x, c, size }: { x: JstSource; c: NormChannel; size: number }) {
   const openJst = useJst();
   return (
-    <button type="button" className="ch-btn" data-act="jst" title={chatTitle(c)} aria-label={chatAria(c)} onClick={() => openJst(jstTarget(x, c))}>
+    <button type="button" className="ch-btn" data-act="jst" data-t={JSON.stringify(jstTarget(x, c))} title={chatTitle(c)} aria-label={chatAria(c)} onClick={() => openJst(jstTarget(x, c))}>
       <ChIcon p={c.platform} size={size} />
     </button>
   );
@@ -54,7 +54,7 @@ export function ChannelRow({ x, chans }: { x: JstSource; chans: NormChannel[] })
   return (
     <div className="ch-chips">
       {chans.map((c, i) => (
-        <button key={`${c.shop}-${i}`} type="button" className="ch-chip" data-act="jst" title="เปิดแชตใน JST" onClick={() => openJst(jstTarget(x, c))}>
+        <button key={`${c.shop}-${i}`} type="button" className="ch-chip" data-act="jst" data-t={JSON.stringify(jstTarget(x, c))} title="เปิดแชตใน JST" onClick={() => openJst(jstTarget(x, c))}>
           <ChIcon p={c.platform} size={18} />
           <span>{c.shop || platLabel(c.platform)}</span>
         </button>
