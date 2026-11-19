@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
-import { INACTIVE_TEXT, LOADING_TEXT, NO_ACCESS_TEXT, NoAccess } from '@/components/auth/NoAccess';
+import { EXPIRED_TEXT, INACTIVE_TEXT, LOADING_TEXT, NO_ACCESS_TEXT, NoAccess } from '@/components/auth/NoAccess';
 import { useApp } from '@/lib/state/AppProvider';
 import { ModalRoot } from './ModalRoot';
 import { ShellContext } from './ShellContext';
@@ -26,6 +26,7 @@ export function Shell({ children }: { children: ReactNode }) {
   );
 
   if (state.phase === 'loading') return <NoAccess message={LOADING_TEXT} />;
+  if (state.phase === 'expired') return <NoAccess message={EXPIRED_TEXT} email={state.email} onLogout={logout} logoutText="เข้าสู่ระบบใหม่" />;
   if (state.phase === 'no-access' || state.phase === 'inactive') {
     return <NoAccess message={state.phase === 'inactive' ? INACTIVE_TEXT : NO_ACCESS_TEXT} email={state.email} onLogout={logout} />;
   }

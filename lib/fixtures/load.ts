@@ -24,6 +24,7 @@ export function fixturePayload(search = ''): LoadedPayload {
     reps: d.reps,
     campaigns: d.campaigns.map((c) => ({ ...c, maxPerRep: null, active: true, criteria: [] })),
     leads: d.leads,
+    customers: d.customers,
     today: d.today,
   };
 }

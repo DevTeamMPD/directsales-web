@@ -11,6 +11,13 @@ describe('fixturePayload', () => {
     expect(p.campaigns.every((c) => c.active && c.maxPerRep === null && c.criteria.length === 0)).toBe(true);
   });
 
+  it('carries the demo customers of the pool and the campaign builder (prototype state.customers)', () => {
+    const p = fixturePayload();
+    expect(p.customers).toHaveLength(90);
+    expect(p.customers.filter((c) => c.brand === 'bebeplay')).toHaveLength(60);
+    expect(p.customers[0]).toMatchObject({ id: 'C5000', name: 'ธนากร รุ่งเรือง', phone: '0864355692', brand: 'bebeplay' });
+  });
+
   it('?claim=<leadId> claims that lead as Dev MPD (popup ยกเลิกจอง ใน e2e)', () => {
     expect(fixturePayload().leads.filter((l) => l.claimedBy)).toEqual([]);
     const l = fixturePayload('?claim=L1002').leads.find((x) => x.id === 'L1002');

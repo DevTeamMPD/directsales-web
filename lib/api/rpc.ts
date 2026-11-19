@@ -1,7 +1,7 @@
 import { PAGE, type Brand, type ClaimMode, type Role } from '@/lib/constants';
 import { normalizeSearchPhone } from '@/lib/phone';
 import { db } from '@/lib/supabase/client';
-import { toThaiError } from './errors';
+import { RpcError } from './errors';
 import { rowsTotal } from './map';
 import type {
   CampaignRow, ChannelRowJson, ChatSessionJson, ContactType, JstTagRow, LeadJson, LeadStatus, MeRow, MemberJson, MemberTagsRow,
@@ -11,7 +11,7 @@ import type {
 type Result<T> = { data: T | null; error: { message: string } | null };
 
 function unwrap<T>({ data, error }: Result<T>): T {
-  if (error) throw new Error(toThaiError(error.message));
+  if (error) throw new RpcError(error.message);
   return data as T;
 }
 

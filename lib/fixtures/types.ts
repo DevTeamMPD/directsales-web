@@ -1,10 +1,7 @@
-import type { Campaign, Channel, Lead, Purchase, Rep } from '@/lib/api/types';
-import type { Brand } from '@/lib/constants';
+import type { Campaign, DemoCustomer, Lead, Rep } from '@/lib/api/types';
 
 /** รูปของ window.DS_DATA ใน legacy/data.js */
-export interface FixtureCustomer {
-  id: string; name: string; phone: string; address: string; brand: Brand; shop: string; chatName: string; channels: Channel[]; purchases: Purchase[];
-}
+export type FixtureCustomer = DemoCustomer;
 export interface FixtureData {
   reps: Rep[];
   campaigns: Pick<Campaign, 'id' | 'brand' | 'claimMode' | 'name' | 'start' | 'end' | 'note'>[];

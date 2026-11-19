@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { errorMessage, toThaiError } from './errors';
+import { errorKind, errorMessage, kindOf, NETWORK_TEXT, RpcError, toThaiError } from './errors';
 
 describe('toThaiError', () => {
   it('maps every prototype LIVE_ERR key', () => {
@@ -33,11 +33,39 @@ describe('toThaiError', () => {
   it('finds the key inside a longer message', () => {
     expect(toThaiError('ERROR: not_member (SQLSTATE 42501)')).toBe('บัญชีนี้ยังไม่มีสิทธิ์ใช้งาน ติดต่อหัวหน้า');
   });
+  it('maps an expired or invalid JWT to the re-login text', () => {
+    expect(toThaiError('JWT expired')).toBe('หมดเวลาการเข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่');
+    expect(toThaiError('invalid JWT: unable to parse or verify signature')).toBe('หมดเวลาการเข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่');
+  });
+  it('maps network failures of every browser to Thai', () => {
+    for (const m of ['TypeError: Failed to fetch', 'NetworkError when attempting to fetch resource.', 'Load failed', 'fetch failed']) {
+      expect(toThaiError(m), m).toBe(NETWORK_TEXT);
+    }
+  });
   it('falls back to the raw message, or a generic text', () => {
-    expect(toThaiError('JWT expired')).toBe('JWT expired');
+    expect(toThaiError('duplicate key value')).toBe('duplicate key value');
     expect(toThaiError('constructor')).toBe('constructor');
     expect(toThaiError('')).toBe('ทำรายการไม่สำเร็จ');
     expect(toThaiError(undefined)).toBe('ทำรายการไม่สำเร็จ');
+  });
+});
+
+describe('errorKind / RpcError / kindOf', () => {
+  it('classifies raw server messages', () => {
+    expect(errorKind('JWT expired')).toBe('auth');
+    expect(errorKind('ERROR: not_authenticated')).toBe('auth');
+    expect(errorKind('ERROR: not_member (SQLSTATE 42501)')).toBe('member');
+    expect(errorKind('TypeError: Failed to fetch')).toBe('network');
+    expect(errorKind('taken')).toBe('other');
+    expect(errorKind(undefined)).toBe('other');
+  });
+  it('RpcError keeps the Thai text and the kind of the raw message', () => {
+    const e = new RpcError('JWT expired');
+    expect([e.message, e.kind, e instanceof Error]).toEqual(['หมดเวลาการเข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่', 'auth', true]);
+    expect(kindOf(e)).toBe('auth');
+    expect(kindOf(new RpcError('not_member'))).toBe('member');
+    expect(kindOf(new TypeError('Failed to fetch'))).toBe('network');
+    expect(kindOf('boom')).toBe('other');
   });
 });
 
@@ -47,5 +75,8 @@ describe('errorMessage', () => {
     expect(errorMessage('boom')).toBe('boom');
     expect(errorMessage(new Error(''))).toBe('ทำรายการไม่สำเร็จ');
     expect(errorMessage(undefined)).toBe('ทำรายการไม่สำเร็จ');
+  });
+  it('translates a raw network TypeError (fetch outside rpc.ts)', () => {
+    expect(errorMessage(new TypeError('Failed to fetch'))).toBe(NETWORK_TEXT);
   });
 });

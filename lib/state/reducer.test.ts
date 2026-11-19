@@ -5,7 +5,7 @@ import { initialState, reducer, type AppState, type LoadedPayload } from './redu
 
 const payload: LoadedPayload = {
   email: 'a@example.com', meId: 'u1', isAdmin: true, live: true, reps: [{ id: 'u1', name: 'Dev MPD', initials: 'DE', role: 'admin' }],
-  campaigns: [], leads: [], today: '2026-11-04',
+  campaigns: [], leads: [], customers: [], today: '2026-11-04',
 };
 const ready: AppState = reducer(initialState, { type: 'loaded', payload });
 
@@ -40,6 +40,22 @@ describe('reducer', () => {
   });
   it('failed after ready is ignored — errors while using a page go to the toast', () => {
     expect(reducer(ready, { type: 'failed', error: 'boom' })).toBe(ready);
+  });
+  it('sessionLost clears every lead and customer, keeps the email, and only applies once ready', () => {
+    const withLead = reducer(ready, { type: 'upsertLead', lead: leadJson({ id: 'L1' }) });
+    expect(reducer(withLead, { type: 'sessionLost', reason: 'expired' }))
+      .toMatchObject({ phase: 'expired', email: 'a@example.com', leads: [], reps: [], customers: [], isAdmin: false });
+    expect(reducer(withLead, { type: 'sessionLost', reason: 'inactive' }).phase).toBe('inactive');
+    expect(reducer(initialState, { type: 'sessionLost', reason: 'expired' })).toBe(initialState);
+  });
+  it('setToday moves to the new Bangkok day and ignores the same day', () => {
+    expect(reducer(ready, { type: 'setToday', today: '2026-11-04' })).toBe(ready);
+    expect(reducer(ready, { type: 'setToday', today: '2026-11-05' }).today).toBe('2026-11-05');
+  });
+  it('setPool merges the persistent pool filters', () => {
+    expect(initialState.pool).toEqual({ brand: null, q: '', page: 0, grand: null, grandFor: null });
+    expect(reducer(ready, { type: 'setPool', patch: { brand: 'hosttail', q: '081', page: 2 } }).pool)
+      .toEqual({ brand: 'hosttail', q: '081', page: 2, grand: null, grandFor: null });
   });
   it('invalidatePool bumps poolVersion; live and focusSearch start false', () => {
     expect(initialState).toMatchObject({ live: false, poolVersion: 0, ui: { focusSearch: false } });

@@ -69,6 +69,13 @@ export interface PoolRow {
   id: string; name: string; phone: string; segment: string; ltv: number; orders: number; last: string | null; brands: string[];
   chat: string; leadId: string | null; mine: boolean; noCall: boolean; takenName: string; taken: string | null;
   dormantDays: number | null; ownerTag: string | null;
+  /** โหมด fixture (prototype โหมดตัวอย่าง L640): เซลล์คนนี้เคยคัดออก / ลีดที่จองไว้ยกเลิกได้ */
+  releasedByMe?: boolean; mineReserved?: boolean;
+}
+
+/** ลูกค้าในถังของโหมดตัวอย่าง (window.DS_DATA.customers) — ล็อกอินจริงเป็น [] เสมอ (prototype loadLive L980) */
+export interface DemoCustomer {
+  id: string; name: string; phone: string; address: string; brand: Brand; shop: string; chatName: string; channels: Channel[]; purchases: Purchase[];
 }
 
 export interface PurchaseRowJson {
