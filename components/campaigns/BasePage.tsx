@@ -9,7 +9,7 @@ import { getBaseCustomers } from '@/lib/api/rpc';
 import type { PoolRow } from '@/lib/api/types';
 import { PAGE, PATHS, type Brand } from '@/lib/constants';
 import {
-  baseAction, canNext, claimBrand, demoBase, dormantText, keepTotal, NO_BRAND_TEXT, pageRange, type BaseScopeKey, type RowAction,
+  baseAction, canNext, clampPage, claimBrand, demoBase, dormantText, keepTotal, NO_BRAND_TEXT, pageRange, type BaseScopeKey, type RowAction,
 } from '@/lib/domain/pool';
 import { baht, fmtDate } from '@/lib/format';
 import { useActions, useAppState } from '@/lib/state/AppProvider';
@@ -54,6 +54,10 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
     setData((d) => ({ ...d, err: '' }));
     getBaseCustomers(scope, { search: qKey, offset: f.page * PAGE, brand: f.brand || null })
       .then((rows) => {
+        if (alive && clampPage(f.page, rows.length) !== f.page) {
+          setF((x) => (x.page === f.page ? { ...x, page: clampPage(x.page, 0) } : x)); // หน้าท้ายว่าง → ถอยหนึ่งหน้า (โหลดซ้ำเอง)
+          return;
+        }
         if (alive) setData((d) => ({ rows: rows.map((r) => mapPoolRow(r, meId)), total: keepTotal(rowsTotal(rows), rows.length, f.page, d.total), err: '' }));
       })
       .catch((e: unknown) => {

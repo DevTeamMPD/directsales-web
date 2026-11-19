@@ -28,6 +28,11 @@ export function CampaignPage({ brand }: { brand: Brand }) {
   const isAll = sel === SEL_ALL;
   const isCamps = sel === SEL_CAMPS;
 
+  // หน้านี้ไม่มี select แคมเปญใน toolbar: ล้างตัวกรองแคมเปญที่ค้างมาจาก /leads ไม่ให้ซ่อนลีดเงียบ ๆ (ตัวกรองอื่นคงไว้)
+  useEffect(() => {
+    setUi({ camp: 'all' });
+  }, [brand, setUi]);
+
   useEffect(() => {
     if (sel !== ui.selCamp) setUi({ selCamp: sel });
   }, [sel, ui.selCamp, setUi]);

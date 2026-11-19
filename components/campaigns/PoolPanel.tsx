@@ -8,7 +8,7 @@ import { mapPoolRow, rowsTotal } from '@/lib/api/map';
 import { getCustomerPool } from '@/lib/api/rpc';
 import type { PoolRow } from '@/lib/api/types';
 import { PAGE, PATHS, type Brand } from '@/lib/constants';
-import { canNext, demoPool, pageRange, poolAction, poolCampNames, poolDetailFooter, type PoolCtx } from '@/lib/domain/pool';
+import { canNext, clampPage, demoPool, pageRange, poolAction, poolCampNames, poolDetailFooter, type PoolCtx } from '@/lib/domain/pool';
 import { baht, fmtDate } from '@/lib/format';
 import { useActions, useAppState } from '@/lib/state/AppProvider';
 import { BrandTags } from './BrandTags';
@@ -52,6 +52,10 @@ export function PoolPanel({ brand }: { brand: Brand }) {
     setData((d) => ({ ...d, err: '' }));
     getCustomerPool({ search: qKey, offset: pool.page * PAGE, brand, from, to })
       .then((rows) => {
+        if (alive && clampPage(pool.page, rows.length) !== pool.page) {
+          setPool({ page: clampPage(pool.page, 0) }); // หน้าท้ายว่าง → ถอยหนึ่งหน้า (โหลดซ้ำเอง)
+          return;
+        }
         if (alive) setData({ rows: rows.map((r) => mapPoolRow(r, meId)), total: rowsTotal(rows), err: '' });
       })
       .catch((e: unknown) => {

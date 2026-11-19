@@ -67,6 +67,8 @@ export function pageRange(page: number, rowCount: number, total: number | null):
   const from = page * PAGE;
   return `${(from + 1).toLocaleString('th-TH')}–${(from + rowCount).toLocaleString('th-TH')} จาก ${total.toLocaleString('th-TH')}`;
 }
+/** หน้า > 0 ที่ไม่มีแถว (เช่น จองแถวสุดท้ายของหน้าสุดท้ายไปแล้ว) = ถอยหนึ่งหน้า ไม่ให้ช่วงเป็น "51–50" */
+export const clampPage = (page: number, rowCount: number): number => (page > 0 && rowCount === 0 ? page - 1 : page);
 /** ปุ่ม "ถัดไป →" (L687) */
 export const canNext = (page: number, rowCount: number, total: number | null): boolean => !(total === null || page * PAGE + rowCount >= total);
 

@@ -3,7 +3,7 @@ import type { Lead, PoolRow } from '@/lib/api/types';
 import { fixturePayload } from '@/lib/fixtures/load';
 import type { Period } from '@/lib/state/reducer';
 import {
-  baseAction, canNext, claimBrand, demoBase, demoGrand, demoPool, dormantText, keepTotal, pageRange, poolAction, poolCampNames,
+  baseAction, canNext, clampPage, claimBrand, demoBase, demoGrand, demoPool, dormantText, keepTotal, pageRange, poolAction, poolCampNames,
   poolDetailFooter, takenBadge,
 } from './pool';
 
@@ -85,6 +85,10 @@ describe('live pool rows (dsales_customer_pool_v4)', () => {
     expect(poolDetailFooter(row({ noCall: true }), live)).toBeNull();
     expect(poolDetailFooter(row({ taken: 'r4', mine: true, leadId: 'L9' }), live)).toEqual({ kind: 'unclaim', text: 'ยกเลิกจอง', leadId: 'L9' });
     expect(poolDetailFooter(row({ taken: 'other' }), live)).toBeNull();
+  });
+  it('clampPage steps back one page when a trailing page comes back empty', () => {
+    expect([clampPage(2, 0), clampPage(1, 0), clampPage(0, 0)]).toEqual([1, 0, 0]);
+    expect([clampPage(1, 9), clampPage(0, 50)]).toEqual([1, 0]);
   });
   it('page range text and next button (L686-687)', () => {
     expect(pageRange(0, 50, 1234)).toBe('1–50 จาก 1,234');
