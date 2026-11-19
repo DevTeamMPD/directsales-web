@@ -426,3 +426,203 @@ for (const s of SIZES) {
     });
   });
 }
+
+/* ---------- แผน C1: หน้าแคมเปญ, ถังลูกค้า, popup E (รายละเอียดลูกค้าในถัง), popup F (ตัวสร้างแคมเปญ), /mine, /pool ---------- */
+// ความต่างที่ตั้งใจ: ไม่มี — โหมด fixture (live = false) ทำแบบโหมดตัวอย่างของ prototype ทั้งการ์ดถัง ("ตัวอย่าง" + เข้าแคมเปญแล้ว/ยังไม่เข้า),
+// ช่องแคมเปญของแถวถัง, ปุ่มจอง/จองโดย/ยกเลิกจอง และ funnel ของตัวสร้างแคมเปญ (นับจากลูกค้าตัวอย่าง)
+// maxDiffPixels ของภาพแผน C1 (วัดด้วย PARITY_MEASURE=1 ตาม Task 8 Step 5 แล้วแก้ค่าในตารางนี้)
+// วัดเมื่อ 2026-11-19 (Chromium ของ Playwright 1.65, Windows) 3 รอบได้ค่าเท่ากันทุกรอบ (noise 0) ค่าในตาราง = ค่าที่วัดได้สูงสุด × 1.25 ปัดขึ้นหลัก 50
+const MAX_DIFF_C1: Record<string, number> = {
+  'campaign-view-desktop': 14400, 'campaign-view-mobile': 9400, 'campaign-topbar-desktop': 250, 'campaign-topbar-mobile': 150,
+  'campaign-table-desktop': 8200, 'campaign-table-mobile': 4750,
+  'pool-detail-desktop': 1650, 'pool-detail-mobile': 650, 'pool-detail-mine-desktop': 1800, 'pool-detail-mine-mobile': 750,
+  'builder-base-desktop': 450, 'builder-base-mobile': 450, 'builder-set-desktop': 850, 'builder-set-mobile': 850,
+  'builder-aud-desktop': 500, 'builder-aud-mobile': 500, 'builder-crit-desktop': 650, 'builder-crit-mobile': 650,
+  'builder-preview-desktop': 1450, 'builder-preview-mobile': 850,
+};
+const shotC1 = (name: string) => ({ maxDiffPixels: MEASURE ? 0 : (MAX_DIFF_C1[name] ?? 0), threshold: 0.1 }) as const;
+
+/** prototype โหมดตัวอย่างที่หน้าแคมเปญ (การ์ด "ลูกค้าทั้งหมด" ถูกเลือกเป็นค่าเริ่ม) รอถังแสดงครบหน้าแรก */
+async function openLegacyCampaign(page: Page, brand: 'bebeplay' | 'hosttail', rows: number) {
+  await page.goto(LEGACY);
+  await page.locator('#l-demo').click();
+  await expect(page.locator('#login')).toBeHidden();
+  await page.evaluate((b) => {
+    location.hash = '#campaign-' + b;
+  }, brand);
+  await expect(page.locator('#pool-q')).toBeVisible();
+  await expect(page.locator('#view tbody tr')).toHaveCount(rows);
+  await settleWork(page);
+}
+
+async function openAppCampaign(page: Page, brand: 'bebeplay' | 'hosttail', rows: number) {
+  await page.goto(`${APP}/campaigns/${brand}`);
+  await expect(page.locator('#view tbody tr')).toHaveCount(rows, { timeout: 60_000 });
+  if (INJECT) await page.addStyleTag({ content: INJECT });
+  await settleWork(page);
+}
+
+/** ข้อความ/คลาส/สีของหน้าแคมเปญ: การ์ด (รวมความกว้าง bar), quota, ปุ่มท้ายแถวถัง, ตัวแบ่งหน้า + ส่วนเดียวกับหน้า /leads */
+async function campaignText(page: Page) {
+  const leads = await leadsText(page);
+  const extra = await page.evaluate(() => {
+    const t = (el: Element | null) => ((el instanceof HTMLElement ? el.innerText : el?.textContent) ?? '').replace(/\s+/g, ' ').trim();
+    const cls = (el: Element) => (typeof el.className === 'string' ? el.className : '').split(/\s+/).filter(Boolean).join(' ');
+    const view = document.querySelector('#view');
+    const all = (sel: string) => Array.from(view?.querySelectorAll(sel) ?? []);
+    return {
+      cards: all('.camp-grid > *').map((c) => ({
+        cls: cls(c), camp: c.getAttribute('data-camp'), text: t(c),
+        bars: Array.from(c.querySelectorAll('.bar > i')).map((i) => (i as HTMLElement).style.width),
+        badge: (() => {
+          const b = c.querySelector('.badge');
+          return b ? `${cls(b)}|${getComputedStyle(b).backgroundColor}` : null;
+        })(),
+      })),
+      quota: t(view?.querySelector('.quota') ?? null),
+      poolSearch: (view?.querySelector('#pool-q') as HTMLInputElement | null)?.placeholder ?? null,
+      rowButtons: all('tbody tr > td:last-child > button').map((b) => `${cls(b)}|${t(b)}|${(b as HTMLButtonElement).disabled}`),
+      pager: all('[data-pool]').map((b) => `${t(b)}|${(b as HTMLButtonElement).disabled}`).concat(all('.sub.num').map(t)),
+      claimCells: all('tbody select[data-assign]').length,
+    };
+  });
+  return { ...leads, ...extra };
+}
+
+/** เหมือน compareSteps แต่เปิดหน้าด้วยฟังก์ชันที่ส่งมา (หน้าแคมเปญ) */
+async function compareStepsOn(page: Page, steps: Step[], openLegacy: (p: Page) => Promise<void>, openApp: (p: Page) => Promise<void>) {
+  await openLegacy(page);
+  const legacy: Awaited<ReturnType<typeof modalState>>[] = [];
+  for (const st of steps) {
+    await st.act(page);
+    await settleWork(page);
+    legacy.push(await modalState(page));
+    await shootLegacy(page, st.name, '.modal');
+  }
+  await openApp(page);
+  for (const [i, st] of steps.entries()) {
+    await st.act(page);
+    await settleWork(page);
+    expect.soft(await modalState(page), st.name).toEqual(legacy[i]);
+    await expect.soft(page.locator('.modal')).toHaveScreenshot(`${st.name}.png`, shotC1(st.name));
+  }
+}
+
+const click = (selector: string, ready: string) => async (page: Page) => {
+  await page.locator(selector).click();
+  await expect(page.locator(ready).first()).toBeVisible();
+};
+
+for (const s of SIZES) {
+  test.describe(`campaigns ${s.tag} ${s.width}x${s.height}`, () => {
+    test.use({ viewport: { width: s.width, height: s.height } });
+
+    test('campaign page with the customer pool matches the prototype (both pages)', async ({ page }) => {
+      await openLegacyCampaign(page, 'bebeplay', 50);
+      const legacy = await campaignText(page);
+      expect(legacy.cards).toHaveLength(4);
+      expect(legacy.rowButtons).toHaveLength(50);
+      await shootLegacy(page, `campaign-topbar-${s.tag}`, '.topbar');
+      await unclipView(page);
+      await shootLegacy(page, `campaign-view-${s.tag}`, '#view');
+      await page.locator('[data-pool=next]').click();
+      await expect(page.locator('#view tbody tr')).toHaveCount(9);
+      // หน้า 2: เทียบแถว/ปุ่ม/ตัวแบ่งหน้า (ความกว้างคอลัมน์ขึ้นกับความกว้างตัวอักษรของชื่อในหน้านั้น ต่างกันได้ ±0.1px ระหว่างฟอนต์ CDN กับ next/font)
+      const page2 = async (p: Page) => {
+        const x = await campaignText(p);
+        return { rows: x.rows, rowButtons: x.rowButtons, pager: x.pager, cards: x.cards };
+      };
+      const legacyPage2 = await page2(page);
+      await openAppCampaign(page, 'bebeplay', 50);
+      expect(await campaignText(page)).toEqual(legacy);
+      await expect.soft(page.locator('.topbar')).toHaveScreenshot(`campaign-topbar-${s.tag}.png`, shotC1(`campaign-topbar-${s.tag}`));
+      await unclipView(page);
+      await expect.soft(page.locator('#view')).toHaveScreenshot(`campaign-view-${s.tag}.png`, shotC1(`campaign-view-${s.tag}`));
+      await page.locator('[data-pool=next]').click();
+      await expect(page.locator('#view tbody tr')).toHaveCount(9);
+      expect(await page2(page)).toEqual(legacyPage2);
+    });
+
+    test('campaign lead tables match the prototype (campaign, all campaigns, auto campaign)', async ({ page }) => {
+      const views = async (p: Page) => {
+        const out = [];
+        await p.locator('[data-camp=c-bebe-nov]').click();
+        await expect(p.locator('.quota')).toBeVisible();
+        await settleWork(p);
+        out.push(await campaignText(p));
+        await p.locator('[data-camp=CAMPS]').click();
+        await settleWork(p);
+        out.push(await campaignText(p));
+        return out;
+      };
+      await openLegacyCampaign(page, 'bebeplay', 50);
+      const legacy = await views(page);
+      await page.locator('[data-camp=c-bebe-nov]').click();
+      await unclipView(page);
+      await shootLegacy(page, `campaign-table-${s.tag}`, '#view');
+      await openLegacyCampaign(page, 'hosttail', 29);
+      await page.locator('[data-camp=c-host-nov]').click();
+      await settleWork(page);
+      const legacyAuto = await campaignText(page);
+      expect(legacyAuto.quota).toContain('วิธีจอง: เด้งเข้าเซลล์ที่ขายล่าสุด');
+
+      await openAppCampaign(page, 'bebeplay', 50);
+      expect(await views(page)).toEqual(legacy);
+      await page.locator('[data-camp=c-bebe-nov]').click();
+      await unclipView(page);
+      await expect.soft(page.locator('#view')).toHaveScreenshot(`campaign-table-${s.tag}.png`, shotC1(`campaign-table-${s.tag}`));
+      await openAppCampaign(page, 'hosttail', 29);
+      await page.locator('[data-camp=c-host-nov]').click();
+      await settleWork(page);
+      expect(await campaignText(page)).toEqual(legacyAuto);
+    });
+
+    test('pool customer popup matches the prototype (reserved by another rep, mine)', async ({ page }) => {
+      await compareStepsOn(page, [
+        { name: `pool-detail-${s.tag}`, act: press('[data-pool-open=C5018]', '.modal .info-grid') },
+        { name: `pool-detail-mine-${s.tag}`, act: press('[data-pool-open=C5016]', '.modal [data-act=unclaim]') },
+      ], (p) => openLegacyCampaign(p, 'bebeplay', 50), (p) => openAppCampaign(p, 'bebeplay', 50));
+    });
+
+    test('campaign builder matches the prototype (every tab, criterion, preview)', async ({ page }) => {
+      await compareStepsOn(page, [
+        { name: `builder-base-${s.tag}`, act: press('#new-camp', '#cf-name') },
+        {
+          name: `builder-set-${s.tag}`,
+          act: async (p) => {
+            await p.locator('#cf-name').fill('แคมเปญทดสอบ');
+            await click('[data-ca=next]', '.radio-card')(p);
+          },
+        },
+        { name: `builder-aud-${s.tag}`, act: click('[data-ca=next]', '#funnel') },
+        {
+          name: `builder-crit-${s.tag}`,
+          act: async (p) => {
+            await click('[data-ca=add]', '.crit-row')(p);
+            await p.locator('[data-cf="0:kw"]').fill('เตียง');
+          },
+        },
+        { name: `builder-preview-${s.tag}`, act: click('[data-ca=prev]', '#funnel .mini-table') },
+      ], (p) => openLegacyCampaign(p, 'bebeplay', 50), (p) => openAppCampaign(p, 'bebeplay', 50));
+    });
+
+    // /mine และ /pool ไม่มีใน prototype: ตรวจ DOM + ภาพของตัวเอง (baseline commit ไว้ที่ e2e/.legacy-shots/app/ สร้างด้วย --update-snapshots=missing)
+    test('my customers and the central pool render the base customer table', async ({ page }) => {
+      for (const [path, rows, first] of [['mine', 7, 'ยกเลิกจอง'], ['pool', 50, 'จอง']] as const) {
+        await page.goto(`${APP}/${path}`);
+        await expect(page.locator('#view tbody tr')).toHaveCount(rows, { timeout: 60_000 });
+        await expect(page.locator('#page-title')).toHaveText(path === 'mine' ? 'ลูกค้าของฉัน' : 'ถังกลาง');
+        await expect(page.locator('#view thead th')).toHaveText(['ชื่อ / เบอร์', 'ไม่ซื้อมา / tag', 'กลุ่มลูกค้า', 'ยอดซื้อสะสม', 'ออเดอร์', 'ซื้อล่าสุด', 'แบรนด์', '']);
+        await expect(page.locator('#view tbody tr').first().locator('td').nth(1)).toContainText(/^ไม่ซื้อมา [\d,]+ วัน/);
+        await expect(page.locator('#view tbody tr').first().locator('td:last-child button')).toHaveText(first);
+        await expect(page.locator('#base-brand option')).toHaveText(['ทุกแบรนด์', 'Bebeplay', 'Hosttail']);
+        if (INJECT) await page.addStyleTag({ content: INJECT });
+        await unclipView(page);
+        await expect.soft(page.locator('#view')).toHaveScreenshot(['app', `${path}-${s.tag}.png`], { maxDiffPixels: 0, threshold: 0.1 });
+      }
+      await page.locator('#base-brand').selectOption('hosttail');
+      await expect(page.locator('#view tbody tr td:nth-child(7)').first()).toHaveText('Hosttail');
+      expect(new Set(await page.locator('#view tbody tr td:nth-child(7)').allInnerTexts())).toEqual(new Set(['Hosttail']));
+    });
+  });
+}
