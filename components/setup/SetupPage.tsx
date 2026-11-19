@@ -104,20 +104,25 @@ function TeamPanel() {
 function CampaignPanel() {
   const { campaigns, live } = useAppState();
   const { dispatch, toast, handleAuthError } = useActions();
+  // แคมเปญที่กำลังบันทึก: ล็อกช่องเลือกไว้จนเสร็จ กันเปลี่ยนซ้อนแล้วคืนค่าผิดเมื่อครั้งแรกล้ม
+  const [saving, setSaving] = useState<string | null>(null);
 
   async function onMode(c: Campaign, mode: ClaimMode) {
     if (!live) {
       toast(FIXTURE_NO_WRITE);
       return;
     }
+    if (saving) return;
+    setSaving(c.id);
     dispatch({ type: 'upsertCampaign', campaign: { ...c, claimMode: mode } }); // L898: เปลี่ยนใน state ก่อน แล้วค่อยบันทึก
     try {
       await setCampaignClaimMode(c.id, mode);
       toast('บันทึกวิธีจองลีดแล้ว');
     } catch (e) {
       dispatch({ type: 'upsertCampaign', campaign: c });
-      handleAuthError(e);
-      toast('บันทึกไม่สำเร็จ');
+      if (!handleAuthError(e)) toast('บันทึกไม่สำเร็จ');
+    } finally {
+      setSaving(null);
     }
   }
 
@@ -129,7 +134,7 @@ function CampaignPanel() {
           <div key={c.id} className="list-row">
             <div><b>{c.name}</b><div className="sub">{fmtDate(c.start)} – {fmtDate(c.end)}</div></div>
             <span className={`tag ${c.brand === 'bebeplay' ? 'bebe' : 'host'}`}>{BRAND[c.brand]}</span>
-            <select className="select" data-claimmode={c.id} aria-label="วิธีจองลีด" value={c.claimMode || 'self'} onChange={(e) => void onMode(c, e.target.value as ClaimMode)}>
+            <select className="select" data-claimmode={c.id} aria-label="วิธีจองลีด" value={c.claimMode || 'self'} disabled={saving === c.id} onChange={(e) => void onMode(c, e.target.value as ClaimMode)}>
               {(Object.keys(MODES) as ClaimMode[]).map((k) => <option key={k} value={k}>{MODES[k]}</option>)}
             </select>
           </div>
@@ -235,7 +240,7 @@ function TagPanel() {
             {saving ? 'กำลังบันทึก…' : 'บันทึก tag'}
           </button>
         </div>
-        <p className="help" style={{ marginTop: 10 }}>บันทึกแล้วระบบจะคำนวณฐานลูกค้าใหม่ อาจใช้เวลาหลายวินาที</p>
+        <p className="help" style={{ marginTop: 10 }}>บันทึกแล้วลูกค้าที่มี tag นี้จะย้ายไปอยู่ใน &ldquo;ลูกค้าของฉัน&rdquo; ของเซลล์คนนั้นทันที (tag ที่เพิ่งติดใหม่ใน JST จะเข้ามาในรอบอัปเดตรายชั่วโมง)</p>
       </div>
     </div>
   );
