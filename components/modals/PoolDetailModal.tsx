@@ -86,8 +86,8 @@ export function PoolDetailModal({ row: r, footer, onClaim }: { row: PoolRow; foo
         <dl className="info-grid" style={{ margin: 0 }}>
           <div><dt>เบอร์</dt><dd className="mono">{r.phone}{' '}<button className="copy" data-copy={r.phone} onClick={copyPhone}>คัดลอก</button></dd></div>
           <div><dt>กลุ่มลูกค้า</dt><dd>{r.segment || '—'}</dd></div>
-          <div><dt>ยอดซื้อสะสม</dt><dd className="num">{baht(Math.round(r.ltv))}</dd></div>
-          <div><dt>จำนวนออเดอร์</dt><dd className="num">{r.orders}</dd></div>
+          <div><dt>ยอดซื้อสะสม</dt><dd className="num">{r.ltv == null ? '—' : baht(Math.round(r.ltv))}</dd></div>
+          <div><dt>จำนวนออเดอร์</dt><dd className="num">{r.orders ?? '—'}</dd></div>
           <div><dt>ซื้อล่าสุด</dt><dd>{r.last ? fmtDate(r.last) : '—'}</dd></div>
           <div><dt>ชื่อแชต</dt><dd>{r.chat || '—'}</dd></div>
           <div><dt>ที่อยู่</dt><dd>{cu?.address || '—'}</dd></div>

@@ -118,8 +118,8 @@ export function PoolPanel({ brand }: { brand: Brand }) {
                           : <span className="sub">ยังไม่เข้าแคมเปญ</span>}
                     </td>
                     <td>{r.segment ? <span className="tag">{r.segment}</span> : <span className="sub">—</span>}</td>
-                    <td className="r num">{baht(Math.round(r.ltv))}</td>
-                    <td className="r num">{r.orders}</td>
+                    <td className="r num">{r.ltv == null ? '—' : baht(Math.round(r.ltv))}</td>
+                    <td className="r num">{r.orders ?? '—'}</td>
                     <td>{r.last ? fmtDate(r.last) : '—'}</td>
                     <td><BrandTags brands={r.brands} dash /></td>
                     <td><RowButton a={poolAction(r, ctx)} rowId={r.id} onClaim={() => claim(r)} onUnclaim={act.confirmUnclaim} /></td>

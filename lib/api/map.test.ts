@@ -84,7 +84,7 @@ describe('mapPoolRow', () => {
       id: 'id-1', segment: 'Champions', ltv: 12345.5, orders: 3, chat: '', brands: ['bebeplay'], noCall: false, dormantDays: 45, ownerTag: 'Admin_Ploy',
     });
     expect(mapPoolRow(pr({ identity_id: null, segment: null, ltv: null, order_count: null, brands: null }), 'u1')).toMatchObject({
-      id: '0812345678', segment: '', ltv: 0, orders: 0, brands: [], dormantDays: null, ownerTag: null,
+      id: '0812345678', segment: '', ltv: null, orders: null, brands: [], dormantDays: null, ownerTag: null,
     });
   });
   it('rowsTotal reads total_count from the first row', () => {

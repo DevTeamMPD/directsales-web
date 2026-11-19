@@ -66,7 +66,7 @@ export interface PoolRowJson {
   dormant_days?: number | null; owner_tag?: string | null;
 }
 export interface PoolRow {
-  id: string; name: string; phone: string; segment: string; ltv: number; orders: number; last: string | null; brands: string[];
+  id: string; name: string; phone: string; segment: string; ltv: number | null; orders: number | null; last: string | null; brands: string[];
   chat: string; leadId: string | null; mine: boolean; noCall: boolean; takenName: string; taken: string | null;
   dormantDays: number | null; ownerTag: string | null;
   /** โหมด fixture (prototype โหมดตัวอย่าง L640): เซลล์คนนี้เคยคัดออก / ลีดที่จองไว้ยกเลิกได้ */
