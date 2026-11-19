@@ -109,6 +109,10 @@ describe('/mine and /pool (dsales_base_customers, spec ข้อ 3)', () => {
     expect(baseAction(row({ mine: true, taken: 'r4', leadId: 'L8' }), mineCtx)).toEqual({ kind: 'disabled', text: 'จองแล้ว' });
     expect(baseAction(row({ mine: true, taken: 'r4', leadId: 'L404' }), mineCtx)).toEqual({ kind: 'disabled', text: 'จองแล้ว' });
     expect(baseAction(row({ mine: true, taken: 'r4', leadId: null, ownerTag: 'Admin_Dev' }), mineCtx)).toEqual({ kind: 'claim', text: 'เริ่มติดตาม' });
+    // ลูกค้าตาม tag ของฉันที่เคยยกเลิกจอง: ลีดยังอยู่แต่ไม่มีเจ้าของ → ต้องเริ่มติดตามใหม่ได้ (dsales_claim_customer รับลีดเดิมคืน)
+    const released = { ...mineCtx, leads: [...mineCtx.leads, lead({ id: 'L7', owner: null, claimedBy: null })] };
+    expect(baseAction(row({ mine: true, taken: 'r4', leadId: 'L7', ownerTag: 'Admin_Dev' }), released)).toEqual({ kind: 'claim', text: 'เริ่มติดตาม' });
+    expect(baseAction(row({ mine: true, taken: 'r4', leadId: 'L404', ownerTag: 'Admin_Dev' }), mineCtx)).toEqual({ kind: 'claim', text: 'เริ่มติดตาม' });
     expect(baseAction(row({ taken: 'other', takenName: 'กมลชนก' }), mineCtx)).toEqual({ kind: 'disabled', text: 'เป็นลูกค้าของ กมลชนก' });
     expect(baseAction(row({ taken: 'other', ownerTag: 'Admin_Ploy' }), mineCtx)).toEqual({ kind: 'disabled', text: 'เป็นลูกค้าของ Admin_Ploy' });
     expect(baseAction(row({ taken: 'other' }), mineCtx)).toEqual({ kind: 'disabled', text: 'จองแล้ว' });

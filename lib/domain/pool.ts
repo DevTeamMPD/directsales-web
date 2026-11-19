@@ -123,9 +123,11 @@ export function baseAction(r: PoolRow, ctx: Pick<PoolCtx, 'meId' | 'leads'>): Ro
   if (r.noCall) return disabled('ไม่สะดวกให้โทร');
   if (r.mine) {
     if (r.leadId) {
-      // มีลีดแล้ว = จองอยู่แล้ว แม้ลีดยังไม่อยู่ใน state (เกิน 1000 แถว / จองจากแท็บอื่น) — ไม่แสดง "เริ่มติดตาม"
+      // dsales_base_customers คืน lead_id ของลีดบนเบอร์นี้แม้ลีดไม่มีเจ้าของ (เคยยกเลิกจอง) — mine อาจมาจาก tag
       const l = ctx.leads.find((x) => x.id === r.leadId);
-      return l && l.owner === ctx.meId && canUnclaimAny(l, ctx.meId) ? unclaim(r.leadId) : disabled('จองแล้ว');
+      if (l && l.owner === ctx.meId) return canUnclaimAny(l, ctx.meId) ? unclaim(r.leadId) : disabled('จองแล้ว');
+      // ลีดในมือคนอื่น/ไม่มีเจ้าของ หรือไม่ได้โหลดมา: ถ้าเป็นของฉันตาม tag ให้เริ่มติดตาม (จองคืนได้) — ไม่มี tag = ลีดของฉันที่ยังไม่โหลด
+      return r.ownerTag || (l && !l.owner) ? { kind: 'claim', text: 'เริ่มติดตาม' } : disabled('จองแล้ว');
     }
     return { kind: 'claim', text: 'เริ่มติดตาม' };
   }
