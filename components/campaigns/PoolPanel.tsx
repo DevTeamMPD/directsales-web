@@ -67,7 +67,7 @@ export function PoolPanel({ brand }: { brand: Brand }) {
     return () => {
       alive = false;
     };
-  }, [live, brand, qKey, pool.page, from, to, poolVersion, meId, handleAuthError]);
+  }, [live, brand, qKey, pool.page, from, to, poolVersion, meId, handleAuthError, setPool]);
 
   const demo = useMemo(
     () => (live ? null : demoPool(customers, leads, { brand, q: qKey, page: pool.page, period: ui.period, viewer: { meId, isAdmin } })),
