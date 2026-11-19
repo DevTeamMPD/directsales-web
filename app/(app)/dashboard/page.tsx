@@ -1,5 +1,5 @@
-import { Placeholder } from '@/components/shell/Placeholder';
+import { DashboardPage } from '@/components/dashboard/DashboardPage';
 
-export default function DashboardPage() {
-  return <Placeholder plan="C" />;
+export default function Page() {
+  return <DashboardPage />;
 }

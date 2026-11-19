@@ -1,5 +1,6 @@
 import { upsertLead } from '@/lib/api/map';
 import type { Brand, Campaign, DemoCustomer, Lead, LeadJson, Rep } from '@/lib/api/types';
+import { upsertRep } from '@/lib/domain/setup';
 
 export type PeriodKey = 'all' | 'today' | '7d' | 'm0' | 'm1' | 'y0' | 'month' | 'year' | 'custom';
 export interface Period { from: string; to: string; key: PeriodKey }
@@ -8,10 +9,12 @@ export interface Period { from: string; to: string; key: PeriodKey }
 export interface UiFilters {
   q: string; status: string; camp: string; rep: string; selCamp: string | null;
   sort: 'due' | 'spend' | 'none'; dashBrand: 'all' | Brand; period: Period; focusSearch: boolean;
+  /** อัตราค่าคอม (%) ของตาราง Dashboard — prototype state.commissionRate (ล็อกอินจริงไม่บันทึก หายเมื่อโหลดหน้าใหม่) */
+  commissionRate: number;
 }
 export const initialUi: UiFilters = {
   q: '', status: 'all', camp: 'all', rep: 'all', selCamp: null, sort: 'due', dashBrand: 'all',
-  period: { from: '', to: '', key: 'all' }, focusSearch: false,
+  period: { from: '', to: '', key: 'all' }, focusSearch: false, commissionRate: 0,
 };
 
 /**
@@ -48,12 +51,13 @@ export type Action =
   | { type: 'patchLead'; id: string; patch: Partial<Lead> }
   | { type: 'removeLead'; id: string }
   | { type: 'upsertCampaign'; campaign: Campaign }
+  | { type: 'upsertRep'; rep: Rep }
   | { type: 'setUi'; patch: Partial<UiFilters> }
   | { type: 'setPool'; patch: Partial<PoolUi> }
   | { type: 'invalidatePool' };
 
 const DATA_ACTIONS: ReadonlySet<Action['type']> = new Set<Action['type']>([
-  'upsertLead', 'patchLead', 'removeLead', 'upsertCampaign', 'setUi', 'setPool', 'invalidatePool',
+  'upsertLead', 'patchLead', 'removeLead', 'upsertCampaign', 'upsertRep', 'setUi', 'setPool', 'invalidatePool',
 ]);
 
 export function reducer(state: AppState, action: Action): AppState {
@@ -85,6 +89,8 @@ export function reducer(state: AppState, action: Action): AppState {
         campaigns: exists ? state.campaigns.map((c) => (c.id === action.campaign.id ? action.campaign : c)) : [...state.campaigns, action.campaign],
       };
     }
+    case 'upsertRep':
+      return { ...state, reps: upsertRep(state.reps, action.rep, state.meId) };
     case 'setUi':
       return { ...state, ui: { ...state.ui, ...action.patch } };
     case 'setPool':

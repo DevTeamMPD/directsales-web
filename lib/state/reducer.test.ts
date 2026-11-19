@@ -64,6 +64,12 @@ describe('reducer', () => {
     expect(reducer(ready, { type: 'setToday', today: '2026-11-04' })).toBe(ready);
     expect(reducer(ready, { type: 'setToday', today: '2026-11-05' }).today).toBe('2026-11-05');
   });
+  it('upsertRep adds or updates a team member; commissionRate starts at 0', () => {
+    const s = reducer(ready, { type: 'upsertRep', rep: { id: 'u2', name: 'พลอย', initials: 'พล', role: 'sales', active: true } });
+    expect(s.reps.map((r) => r.id)).toEqual(['u1', 'u2']);
+    expect(reducer(s, { type: 'upsertRep', rep: { id: 'u2', name: 'พลอย', initials: 'พล', role: 'sales', active: false } }).reps[1].active).toBe(false);
+    expect(initialState.ui.commissionRate).toBe(0);
+  });
   it('setPool merges the persistent pool filters', () => {
     expect(initialState.pool).toEqual({ brand: null, q: '', page: 0, grand: null, grandFor: null });
     expect(reducer(ready, { type: 'setPool', patch: { brand: 'hosttail', q: '081', page: 2 } }).pool)
