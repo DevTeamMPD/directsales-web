@@ -5,12 +5,13 @@ import { CloseButton } from '@/components/ui/CloseButton';
 import type { Brand } from '@/lib/constants';
 import { useActions } from '@/lib/state/AppProvider';
 
-/** ไม่ให้พิมพ์ข้อมูลเอง: เลือกลูกค้าจากถัง "ลูกค้าทั้งหมด" ของแบรนด์แล้วกด จอง (ถังลูกค้าทำในแผน C) */
+/** ไม่ให้พิมพ์ข้อมูลเอง: เลือกลูกค้าจากถัง "ลูกค้าทั้งหมด" ของแบรนด์แล้วกด จอง (prototype L602-610: ล้างคำค้นถัง + โฟกัสช่องค้นหา) */
 export function PickFromBucketModal() {
   const router = useRouter();
-  const { setUi, dispatch, closeModal } = useActions();
+  const { setUi, setPool, dispatch, closeModal } = useActions();
   const open = (brand: Brand) => {
     setUi({ selCamp: 'ALL', focusSearch: true });
+    setPool({ q: '', page: 0 });
     dispatch({ type: 'invalidatePool' });
     closeModal();
     router.push(`/campaigns/${brand}`);

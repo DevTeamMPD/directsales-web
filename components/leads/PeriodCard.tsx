@@ -9,11 +9,12 @@ import { useActions, useAppState } from '@/lib/state/AppProvider';
 /** การ์ดช่วงวันที่ (ทุกหน้ายกเว้นตั้งค่า) ค่าคงอยู่ข้ามหน้าใน state.ui.period */
 export function PeriodCard() {
   const { ui, today } = useAppState();
-  const { setUi, dispatch } = useActions();
+  const { setUi, setPool, dispatch } = useActions();
   const P = ui.period;
   // prototype: เปลี่ยนช่วงแล้วถังลูกค้ากลับไปหน้าแรกและโหลดใหม่ (ui.pool.page = 0, loaded = false)
   const apply = (p: Period) => {
     setUi({ period: p });
+    setPool({ page: 0 });
     dispatch({ type: 'invalidatePool' });
   };
   return (
