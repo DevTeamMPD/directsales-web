@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { errorKind, errorMessage, kindOf, NETWORK_TEXT, RpcError, toThaiError } from './errors';
+import { ERROR_TEXT, errorKind, errorMessage, kindOf, NETWORK_TEXT, RpcError, toThaiError } from './errors';
 
 describe('toThaiError', () => {
   it('maps every prototype LIVE_ERR key', () => {
@@ -41,6 +41,9 @@ describe('toThaiError', () => {
     for (const m of ['TypeError: Failed to fetch', 'NetworkError when attempting to fetch resource.', 'Load failed', 'fetch failed']) {
       expect(toThaiError(m), m).toBe(NETWORK_TEXT);
     }
+  });
+  it('maps a Postgres statement timeout to Thai', () => {
+    expect(toThaiError('canceling statement due to statement timeout')).toBe(ERROR_TEXT.statement_timeout);
   });
   it('falls back to the raw message, or a generic text', () => {
     expect(toThaiError('duplicate key value')).toBe('duplicate key value');

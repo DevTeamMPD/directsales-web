@@ -78,5 +78,7 @@ export async function createCampaign(input: NewCampaign): Promise<CampaignRow> {
   return unwrap<CampaignRow>(await db().from('dsales_campaigns').insert(input).select().single());
 }
 export async function setCampaignClaimMode(id: string, mode: ClaimMode): Promise<void> {
-  unwrap(await db().from('dsales_campaigns').update({ claim_mode: mode }).eq('id', id));
+  // RLS กรอง update ที่ไม่มีสิทธิ์เหลือ 0 แถวโดยไม่มี error (เช่น ถูกถอดจากหัวหน้าระหว่างใช้งาน) → ต้องตรวจจำนวนแถวเอง
+  const rows = unwrap<{ id: string }[]>(await db().from('dsales_campaigns').update({ claim_mode: mode }).eq('id', id).select('id'));
+  if (!rows?.length) throw new RpcError('forbidden');
 }

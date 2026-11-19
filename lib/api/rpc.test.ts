@@ -1,11 +1,37 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
-vi.mock('@/lib/supabase/client', () => ({ db: () => ({ rpc }) }));
+const { rpc, from } = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn() }));
+vi.mock('@/lib/supabase/client', () => ({ db: () => ({ rpc, from }) }));
 
-import { addMember, claimCustomer, getBaseCustomers, getMe, logContact } from './rpc';
+import { addMember, claimCustomer, getBaseCustomers, getMe, logContact, setCampaignClaimMode } from './rpc';
 
-beforeEach(() => rpc.mockReset());
+beforeEach(() => {
+  rpc.mockReset();
+  from.mockReset();
+});
+
+/** from('dsales_campaigns').update(..).eq(..).select('id') → result */
+function updateChain(result: unknown) {
+  const select = vi.fn().mockResolvedValue(result);
+  const eq = vi.fn(() => ({ select }));
+  const update = vi.fn(() => ({ eq }));
+  from.mockReturnValue({ update });
+  return { update, eq, select };
+}
+
+describe('setCampaignClaimMode', () => {
+  it('updates the claim mode of the campaign', async () => {
+    const c = updateChain({ data: [{ id: 'C1' }], error: null });
+    await setCampaignClaimMode('C1', 'assign');
+    expect(from).toHaveBeenCalledWith('dsales_campaigns');
+    expect(c.update).toHaveBeenCalledWith({ claim_mode: 'assign' });
+    expect(c.eq).toHaveBeenCalledWith('id', 'C1');
+  });
+  it('throws when RLS filters the update to no rows (no longer an admin)', async () => {
+    updateChain({ data: [], error: null });
+    await expect(setCampaignClaimMode('C1', 'assign')).rejects.toThrow('ไม่มีสิทธิ์ทำรายการนี้');
+  });
+});
 
 describe('rpc wrappers', () => {
   it('getMe returns the first row, or null', async () => {

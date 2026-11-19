@@ -16,6 +16,7 @@ export const ERROR_TEXT: Readonly<Record<string, string>> = {
   invalid_role: 'บทบาทไม่ถูกต้อง',
   cannot_deactivate_self: 'ปิดใช้งานบัญชีของตัวเองไม่ได้',
   last_admin: 'ต้องมีหัวหน้าอย่างน้อย 1 คน',
+  statement_timeout: 'ระบบฐานข้อมูลตอบช้า กรุณาลองใหม่อีกครั้ง',
 };
 
 /** fetch ล้ม / offline: Chrome "Failed to fetch", Firefox "NetworkError when attempting…", Safari "Load failed", Node "fetch failed" */
@@ -28,6 +29,7 @@ export function toThaiError(message: string | null | undefined): string {
   const msg = (message ?? '').trim();
   if (NETWORK.test(msg)) return NETWORK_TEXT;
   if (AUTH.test(msg)) return ERROR_TEXT.not_authenticated;
+  if (/statement timeout/i.test(msg)) return ERROR_TEXT.statement_timeout; // Postgres 57014 (authenticated มี statement_timeout 8 วินาที)
   const tag = /tag_taken:\s*(.+)$/.exec(msg);
   if (tag) return `tag ${tag[1]} เป็นของเซลล์คนอื่นแล้ว`;
   for (const token of msg.match(/[a-z_]+/g) ?? []) {

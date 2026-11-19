@@ -133,7 +133,7 @@ function ClaimCell({ l, mode, ctx }: { l: Lead; mode?: ClaimMode; ctx: RowCtx })
       }}
     >
       <option value="">มอบหมายให้…</option>
-      {ctx.reps.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+      {ctx.reps.filter((r) => r.active !== false).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
     </select>
   ) : null;
   if (mode === 'self') {

@@ -61,6 +61,7 @@ function TeamPanel() {
         await setMemberActive(id, next);
         const r = reps.find((x) => x.id === id);
         if (r) dispatch({ type: 'upsertRep', rep: { ...r, active: next } });
+        dispatch({ type: 'invalidatePool' }); // ปิด/เปิดใช้งาน = ลูกค้าตาม tag ของคนนี้เปลี่ยนเจ้าของทันที (ถังลูกค้าที่เปิดอยู่ต้องโหลดใหม่)
         toast(next ? 'เปิดใช้งานแล้ว' : 'ปิดใช้งานแล้ว');
       } catch (err) {
         toastError(err);
@@ -147,7 +148,7 @@ function CampaignPanel() {
 
 /**
  * ผูก tag Admin_* ของ JST กับเซลล์ (spec ข้อ 3): เลือกเซลล์ → กดชิป tag (เลือกได้หลายอัน) → บันทึก
- * บันทึกแล้ว DB คำนวณฐานลูกค้าใหม่ทั้งหมด (dsales_refresh_customer_base) ใช้เวลาหลายวินาที → ปุ่ม/ชิป disabled + "กำลังบันทึก…"
+ * บันทึกแล้ว DB อัปเดตเจ้าของลูกค้าที่มี tag นั้นทันที (owner_id ในที่เดิม ไม่ refresh เต็ม) → ระหว่างบันทึกปุ่ม/ชิป disabled + "กำลังบันทึก…"
  */
 function TagPanel() {
   const { reps, live } = useAppState();
@@ -240,7 +241,7 @@ function TagPanel() {
             {saving ? 'กำลังบันทึก…' : 'บันทึก tag'}
           </button>
         </div>
-        <p className="help" style={{ marginTop: 10 }}>บันทึกแล้วลูกค้าที่มี tag นี้จะย้ายไปอยู่ใน &ldquo;ลูกค้าของฉัน&rdquo; ของเซลล์คนนั้นทันที (tag ที่เพิ่งติดใหม่ใน JST จะเข้ามาในรอบอัปเดตรายชั่วโมง)</p>
+        <p className="help" style={{ marginTop: 10 }}>บันทึกแล้วลูกค้าที่มี tag นี้จะย้ายไปอยู่ใน &ldquo;ลูกค้าของฉัน&rdquo; ของเซลล์คนนั้นทันที (tag ที่เพิ่งติดใหม่ใน JST จะเข้ามาในรอบอัปเดตถัดไป 07:05 / 12:05 / 16:05 น.)</p>
       </div>
     </div>
   );
