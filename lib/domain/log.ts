@@ -96,3 +96,16 @@ export function buildLogSave(f: LogForm, lead: Pick<Lead, 'id' | 'status'>): Log
       : f.status === 'release' ? 'คัดออกแล้ว ลูกค้ากลับเข้าถังให้เซลล์คนอื่นโทร' : 'บันทึกแล้ว',
   };
 }
+
+/** ขั้นของการบันทึก: dsales_log แล้ว (ถ้ามี) dsales_set_nocall / dsales_unclaim_lead */
+export type LogStep = 'log' | 'dnc' | 'release';
+/** ขั้นที่สำเร็จแล้วของฟอร์มชุดเดิม (key = อาร์กิวเมนต์ทั้งหมด) — กดบันทึกซ้ำหลังสำเร็จบางขั้นไม่บันทึกประวัติซ้ำ */
+export interface LogProgress { key: string; done: LogStep[] }
+
+/** ขั้นที่ยังต้องทำ: ฟอร์มเดิม (key เท่ากัน) ข้ามขั้นที่สำเร็จแล้ว; แก้ฟอร์มแล้ว = ชุดใหม่ เริ่มตั้งแต่ dsales_log */
+export function logSteps(plan: LogSave, progress: LogProgress | null): { key: string; steps: LogStep[] } {
+  const key = JSON.stringify([plan.input, plan.then]);
+  const all: LogStep[] = plan.then ? ['log', plan.then] : ['log'];
+  const done = progress?.key === key ? progress.done : [];
+  return { key, steps: all.filter((s) => !done.includes(s)) };
+}

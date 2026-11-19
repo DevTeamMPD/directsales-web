@@ -6,7 +6,8 @@ import { logContact, setNoCall, unclaimLead } from '@/lib/api/rpc';
 import type { ContactType, Lead } from '@/lib/api/types';
 import { FIXTURE_NO_WRITE } from '@/lib/constants';
 import {
-  buildLogSave, initialLogForm, LOG_RESULTS, logSections, logStatusOptions, validateLog, type LogField, type LogForm, type LogStatus,
+  buildLogSave, initialLogForm, LOG_RESULTS, logSections, logStatusOptions, logSteps, validateLog,
+  type LogField, type LogForm, type LogProgress, type LogStatus,
 } from '@/lib/domain/log';
 import { useActions, useAppState, useModalSeq } from '@/lib/state/AppProvider';
 
@@ -22,6 +23,7 @@ function LogFormView({ lead: l, type }: { lead: Lead; type: ContactType }) {
   const [f, setF] = useState<LogForm>(() => initialLogForm(l, type, today));
   const [prevStatus] = useState(l.status);
   const busy = useRef(false);
+  const progress = useRef<LogProgress | null>(null);
   const seq = useModalSeq();
   const cbRef = useRef<HTMLInputElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
@@ -45,10 +47,17 @@ function LogFormView({ lead: l, type }: { lead: Lead; type: ContactType }) {
     if (busy.current) return;
     busy.current = true;
     const plan = buildLogSave(f, { id: l.id, status: prevStatus });
+    const { key, steps } = logSteps(plan, progress.current);
+    if (progress.current?.key !== key) progress.current = { key, done: [] };
+    const run = progress.current;
     try {
-      upsertLead(await logContact(plan.input));
-      if (plan.then === 'dnc') upsertLead(await setNoCall(l.id, true));
-      if (plan.then === 'release') upsertLead(await unclaimLead(l.id));
+      // ทีละขั้น จำขั้นที่สำเร็จ: ถ้า setNoCall/unclaim ล้มแล้วกดบันทึกซ้ำ จะไม่เรียก dsales_log ซ้ำ (ประวัติไม่ซ้ำ 2 รอบ)
+      for (const step of steps) {
+        if (step === 'log') upsertLead(await logContact(plan.input));
+        else if (step === 'dnc') upsertLead(await setNoCall(l.id, true));
+        else upsertLead(await unclaimLead(l.id));
+        run.done.push(step);
+      }
       closeModal(seq);
       dispatch({ type: 'invalidatePool' });
       toast(plan.msg);

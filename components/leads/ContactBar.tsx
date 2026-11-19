@@ -2,9 +2,11 @@
 
 import { ChIcon } from '@/components/ui/ChIcon';
 import { PATHS } from '@/lib/constants';
-import { chatAria, chatTitle, jstTarget, platLabel, type JstSource, type NormChannel } from '@/lib/jst';
+import { chatAria, chatTitle, jstTarget, platLabel, type JstSource, type JstTarget, type NormChannel } from '@/lib/jst';
 import { useActions } from '@/lib/state/AppProvider';
-import { useJst } from './useJst';
+
+/** ฟังก์ชันเปิดแชตใน JST (จาก useJst ของ component แม่ — เรียก hook ครั้งเดียวต่อตาราง/popup ไม่ใช่ต่อปุ่ม) */
+export type OpenJst = (t: JstTarget, opts?: { auto?: boolean }) => void;
 
 /** ปุ่มโทร: เปิดแอปโทร (tel:) พร้อมคัดลอกเบอร์ เผื่อเครื่องคอมไม่มีแอปโทร */
 export function CallButton({ phone }: { phone: string }) {
@@ -26,8 +28,7 @@ export function CallButton({ phone }: { phone: string }) {
   );
 }
 
-function ChatButton({ x, c, size }: { x: JstSource; c: NormChannel; size: number }) {
-  const openJst = useJst();
+function ChatButton({ x, c, size, openJst }: { x: JstSource; c: NormChannel; size: number; openJst: OpenJst }) {
   return (
     <button type="button" className="ch-btn" data-act="jst" data-t={JSON.stringify(jstTarget(x, c))} title={chatTitle(c)} aria-label={chatAria(c)} onClick={() => openJst(jstTarget(x, c))}>
       <ChIcon p={c.platform} size={size} />
@@ -36,20 +37,19 @@ function ChatButton({ x, c, size }: { x: JstSource; c: NormChannel; size: number
 }
 
 /** ปุ่มโทร + ปุ่มแชต: ในตาราง (mini) 4 ช่องทาง 16px, ใน popup 8 ช่องทาง 22px */
-export function ContactBar({ x, chans, mini = false }: { x: JstSource; chans: NormChannel[]; mini?: boolean }) {
+export function ContactBar({ x, chans, mini = false, openJst }: { x: JstSource; chans: NormChannel[]; mini?: boolean; openJst: OpenJst }) {
   return (
     <span className={`ch-bar ${mini ? 'mini' : ''}`}>
       <CallButton phone={x.phone} />
       {chans.slice(0, mini ? 4 : 8).map((c, i) => (
-        <ChatButton key={`${c.shop}-${i}`} x={x} c={c} size={mini ? 16 : 22} />
+        <ChatButton key={`${c.shop}-${i}`} x={x} c={c} size={mini ? 16 : 22} openJst={openJst} />
       ))}
     </span>
   );
 }
 
 /** ช่องทางแชต (แยกตามร้าน) ใน popup รายละเอียดลูกค้า */
-export function ChannelRow({ x, chans }: { x: JstSource; chans: NormChannel[] }) {
-  const openJst = useJst();
+export function ChannelRow({ x, chans, openJst }: { x: JstSource; chans: NormChannel[]; openJst: OpenJst }) {
   if (!chans.length) return <span className="sub">ไม่พบช่องทางแชต</span>;
   return (
     <div className="ch-chips">

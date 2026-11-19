@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Lead } from '@/lib/api/types';
 import { fixturePayload } from '@/lib/fixtures/load';
-import { buildLogSave, initialLogForm, LOG_WARN, logSections, logStatusOptions, splitBills, validateLog } from './log';
+import { buildLogSave, initialLogForm, LOG_WARN, logSections, logStatusOptions, logSteps, splitBills, validateLog } from './log';
 
 const F = fixturePayload();
 const T = F.today;
@@ -72,5 +72,16 @@ describe('log modal (prototype logModal L524-600)', () => {
     expect(buildLogSave({ ...base, status: 'release', note: 'โทรไม่ติด 5 ครั้ง' }, { id: 'L1', status: 'following' })).toMatchObject({
       input: { status: 'new', result: 'คัดออก', note: 'โทรไม่ติด 5 ครั้ง' }, then: 'release', msg: 'คัดออกแล้ว ลูกค้ากลับเข้าถังให้เซลล์คนอื่นโทร',
     });
+  });
+  it('logSteps skips the steps that already succeeded for the same form (no double history after a partial failure)', () => {
+    const plan = buildLogSave({ ...base, status: 'dnc', note: 'ลูกค้าขอ' }, { id: 'L1', status: 'new' });
+    const first = logSteps(plan, null);
+    expect(first.steps).toEqual(['log', 'dnc']);
+    // dsales_log ผ่านแต่ dsales_set_nocall ล้ม → กดบันทึกอีกครั้งทำเฉพาะ dnc
+    expect(logSteps(plan, { key: first.key, done: ['log'] }).steps).toEqual(['dnc']);
+    // แก้ฟอร์ม (หมายเหตุใหม่) = บันทึกชุดใหม่ทั้งหมด
+    const edited = buildLogSave({ ...base, status: 'dnc', note: 'ลูกค้าขอ (แก้)' }, { id: 'L1', status: 'new' });
+    expect(logSteps(edited, { key: first.key, done: ['log'] }).steps).toEqual(['log', 'dnc']);
+    expect(logSteps(buildLogSave(base, { id: 'L1', status: 'new' }), null).steps).toEqual(['log']);
   });
 });

@@ -1,24 +1,27 @@
 'use client';
 
-import { Fragment } from 'react';
-import { ContactBar } from '@/components/leads/ContactBar';
+import { Fragment, memo, useMemo } from 'react';
+import { ContactBar, type OpenJst } from '@/components/leads/ContactBar';
 import { DueTag, StatusBadge } from '@/components/ui/StatusBadge';
 import type { Campaign, ClaimMode, Lead, Rep } from '@/lib/api/types';
 import { bills, canUnclaim, lastSeller, repName, total } from '@/lib/domain/leads';
 import { baht, fmtDate } from '@/lib/format';
 import { channelsOf } from '@/lib/jst';
 import { useAppState } from '@/lib/state/AppProvider';
+import { useJst } from './useJst';
 import { useLeadActions, type LeadActions } from './useLeadActions';
 
-/** mode = วิธีจองของแคมเปญที่เลือก (หน้าแคมเปญแผน C); perCamp = มุม "ลูกค้าทุกแคมเปญ" ใช้วิธีจองของแคมเปญของแต่ละลีด */
+/** mode = วิธีจองของแคมเปญที่เลือก (หน้าแคมเปญ); perCamp = มุม "ลูกค้าทุกแคมเปญ" ใช้วิธีจองของแคมเปญของแต่ละลีด */
 export interface TableOpts { mode?: ClaimMode; perCamp?: boolean }
 
-interface RowCtx { reps: Rep[]; campaigns: Campaign[]; meId: string; isAdmin: boolean; today: string; act: LeadActions }
+interface RowCtx { reps: Rep[]; campaigns: Campaign[]; meId: string; isAdmin: boolean; today: string; act: LeadActions; openJst: OpenJst }
 
 export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts }) {
   const { reps, campaigns, meId, isAdmin, today } = useAppState();
   const act = useLeadActions();
-  const ctx: RowCtx = { reps, campaigns, meId, isAdmin, today, act };
+  const openJst = useJst();
+  // ctx คงที่จนกว่าทีม/แคมเปญ/วันนี้เปลี่ยน → พิมพ์ค้นหาแล้วแถวที่ลีดไม่เปลี่ยนไม่ต้องวาดใหม่ (memo)
+  const ctx = useMemo<RowCtx>(() => ({ reps, campaigns, meId, isAdmin, today, act, openJst }), [reps, campaigns, meId, isAdmin, today, act, openJst]);
   return (
     <div className="card table-wrap">
       <table>
@@ -43,8 +46,8 @@ export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts 
   );
 }
 
-function LeadRow({ l, mode, ctx }: { l: Lead; mode?: ClaimMode; ctx: RowCtx }) {
-  const { reps, campaigns, meId, isAdmin, today, act } = ctx;
+const LeadRow = memo(function LeadRow({ l, mode, ctx }: { l: Lead; mode?: ClaimMode; ctx: RowCtx }) {
+  const { reps, campaigns, meId, isAdmin, today, act, openJst } = ctx;
   const owner = repName(reps, l.owner);
   const seller = lastSeller(l, reps);
   const lastNote = l.interactions[l.interactions.length - 1]?.note;
@@ -54,7 +57,7 @@ function LeadRow({ l, mode, ctx }: { l: Lead; mode?: ClaimMode; ctx: RowCtx }) {
       <td>
         <button className="cust-name" data-act="open" data-id={l.id} onClick={() => act.openCustomer(l.id)}>{l.name}</button>
         <div className="sub mono">{l.phone}</div>
-        <ContactBar x={l} chans={channelsOf(l)} mini />
+        <ContactBar x={l} chans={channelsOf(l)} mini openJst={openJst} />
       </td>
       <td>
         <div className="bills">{bills(l).map((b, i) => <span key={`${b}-${i}`} className="bill">{b}</span>)}</div>
@@ -112,7 +115,7 @@ function LeadRow({ l, mode, ctx }: { l: Lead; mode?: ClaimMode; ctx: RowCtx }) {
       </td>
     </tr>
   );
-}
+});
 
 /** L106-113: ไม่มีวิธีจองหรือมีเจ้าของแล้ว → ว่าง; หัวหน้าได้ select มอบหมาย */
 function ClaimCell({ l, mode, ctx }: { l: Lead; mode?: ClaimMode; ctx: RowCtx }) {

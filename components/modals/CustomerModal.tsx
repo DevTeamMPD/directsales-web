@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChannelRow, ContactBar } from '@/components/leads/ContactBar';
+import { useJst } from '@/components/leads/useJst';
 import { CloseButton } from '@/components/ui/CloseButton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { mapPurchase } from '@/lib/api/map';
@@ -26,7 +27,10 @@ export function CustomerModal({ id }: { id: string }) {
 function CustomerDetail({ lead: l }: { lead: Lead }) {
   const { live, reps } = useAppState();
   const { openModal, patchLead, toast } = useActions();
+  const openJst = useJst();
   const [tab, setTab] = useState<Tab>('buy');
+  // นับทุกครั้งที่คลิกแท็บ (รวมแท็บที่ active อยู่แล้ว) = prototype เปิด popup ใหม่ทุกครั้ง (L515)
+  const [tabSeq, setTabSeq] = useState(0);
   const [checks, setChecks] = useState(0);
   const refreshRef = useRef<HTMLButtonElement>(null);
   const loading = useRef(false);
@@ -53,8 +57,11 @@ function CustomerDetail({ lead: l }: { lead: Lead }) {
   useLayoutEffect(() => {
     refreshRef.current?.closest('.modal')?.scrollTo(0, 0);
     refreshRef.current?.focus();
-  }, [tab, plDone]);
-  const switchTab = (t: Tab) => setTab(t);
+  }, [tabSeq, plDone]);
+  const switchTab = (t: Tab) => {
+    setTab(t);
+    setTabSeq((n) => n + 1);
+  };
   const copyPhone = () => {
     navigator.clipboard?.writeText(l.phone).then(() => toast('คัดลอกเบอร์แล้ว'), () => toast(l.phone));
   };
@@ -65,7 +72,7 @@ function CustomerDetail({ lead: l }: { lead: Lead }) {
         <h3>{l.name}</h3>
         <StatusBadge status={l.status} />
         <span className={`tag ${l.brand === 'bebeplay' ? 'bebe' : 'host'}`}>{BRAND[l.brand]}</span>
-        <ContactBar x={l} chans={chans} />
+        <ContactBar x={l} chans={chans} openJst={openJst} />
         <CloseButton />
       </div>
       <div className="modal-b">
@@ -83,14 +90,14 @@ function CustomerDetail({ lead: l }: { lead: Lead }) {
           <div><dt>สินค้าที่สนใจ</dt><dd>{l.interest || '—'}</dd></div>
           <div><dt>เลขบิลที่ปิดได้</dt><dd className="mono">{l.closedBills.length ? l.closedBills.join(', ') : '—'}</dd></div>
           <div><dt>วันที่ปิดการขาย</dt><dd>{l.closedAt ? fmtDate(l.closedAt) : '—'}</dd></div>
-          <div className="wide"><dt>ช่องทางแชต (แยกตามร้าน)</dt><dd><ChannelRow x={l} chans={chans} /></dd></div>
+          <div className="wide"><dt>ช่องทางแชต (แยกตามร้าน)</dt><dd><ChannelRow x={l} chans={chans} openJst={openJst} /></dd></div>
         </dl>
         <div className="chk">
           <div className="chk-h">
             <b>การทักแชท (ตรวจจาก JST)</b>
             <button type="button" className="btn sm" id="chk-refresh" ref={refreshRef} onClick={() => setChecks((n) => n + 1)}>ตรวจอีกครั้ง</button>
           </div>
-          <ChatCheckBody lead={l} blankKey={`${tab}|${plDone}`} runKey={`${tab}|${plDone}|${checks}`} />
+          <ChatCheckBody lead={l} blankKey={`${tabSeq}|${plDone}`} runKey={`${tabSeq}|${plDone}|${checks}`} />
         </div>
         <div className="tabs" role="tablist">
           <button className={`tab ${tab === 'buy' ? 'active' : ''}`} data-tab="buy" onClick={() => switchTab('buy')}>
