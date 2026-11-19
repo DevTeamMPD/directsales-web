@@ -40,7 +40,7 @@ npm run test:e2e                # เทียบหน้าตากับ pro
 
 ## Deploy
 
-Vercel (Framework Preset: Next.js) deploy จาก branch `claude/serene-meitner-cprt82` — env ที่ต้องตั้ง: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_JST_HELPER_URL`, `NEXT_PUBLIC_JST_URL_TEMPLATE` (ว่างได้) — ห้ามตั้ง `NEXT_PUBLIC_FIXTURES=1`
+Vercel: production deploy จาก branch `main` (branch อื่นได้ Preview deployment) · `vercel.json` ตั้ง `framework: nextjs` ไว้แล้ว ไม่ต้องเปลี่ยน Framework Preset ของโปรเจกต์ · Node 24 (`engines`) — env ที่ต้องตั้ง: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_JST_HELPER_URL`, `NEXT_PUBLIC_JST_URL_TEMPLATE` (ว่างได้) — ห้ามตั้ง `NEXT_PUBLIC_FIXTURES=1`
 
 ## เปิดแชตใน JST / โทร / ตรวจการทักแชต
 

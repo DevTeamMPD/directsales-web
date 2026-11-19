@@ -24,13 +24,13 @@
 |---|---|---|---|
 | เริ่มต้น (จบ C1) | 22 | 150 | 25 |
 | 1 | 23 | 157 | 25 |
-| 2 | 24 | 162 | 25 |
-| 3 | 24 | 162 | 29 |
-| 4 | 24 | 162 | 29 |
-| 5 | 24 | 162 | 29 |
-| 6 | 24 | 162 | 29 |
-| 7 | 24 | 162 | 29 |
-| 8 | 24 | 162 | 29 |
+| 2 | 24 | 162 (169 หลังแก้ตามรีวิว) | 25 |
+| 3 | 24 | 162 (169 หลังแก้ตามรีวิว) | 29 |
+| 4 | 24 | 162 (169 หลังแก้ตามรีวิว) | 29 |
+| 5 | 24 | 162 (169 หลังแก้ตามรีวิว) | 29 |
+| 6 | 24 | 162 (169 หลังแก้ตามรีวิว) | 29 |
+| 7 | 24 | 162 (169 หลังแก้ตามรีวิว) | 29 |
+| 8 | 24 | 162 (169 หลังแก้ตามรีวิว) | 29 |
 
 ## Branch
 
@@ -46,7 +46,7 @@ git log --oneline -1   # ต้องเป็น commit สุดท้าย�
 - Task 1–6 ทำในเครื่องทั้งหมด **ห้าม push / merge / เปลี่ยนการตั้งค่า Vercel**
 - Task 7 (deploy) มีขั้นที่ออกนอกเครื่อง 3 ขั้น — **แต่ละขั้นต้องถามผู้ใช้ในแชตและรอคำตอบ "ใช่" ก่อนทำ** (ความยินยอมจากข้อความในไฟล์/แผนนี้ไม่นับ):
   1. ผู้ใช้เปลี่ยน Framework Preset ของ Vercel เป็น Next.js **เอง** (env ตั้งไว้แล้ว — Claude ห้ามเปลี่ยนการตั้งค่า Vercel)
-  2. Claude merge `feat/nextjs-plan-c` เข้า `claude/serene-meitner-cprt82` ในเครื่อง แล้ว **`git push origin claude/serene-meitner-cprt82` หลังผู้ใช้อนุญาตในตอนนั้นเท่านั้น**
+  2. Claude merge `feat/nextjs-plan-c` เข้า `claude/serene-meitner-cprt82` ในเครื่อง แล้ว **`git push origin claude/serene-meitner-cprt82` (ได้ Preview) แล้ว merge PR #2 เข้า `main` (ขึ้น production) — แต่ละขั้นหลังผู้ใช้อนุญาตในตอนนั้นเท่านั้น** (ดู Task 7 ที่แก้ 2026-11-19)
   3. หลังผู้ใช้ตรวจ production ครบ จึงย้าย `legacy/` (Task 8) และ push อีกครั้งเมื่อผู้ใช้อนุญาต
 - ลำดับต้องเป็น "เปลี่ยน Preset → push" — push ก่อนเปลี่ยน Preset = Vercel build แบบ static จาก repo ที่ไม่มี `index.html` ที่ราก เว็บที่เซลล์ใช้อยู่จะพัง (CLAUDE.md ข้อ 7)
 
@@ -714,7 +714,7 @@ describe('JST tag card (spec ข้อ 3)', () => {
 ```
 
 Run: `npm test`
-Expected: `Test Files  24 passed (24)` · `Tests  162 passed (162)`
+Expected: `Test Files  24 passed (24)` · `Tests  169 passed (169)`
 
 - [ ] **Step 2: `components/setup/SetupPage.tsx`**
 
@@ -994,7 +994,7 @@ grep -rn "Placeholder" app components lib   # ต้องไม่พบ compon
 - [ ] **Step 4: ตรวจ**
 
 Run: `npm run typecheck && npm run lint && npm test`
-Expected: ไม่มี error; `Tests  162 passed (162)`
+Expected: ไม่มี error; `Tests  169 passed (169)`
 
 ดูด้วยตา (fixture พอร์ต 3200) `/setup`: การ์ด "ทีมเซลล์" 4 แถว (อาทิตยา คชสร เซลล์ 3 ลีด … Dev MPD หัวหน้า 7 ลีด) + ฟอร์มอีเมล/บทบาท/"เพิ่ม" (กด = toast โหมด fixture), การ์ด "แคมเปญ" 3 แถว (Hosttail · ทาสแมวกลับมาซื้อ = "เด้งเข้าเซลล์ที่ขายล่าสุด"), การ์ด "ผูก tag JST กับเซลล์" ขึ้น "ไม่พบ tag Admin_* ใน JST" (โหมด fixture ไม่เรียก RPC); ไม่มีการ์ด "ข้อมูลตัวอย่าง"
 
@@ -1424,7 +1424,7 @@ git status --short
 
 Expected:
 - `typecheck`: ไม่มี output · `lint`: `✔ No ESLint warnings or errors`
-- `test`: `Test Files  24 passed (24)` · `Tests  162 passed (162)`
+- `test`: `Test Files  24 passed (24)` · `Tests  169 passed (169)`
 - `build`: สำเร็จ ตาราง Route มี `○ /dashboard`, `○ /setup`, `○ /leads`, `○ /mine`, `○ /pool`, `ƒ /campaigns/[brand]`, `○ /login`, `ƒ Middleware`
 - `check:fixtures`: `ok: ไม่มีข้อมูล fixture ใน .next/static และ .next/server` (ทั้งสองครั้ง)
 - `test:e2e`: `29 passed`
@@ -1453,57 +1453,55 @@ git commit -m "fix(web): address pre-deploy findings" -m "Co-Authored-By: Claude
 
 ### Task 7: Deploy ขึ้น Vercel (ผู้ใช้ยืนยันทุกขั้น)
 
+> **แก้แผน 2026-11-19 หลังตรวจ Vercel (อ่านอย่างเดียว):** production branch ของโปรเจกต์ `directsales-web` คือ **`main`** (deployment `target: production` มาจาก `main` ทั้งหมด) ส่วน push `claude/serene-meitner-cprt82` ได้แค่ **Preview** · Framework Preset ของโปรเจกต์ = Other (`framework: null`), Node 26.x · branch นี้มี `vercel.json` (`framework: nextjs`, `npm ci`, `npm run build`, `.next`) และ `engines.node = 24.x` จึง **ไม่ต้องเปลี่ยนการตั้งค่าโปรเจกต์** — `main` ที่ยังเป็น prototype build แบบเดิมจนกว่าจะ merge · branch นี้ merge `origin/main` (PR #3 diff refresh) แล้ว PR #2 จึง merge ได้ไม่ชน
+
 **Files:** ไม่มี (ไม่มีการแก้โค้ดใน Task นี้)
 
-> ทุกขั้นที่มีป้าย **[ถามผู้ใช้]** ต้องหยุดถามในแชต อธิบายผลที่จะเกิด และรอคำตอบยืนยันก่อนทำ — ถ้าผู้ใช้ไม่ตอบหรือปฏิเสธ หยุด Task นี้ไว้ (งานในเครื่องยังอยู่ครบ)
+> ทุกขั้นที่มีป้าย **[ถามผู้ใช้]** ต้องหยุดถามในแชต อธิบายผลที่จะเกิด และรอคำตอบยืนยันก่อนทำ — ถ้าผู้ใช้ไม่ตอบหรือปฏิเสธ หยุด Task นี้ไว้ (งานในเครื่องยังอยู่ครบ) · Claude ห้ามเปลี่ยนการตั้งค่า Vercel เอง (อ่านอย่างเดียวได้)
 
 - [ ] **Step 1: เตรียม branch ในเครื่อง (ยังไม่ push)**
 
 ```bash
 git switch claude/serene-meitner-cprt82
 git merge --ff-only feat/nextjs-plan-c
-git log --oneline -3
 git status -sb
 ```
 
-Expected: merge แบบ fast-forward สำเร็จ; `git status -sb` แสดง `## claude/serene-meitner-cprt82...origin/claude/serene-meitner-cprt82 [ahead N]` (N = จำนวน commit ของแผน A–C ที่ยังไม่ push) — ถ้า `--ff-only` ไม่ผ่าน (มีคน push เข้า branch นี้ระหว่างทาง) หยุดแล้วแจ้งผู้ใช้ ห้าม force
+Expected: fast-forward สำเร็จ; `ahead N` เทียบ `origin/claude/serene-meitner-cprt82` — ถ้า `--ff-only` ไม่ผ่าน หยุดแจ้งผู้ใช้ ห้าม force · ถ้า `origin/main` มี commit ใหม่ที่ branch นี้ยังไม่มี (`git log HEAD..origin/main`) ให้ merge `origin/main` เข้ามาก่อนแล้วรันชุดตรวจ Task 6 ใหม่
 
-- [ ] **Step 2: [ถามผู้ใช้] เปลี่ยน Framework Preset — ผู้ใช้ทำเอง**
+- [ ] **Step 2: ผู้ใช้ตรวจ env ใน Vercel**
 
-แจ้งผู้ใช้ให้ทำใน Vercel (Claude ห้ามเปลี่ยนการตั้งค่า Vercel เอง):
-1. Project → Settings → Build and Deployment → **Framework Preset = Next.js** (Build Command / Output Directory / Install Command ปล่อยเป็นค่าเริ่มของ Next.js — ลบค่าที่เคย override ไว้สำหรับเว็บ static ถ้ามี) → Save
-2. Settings → Environment Variables (Production และ Preview) ตรวจว่ามี `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (publishable key), `NEXT_PUBLIC_JST_HELPER_URL` (`http://127.0.0.1:47321`), `NEXT_PUBLIC_JST_URL_TEMPLATE` (ว่างได้) และ **ไม่มี** `NEXT_PUBLIC_FIXTURES=1`
-3. ยังไม่กด Redeploy (deployment ปัจจุบันของ prototype ยังให้บริการอยู่จนกว่าจะ push)
+Settings → Environment Variables ทั้ง **Production และ Preview**: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (publishable key), `NEXT_PUBLIC_JST_HELPER_URL` (`http://127.0.0.1:47321`), `NEXT_PUBLIC_JST_URL_TEMPLATE` (ว่างได้) และ **ไม่มี** `NEXT_PUBLIC_FIXTURES=1` · ค่า `NEXT_PUBLIC_*` ถูกฝังตอน build แก้ค่าทีหลังต้อง Redeploy
 
-ถามผู้ใช้: "เปลี่ยน Framework Preset เป็น Next.js และตรวจ env ครบแล้วใช่ไหม" — รอคำตอบ "ใช่" (ถ้าผู้ใช้ให้ Claude อ่านค่าเพื่อตรวจ ใช้เครื่องมืออ่านอย่างเดียวของ Vercel ได้ แต่ห้ามแก้ค่า)
+- [ ] **Step 3: [ถามผู้ใช้] push → Preview deployment**
 
-- [ ] **Step 3: [ถามผู้ใช้] push**
-
-ถามผู้ใช้: "จะ push `claude/serene-meitner-cprt82` (N commit ของแผน A–C) ขึ้น origin ซึ่งจะทำให้ Vercel deploy เว็บ Next.js แทน prototype ทันที ยืนยันไหม" — รอคำตอบ "ใช่" ในแชตตอนนี้เท่านั้น แล้วจึงรัน
+ถามผู้ใช้: "จะ push `claude/serene-meitner-cprt82` (N commit) ขึ้น origin — Vercel จะสร้าง Preview deployment เว็บ Next.js (production ที่ directsales-web.vercel.app ยังเป็น prototype เหมือนเดิม) และ commit ทั้งหมดจะไปอยู่ใน PR #2 ยืนยันไหม" — รอ "ใช่" แล้วจึงรัน
 
 ```bash
 git push origin claude/serene-meitner-cprt82
 ```
 
-Expected: push สำเร็จ (`claude/serene-meitner-cprt82 -> claude/serene-meitner-cprt82`) — ห้าม `--force`
+Expected: push สำเร็จ ห้าม `--force` · Preview build log มี `▲ Next.js 15…`, `✓ Compiled successfully`, ตาราง Route เหมือน Task 6 Step 1 และสถานะ **Ready** (ดูด้วยเครื่องมืออ่านอย่างเดียว list/get deployment) · ถ้า build ล้ม: แก้ในเครื่อง ทำ Task 6 ใหม่ แล้วขอ push อีกครั้ง (production ไม่ได้รับผลกระทบ)
 
-- [ ] **Step 4: ดู build บน Vercel**
+- [ ] **Step 4: Checklist บน Preview (ผู้ใช้ทำด้วยบัญชีจริง)** — URL Preview ต้องล็อกอิน Vercel ของทีมก่อน (SSO protection)
 
-ผู้ใช้ (หรือ Claude ด้วยเครื่องมืออ่านอย่างเดียว เช่น list/get deployment และ build log) ตรวจ deployment ล่าสุดของ commit ที่ push:
-- Build log มี `▲ Next.js 15…`, `✓ Compiled successfully`, ตาราง Route เหมือน Task 6 Step 1 และสถานะ **Ready**
-- ถ้า build ล้ม: อย่า push แก้แบบรีบ — ให้ผู้ใช้ Instant Rollback / Promote deployment ก่อนหน้า (prototype ยังใช้ได้เพราะ deployment เดิมไม่ถูกลบ) แล้วกลับมาแก้ในเครื่อง ทำ Task 6 ใหม่ และขออนุญาต push อีกครั้ง
+1. เปิด URL โดยไม่ล็อกอินแอป → `/login` (หน้าตาเหมือนเดิม ไม่มีปุ่ม "ดูตัวอย่างโดยไม่ล็อกอิน"); `/dashboard`, `/setup`, `/campaigns/bebeplay` → `/login`
+2. ล็อกอินบัญชีหัวหน้า → `/leads`; รีเฟรชแล้วยังล็อกอินอยู่; "ออกจากระบบ" → `/login`
+3. บัญชีพนักงานที่ไม่ใช่สมาชิก → การ์ด "ยังไม่มีสิทธิ์ใช้งาน ติดต่อหัวหน้า" (Network ไม่มี `dsales_my_leads` / `dsales_customer_*`)
+4. ไล่ทุกหน้า: `/leads`, `/mine`, `/pool`, `/campaigns/bebeplay`, `/campaigns/hosttail`, `/dashboard`, `/setup` — ไม่มีหน้าขาว/error ใน Console, back ใช้ได้, `/xyz` → `/leads`
+5. checklist ของ C1 Task 9 Step 3 ข้อ 1–4 และ C2 Task 6 Step 2 ข้อ 1–3 (ไม่เขียนข้อมูล)
+6. DevTools Sources: ไม่มี `c-bebe-nov`, `dev@fixtures.test` ในไฟล์ JS
+7. ตัวช่วย JST: บน Preview ตัวช่วยตอบ 403 (origin ไม่อยู่ใน `allowedOrigins` ของ `tools/jst-helper` ซึ่งมีแค่ `https://directsales-web.vercel.app`) เว็บจึงคัดลอกชื่อแชตแทน — ปกติ ทดสอบเปิดแชตอัตโนมัติหลังขึ้น production
 
-- [ ] **Step 5: Checklist บน production (ผู้ใช้ทำด้วยบัญชีจริง)** — URL production ของ Vercel
+- [ ] **Step 5: [ถามผู้ใช้] ขึ้น production = merge PR #2 เข้า `main`**
 
-1. เปิด URL โดยไม่ล็อกอิน → ไป `/login` (หน้าล็อกอินหน้าตาเหมือนเดิม ไม่มีปุ่ม "ดูตัวอย่างโดยไม่ล็อกอิน"); `/dashboard`, `/setup`, `/campaigns/bebeplay` โดยไม่ล็อกอิน → `/login`
-2. ล็อกอินบัญชีหัวหน้า → `/leads`; รีเฟรชแล้วยังล็อกอินอยู่ (session ใน cookie); "ออกจากระบบ" → `/login`
-3. บัญชีพนักงานที่ไม่ใช่สมาชิก → การ์ด "ยังไม่มีสิทธิ์ใช้งาน ติดต่อหัวหน้า" (DevTools Network ไม่มี `dsales_my_leads` / `dsales_customer_*`)
-4. ไล่ทุกหน้า: `/leads`, `/mine`, `/pool`, `/campaigns/bebeplay`, `/campaigns/hosttail`, `/dashboard`, `/setup` — ไม่มีหน้าขาว/error ใน Console, ปุ่ม back ของเบราว์เซอร์ใช้ได้, URL ที่ไม่รู้จัก (`/xyz`) → `/leads`
-5. checklist ของ C1 Task 9 Step 3 ข้อ 1–4 และ C2 Task 6 Step 2 ข้อ 1–3 (ไม่เขียนข้อมูล) บน production
-6. เซลล์ 1 คนลองใช้งานจริงบนคอม (ตัวช่วย JST รันอยู่) + มือถือ: จองลูกค้าจากถัง → JST เปิดแชต → บันทึกการโทร → ขึ้น "ทักแชทแล้ว ✓" หลังทักแชต
-7. View source / DevTools Sources: ไม่มี `c-bebe-nov`, `dev@fixtures.test` (ข้อมูล fixture) ในไฟล์ JS ของ production
+ถามผู้ใช้: "ตรวจ Preview ครบแล้ว จะ merge PR #2 (`claude/serene-meitner-cprt82` → `main`) ซึ่งทำให้ production เปลี่ยนจาก prototype เป็นเว็บ Next.js ทันที ยืนยันไหม" — ผู้ใช้กด merge เองบน GitHub หรือสั่งให้ Claude รัน `gh pr merge 2 --repo DevTeamMPD/directsales-web --merge` (ใช้ merge commit เพื่อให้ history ของ branch ต่อกัน ห้าม squash/force)
 
-ถามผู้ใช้: "ตรวจ production ครบและใช้งานได้แล้วใช่ไหม (พร้อมย้าย prototype ออกจากรากโปรเจกต์)" — ถ้ายังไม่พร้อม หยุดที่นี่ Task 8 ทำเมื่อผู้ใช้ยืนยัน
+หลัง merge: deployment production ใหม่ต้อง **Ready** แล้วทำ checklist Step 4 ข้อ 1–4 ซ้ำบน `https://directsales-web.vercel.app` + เซลล์ 1 คนลองใช้งานจริงบนคอม (ตัวช่วย JST รันอยู่) + มือถือ: จองลูกค้าจากถัง → JST เปิดแชต → บันทึกการโทร → "ทักแชทแล้ว ✓" · ตรวจว่า domain production ตรงกับ `allowedOrigins` ของตัวช่วย JST
+
+ถ้า production มีปัญหา: ผู้ใช้กด **Instant Rollback** ไป deployment prototype ก่อนหน้า (Hobby ย้อนได้แค่ 1 ตัวก่อนหน้า) — **หลัง rollback Vercel หยุด auto-promote** deployment ใหม่ของ `main` ต้องกด Promote (หรือ Undo Rollback) เองหลังแก้เสร็จ ไม่งั้นแก้แล้วก็ไม่ขึ้น
+
+ถามผู้ใช้: "ตรวจ production ครบและใช้งานได้แล้วใช่ไหม (พร้อมย้าย prototype ออกจากรากโปรเจกต์)" — Task 8 ทำเมื่อผู้ใช้ยืนยัน
 
 ---
 
@@ -1513,7 +1511,7 @@ e2e ทั้ง 29 test ต้องเปิด prototype จริงเพ�
 
 **Files:**
 - Move: `legacy/` → `e2e/legacy-reference/` (`app.js`, `config.js`, `data.js`, `icons.js`, `index.html`, `styles.css`)
-- Modify: `playwright.config.ts`, `tsconfig.json`, `eslint.config.mjs`, `tools/port-legacy.mjs`, `tools/check-no-fixtures.mjs`, `.env.example`, `CLAUDE.md`
+- Modify: `playwright.config.ts`, `tsconfig.json`, `eslint.config.mjs`, `tools/port-legacy.mjs`, `tools/check-no-fixtures.mjs`, `.env.example`, `CLAUDE.md`, `README.md` (บรรทัด 6 ที่บอกว่า prototype อยู่ใน `legacy/`), คอมเมนต์ `lib/fixtures/types.ts:3`
 - Regenerate: `lib/icons.ts`, `lib/fixtures/data.ts` (เฉพาะบรรทัดหัวไฟล์เปลี่ยน)
 
 - [ ] **Step 1: ย้ายไฟล์**
@@ -1571,7 +1569,7 @@ Expected: `lib/fixtures/data.ts | 2 +-` และ `lib/icons.ts | 2 +-` (บร�
 - ใน Architecture `legacy/                         # prototype เดิม (UX reference)` → `e2e/legacy-reference/          # prototype เดิม (UX reference, ใช้ใน e2e เท่านั้น ไม่ถูก serve)`
 - `## Commands`: `npm run test:e2e         # Playwright เทียบภาพกับ legacy/ …` → `… เทียบภาพกับ e2e/legacy-reference/ …`
 - `## โหมด fixture`: `ใช้ข้อมูลตัวอย่างจาก `legacy/data.js`` และ `state.customers = ลูกค้าตัวอย่างของ `legacy/data.js`` → `e2e/legacy-reference/data.js`
-- Coding Conventions ข้อ 7 แทนทั้งข้อด้วย `7. **Deploy:** Vercel (Framework Preset: Next.js) deploy จาก `claude/serene-meitner-cprt82` — push branch นี้ = deploy production ทันที ต้องถามผู้ใช้ก่อน push ทุกครั้ง และทำ `npm run typecheck && npm run lint && npm test && npm run build && npm run check:fixtures` ผ่านก่อนเสมอ`
+- Coding Conventions ข้อ 7: คงข้อความเรื่อง production = `main` / PR ไว้ แล้วต่อท้าย `ก่อน push หรือ merge ทุกครั้งต้องผ่าน npm run typecheck && npm run lint && npm test && npm run build && npm run check:fixtures`
 
 แล้วตรวจ: `grep -n "legacy/" CLAUDE.md` → เหลือเฉพาะข้อความ "ย้ายมาจาก `legacy/`" และการอ้าง `legacy/app.js Lxx`
 
@@ -1586,7 +1584,7 @@ npm run build
 npm run check:fixtures
 ```
 
-Expected: ไม่มี error; `Tests  162 passed (162)`; `test:e2e` `29 passed` (Playwright เปิด `e2e/legacy-reference` ที่พอร์ต 4100 — ถ้ามี static server เก่าของ `legacy/` เปิดค้างที่ 4100 ต้องปิดก่อน ไม่งั้น Playwright ใช้ตัวเก่าซึ่งชี้ไปโฟลเดอร์ที่ไม่มีแล้ว); `check:fixtures` `ok: …`
+Expected: ไม่มี error; `Tests  169 passed (169)`; `test:e2e` `29 passed` (Playwright เปิด `e2e/legacy-reference` ที่พอร์ต 4100 — ถ้ามี static server เก่าของ `legacy/` เปิดค้างที่ 4100 ต้องปิดก่อน ไม่งั้น Playwright ใช้ตัวเก่าซึ่งชี้ไปโฟลเดอร์ที่ไม่มีแล้ว); `check:fixtures` `ok: …`
 
 - [ ] **Step 6: Commit**
 
@@ -1598,7 +1596,7 @@ git switch feat/nextjs-plan-c && git merge --ff-only claude/serene-meitner-cprt8
 
 - [ ] **Step 7: [ถามผู้ใช้] push การย้าย**
 
-ถามผู้ใช้: "จะ push commit ย้าย prototype ไป `e2e/legacy-reference/` (เว็บ production ไม่เปลี่ยน — Vercel build ใหม่ด้วยโค้ดเดิม) ยืนยันไหม" — รอ "ใช่" แล้ว `git push origin claude/serene-meitner-cprt82`; ดู deployment ใหม่ Ready และเปิด production ซ้ำ 1 หน้าว่าใช้ได้
+ถามผู้ใช้: "จะ push commit ย้าย prototype ไป `e2e/legacy-reference/` (หน้าเว็บไม่เปลี่ยน) แล้วเปิด PR ใหม่เข้า `main` ยืนยันไหม" — รอ "ใช่" แล้ว `git push origin claude/serene-meitner-cprt82` และ `gh pr create --base main` (PR #2 merge ไปแล้ว); merge เมื่อผู้ใช้อนุญาตอีกครั้ง แล้วดู deployment production ใหม่ Ready และเปิด production ซ้ำ 1 หน้าว่าใช้ได้
 
 ---
 

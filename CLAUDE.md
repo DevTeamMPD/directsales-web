@@ -151,7 +151,7 @@ TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtu
 4. **TypeScript strict** ห้าม `any`; logic ที่ทดสอบได้อยู่ใน `lib/` เป็นฟังก์ชันล้วนพร้อม `*.test.ts` (เขียน test ก่อน)
 5. **Client Component** เฉพาะส่วนที่มี state/effect; state กลางอยู่ใน `AppProvider` (`useApp()`)
 6. **Commit:** ข้อความอังกฤษแบบ conventional (`feat(web): …`, `feat(db): …`) จบด้วยบรรทัดว่าง + `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` ผู้เขียน git = DevTeamMPD ห้าม push/merge หรือเปลี่ยนการตั้งค่า Vercel โดยไม่ถามผู้ใช้
-7. **ห้าม push branch หลัก (`claude/serene-meitner-cprt82`) จนกว่าจะถึงขั้น deploy ของแผน C:** Vercel deploy จาก branch นี้ และโค้ดในเครื่องย้าย `index.html` ไป `legacy/` แล้ว push ก่อนเวลา = เว็บบน Vercel พังจนกว่าจะเปลี่ยน Framework Preset เป็น Next.js
+7. **Deploy:** Vercel production = branch `main` ของ GitHub (ไม่ใช่ `claude/serene-meitner-cprt82`) branch อื่นได้แค่ Preview deployment · `vercel.json` กำหนด `framework: nextjs` ต่อ deployment เอง (ไม่ต้องเปลี่ยน Framework Preset ของโปรเจกต์) · ขึ้น production = merge PR #2 (`claude/serene-meitner-cprt82` → `main`) — ถามผู้ใช้ก่อนทุกครั้งทั้ง push และ merge
 8. **Tailwind:** ห้ามใช้ utility ที่ชื่อชนกับ class ของ prototype (มีใน `blocklist` ของ `tailwind.config.ts` เช่น `outline`) เจอชื่อชนเพิ่มให้เพิ่มใน blocklist
 9. อย่ารัน `npm run test:e2e` ขณะเปิด `npm start` อยู่ (ใช้ `.next` ร่วมกัน)
 
