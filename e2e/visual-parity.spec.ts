@@ -626,3 +626,119 @@ for (const s of SIZES) {
     });
   });
 }
+
+/* ---------- แผน C2: Dashboard และตั้งค่า ---------- */
+// ความต่างที่ตั้งใจ (หน้าตั้งค่า): ฟอร์มเพิ่มเซลล์ด้วยอีเมล, การ์ด "ผูก tag JST กับเซลล์" แทนการ์ด "ข้อมูลตัวอย่าง" → เทียบ prototype เฉพาะรายชื่อทีม
+// และการ์ดแคมเปญ ส่วนหน้าตั้งค่าทั้งหน้าใช้ภาพของตัวเอง (e2e/.legacy-shots/app/)
+// ค่าตั้งต้นจากการวัดตอนเขียนแผน — Task 6 Step 4 วัดซ้ำ 3 รอบแล้วแก้เป็นค่าสูงสุด × 1.25 ปัดขึ้นหลัก 50
+const MAX_DIFF_C2: Record<string, number> = {
+  'dashboard-view-desktop': 4600, 'dashboard-view-mobile': 4150, 'dashboard-topbar-desktop': 100, 'dashboard-topbar-mobile': 100,
+  'dashboard-host-desktop': 3900, 'dashboard-host-mobile': 3450, 'setup-campaigns-desktop': 950, 'setup-campaigns-mobile': 1850,
+};
+const shotC2 = (name: string) => ({ maxDiffPixels: MEASURE ? 0 : (MAX_DIFF_C2[name] ?? 0), threshold: 0.1 }) as const;
+
+async function openLegacyRoute(page: Page, hash: string, ready: string) {
+  await page.goto(LEGACY);
+  await page.locator('#l-demo').click();
+  await expect(page.locator('#login')).toBeHidden();
+  await page.evaluate((h) => {
+    location.hash = h;
+  }, hash);
+  await expect(page.locator(ready).first()).toBeVisible();
+  await settleWork(page);
+}
+
+async function openAppRoute(page: Page, path: string, ready: string) {
+  await page.goto(`${APP}${path}`);
+  await expect(page.locator(ready).first()).toBeVisible({ timeout: 60_000 });
+  if (INJECT) await page.addStyleTag({ content: INJECT });
+  await settleWork(page);
+}
+
+/** ข้อความ/คลาส/สี/ความกว้าง bar ของ Dashboard */
+async function dashboardText(page: Page) {
+  return page.evaluate(() => {
+    const t = (el: Element | null) => ((el instanceof HTMLElement ? el.innerText : el?.textContent) ?? '').replace(/\s+/g, ' ').trim();
+    const cls = (el: Element) => (typeof el.className === 'string' ? el.className : '').split(/\s+/).filter(Boolean).join(' ');
+    const view = document.querySelector('#view');
+    const all = (sel: string) => Array.from(view?.querySelectorAll(sel) ?? []);
+    return {
+      period: all('.period [data-pk]').map((b) => `${cls(b)}|${t(b)}`),
+      chips: all('[data-brand]').map((b) => ({ text: t(b), cls: cls(b), dot: (b.querySelector('.dot') as HTMLElement | null)?.style.background ?? null })),
+      kpis: all('.kpi').map(t),
+      panels: all('.panel-h').map(t),
+      tables: all('table').map((tb) => Array.from(tb.querySelectorAll('tr')).map((tr) => `${cls(tr)}|${Array.from(tr.children).map(t).join(' | ')}`)),
+      bars: all('.rep-row .bar > i').map((i) => (i as HTMLElement).style.width),
+      reps: all('.rep-row').map(t),
+      feed: all('.feed li').map((li) => `${cls(li)}|${t(li)}|${li.querySelector('.feed-ic')?.className ?? ''}`),
+      rate: (view?.querySelector('#comm-rate') as HTMLInputElement | null)?.value ?? null,
+      empty: all('.panel > .empty').map(t),
+    };
+  });
+}
+
+async function setupText(page: Page) {
+  return page.evaluate(() => {
+    const t = (el: Element | null) => ((el instanceof HTMLElement ? el.innerText : el?.textContent) ?? '').replace(/\s+/g, ' ').trim();
+    const panels = Array.from(document.querySelectorAll('.settings > .panel'));
+    return {
+      heads: panels.slice(0, 2).map((p) => t(p.querySelector('.panel-h'))),
+      team: Array.from(panels[0]?.querySelectorAll('.list-row') ?? []).map(t),
+      campaigns: Array.from(panels[1]?.querySelectorAll('.list-row') ?? []).map((r) => {
+        const s = r.querySelector('select') as HTMLSelectElement | null;
+        return `${t(r.querySelector('div'))}|${t(r.querySelector('.tag'))}|${s?.value}|${Array.from(s?.options ?? []).map((o) => o.text).join(',')}`;
+      }),
+      help: t(panels[1]?.querySelector('.help') ?? null),
+    };
+  });
+}
+
+for (const s of SIZES) {
+  test.describe(`dashboard and setup ${s.tag} ${s.width}x${s.height}`, () => {
+    test.use({ viewport: { width: s.width, height: s.height } });
+
+    test('dashboard matches the prototype (every brand, Hosttail with a commission rate)', async ({ page }) => {
+      await openLegacyRoute(page, '#dashboard', '.kpis');
+      const legacy = await dashboardText(page);
+      expect(legacy.kpis).toHaveLength(5);
+      await shootLegacy(page, `dashboard-topbar-${s.tag}`, '.topbar');
+      await unclipView(page);
+      await shootLegacy(page, `dashboard-view-${s.tag}`, '#view');
+      await page.locator('[data-brand=hosttail]').click();
+      await page.locator('#comm-rate').fill('3');
+      await page.locator('#comm-rate').press('Enter');
+      await page.locator('#comm-rate').blur();
+      await settleWork(page);
+      const legacyHost = await dashboardText(page);
+      expect(legacyHost.panels[1]).toContain('Hosttail');
+      await shootLegacy(page, `dashboard-host-${s.tag}`, '#view');
+
+      await openAppRoute(page, '/dashboard', '.kpis');
+      expect(await dashboardText(page)).toEqual(legacy);
+      await expect.soft(page.locator('.topbar')).toHaveScreenshot(`dashboard-topbar-${s.tag}.png`, shotC2(`dashboard-topbar-${s.tag}`));
+      await unclipView(page);
+      await expect.soft(page.locator('#view')).toHaveScreenshot(`dashboard-view-${s.tag}.png`, shotC2(`dashboard-view-${s.tag}`));
+      await page.locator('[data-brand=hosttail]').click();
+      await page.locator('#comm-rate').fill('3');
+      await page.locator('#comm-rate').blur();
+      await settleWork(page);
+      expect(await dashboardText(page)).toEqual(legacyHost);
+      await expect.soft(page.locator('#view')).toHaveScreenshot(`dashboard-host-${s.tag}.png`, shotC2(`dashboard-host-${s.tag}`));
+    });
+
+    test('setup matches the prototype for the team list and the campaign panel', async ({ page }) => {
+      await openLegacyRoute(page, '#setup', '.settings');
+      const legacy = await setupText(page);
+      expect(legacy.team).toHaveLength(4);
+      await shootLegacy(page, `setup-campaigns-${s.tag}`, '.settings > .panel:nth-child(2)');
+      await openAppRoute(page, '/setup', '.settings');
+      expect(await setupText(page)).toEqual(legacy);
+      await expect.soft(page.locator('.settings > .panel:nth-child(2)')).toHaveScreenshot(`setup-campaigns-${s.tag}.png`, shotC2(`setup-campaigns-${s.tag}`));
+      await expect(page.locator('.settings > .panel .panel-h h2')).toHaveText(['ทีมเซลล์', 'แคมเปญ', 'ผูก tag JST กับเซลล์']);
+      await expect(page.locator('#rep-email')).toHaveAttribute('type', 'email');
+      await expect(page.locator('#reset')).toHaveCount(0);
+      await unclipView(page);
+      await expect.soft(page.locator('.settings')).toHaveScreenshot(['app', `setup-${s.tag}.png`], { maxDiffPixels: 0, threshold: 0.1 });
+    });
+  });
+}
