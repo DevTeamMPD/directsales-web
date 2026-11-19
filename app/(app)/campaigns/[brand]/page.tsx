@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation';
-import { Placeholder } from '@/components/shell/Placeholder';
+import { CampaignPage } from '@/components/campaigns/CampaignPage';
 
-export default async function CampaignPage({ params }: { params: Promise<{ brand: string }> }) {
+export default async function Page({ params }: { params: Promise<{ brand: string }> }) {
   const { brand } = await params;
   if (brand !== 'bebeplay' && brand !== 'hosttail') redirect('/leads');
-  return <Placeholder plan="B" />;
+  // key: เปลี่ยนแบรนด์ = เข้าหน้าใหม่ (ถังโหลดใหม่ทุกครั้งที่เข้าหน้า เหมือน prototype)
+  return <CampaignPage key={brand} brand={brand} />;
 }
