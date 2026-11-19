@@ -32,7 +32,7 @@ describe('reducer', () => {
     expect(reducer(s, { type: 'removeLead', id: 'L1' }).leads).toEqual([]);
   });
   it('setUi merges filters; upsertCampaign inserts then replaces', () => {
-    const s = reducer(initialState, { type: 'setUi', patch: { q: 'สุภาพร', status: 'won' } });
+    const s = reducer(ready, { type: 'setUi', patch: { q: 'สุภาพร', status: 'won' } });
     expect(s.ui).toMatchObject({ q: 'สุภาพร', status: 'won', sort: 'due', period: { from: '', to: '', key: 'all' } });
     const c: Campaign = { id: 'c1', brand: 'bebeplay', name: 'A', note: '', start: '', end: '', claimMode: 'self', maxPerRep: null, active: true, criteria: [] };
     const s2 = reducer(reducer(s, { type: 'upsertCampaign', campaign: c }), { type: 'upsertCampaign', campaign: { ...c, name: 'B' } });
@@ -40,6 +40,18 @@ describe('reducer', () => {
   });
   it('failed after ready is ignored — errors while using a page go to the toast', () => {
     expect(reducer(ready, { type: 'failed', error: 'boom' })).toBe(ready);
+  });
+  it('data-mutating actions are ignored unless phase is ready (no repopulation after sessionLost/noAccess)', () => {
+    const lost = reducer(ready, { type: 'sessionLost', reason: 'expired' });
+    expect(reducer(lost, { type: 'upsertLead', lead: leadJson({ id: 'L9' }) }).leads).toEqual([]);
+    expect(reducer(lost, { type: 'upsertLead', lead: leadJson({ id: 'L9' }) })).toBe(lost);
+    expect(reducer(lost, { type: 'patchLead', id: 'L9', patch: {} })).toBe(lost);
+    expect(reducer(lost, { type: 'removeLead', id: 'L9' })).toBe(lost);
+    expect(reducer(lost, { type: 'upsertCampaign', campaign: { id: 'c1' } as Campaign })).toBe(lost);
+    expect(reducer(lost, { type: 'setUi', patch: { q: 'x' } })).toBe(lost);
+    expect(reducer(lost, { type: 'setPool', patch: { q: 'x' } })).toBe(lost);
+    const none = reducer(ready, { type: 'noAccess', email: 'x@example.com', inactive: false });
+    expect(reducer(none, { type: 'upsertLead', lead: leadJson({ id: 'L9' }) })).toBe(none);
   });
   it('sessionLost clears every lead and customer, keeps the email, and only applies once ready', () => {
     const withLead = reducer(ready, { type: 'upsertLead', lead: leadJson({ id: 'L1' }) });

@@ -59,6 +59,17 @@ describe('errorKind / RpcError / kindOf', () => {
     expect(errorKind('taken')).toBe('other');
     expect(errorKind(undefined)).toBe('other');
   });
+  it('classifies by PostgREST status/code, not only message', () => {
+    // refresh token ตาย → supabase-js ส่ง anon key → 401 permission denied (42501)
+    expect(errorKind('permission denied for function dsales_me', { status: 401, code: '42501' })).toBe('auth');
+    expect(errorKind('ERROR: not_member', { status: 403, code: '42501' })).toBe('member');
+    expect(errorKind('ERROR: not_member', { status: 401 })).toBe('member');
+    // authenticated แต่ขาด grant → 403 = ไม่ใช่ session หมดอายุ
+    expect(errorKind('permission denied for function dsales_me', { status: 403, code: '42501' })).toBe('other');
+    expect(errorKind('whatever', { code: 'PGRST301' })).toBe('auth');
+    expect(errorKind('permission denied for function dsales_me')).toBe('other');
+    expect(new RpcError('permission denied for function dsales_me', { status: 401, code: '42501' }).kind).toBe('auth');
+  });
   it('RpcError keeps the Thai text and the kind of the raw message', () => {
     const e = new RpcError('JWT expired');
     expect([e.message, e.kind, e instanceof Error]).toEqual(['หมดเวลาการเข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่', 'auth', true]);

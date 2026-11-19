@@ -8,10 +8,10 @@ import type {
   NewCampaign, PoolRowJson, PurchaseRowJson, TeamRow,
 } from './types';
 
-type Result<T> = { data: T | null; error: { message: string } | null };
+type Result<T> = { data: T | null; error: { message: string; code?: string } | null; status?: number };
 
-function unwrap<T>({ data, error }: Result<T>): T {
-  if (error) throw new RpcError(error.message);
+function unwrap<T>({ data, error, status }: Result<T>): T {
+  if (error) throw new RpcError(error.message, { status, code: error.code });
   return data as T;
 }
 

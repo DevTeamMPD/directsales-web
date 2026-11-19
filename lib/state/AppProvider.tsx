@@ -25,7 +25,7 @@ export const TODAY_CHECK_MS = 60_000;
 export interface AppActions {
   dispatch: Dispatch<Action>;
   toast: (msg: string) => void;
-  /** error ระหว่างใช้งานหน้า (RPC ล้ม) → toast เสมอ + session หมดอายุ/ถูกปิดใช้งาน → การ์ด (handleAuthError) */
+  /** error ระหว่างใช้งานหน้า (RPC ล้ม) → session หมดอายุ/ถูกปิดใช้งาน = การ์ด (handleAuthError) ไม่ toast, นอกนั้น toast */
   toastError: (e: unknown) => void;
   /** session หมดอายุ (JWT / not_authenticated) หรือไม่ใช่สมาชิก active แล้ว (not_member) → ล้างข้อมูลแล้วแสดงการ์ด; คืน true ถ้าจัดการแล้ว */
   handleAuthError: (e: unknown) => boolean;
@@ -134,7 +134,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dispatch,
       toast: toaster.toast,
       toastError: (e) => {
-        handleAuthError(e);
+        if (handleAuthError(e)) return; // การ์ดแสดงอยู่แล้ว ไม่ต้อง toast ซ้ำ
         toaster.toast(errorMessage(e));
       },
       handleAuthError,

@@ -22,7 +22,7 @@ export const ERROR_TEXT: Readonly<Record<string, string>> = {
 export const NETWORK_TEXT = 'เชื่อมต่อเครือข่ายไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่';
 const NETWORK = /failed to fetch|networkerror|load failed|fetch failed|network request failed/i;
 // PostgREST: "JWT expired" / "invalid JWT" (PGRST301–303, HTTP 401) และ dsales_uid(): not_authenticated
-const AUTH = /\bjwt\b|not_authenticated|PGRST30[0-3]/i;
+const AUTH = /\bjwt\b|not_authenticated/i; // รหัส PGRST301-303 ตรวจที่ field code ใน errorKind
 
 export function toThaiError(message: string | null | undefined): string {
   const msg = (message ?? '').trim();
@@ -38,10 +38,15 @@ export function toThaiError(message: string | null | undefined): string {
 
 /** ประเภทของ error ดิบ: auth = session หมดอายุ (ต้องล็อกอินใหม่), member = ไม่ใช่สมาชิก active แล้ว, network = เน็ตล้ม */
 export type ErrorKind = 'auth' | 'member' | 'network' | 'other';
-export function errorKind(message: string | null | undefined): ErrorKind {
+/** status/code จาก PostgREST (ถ้ามี) */
+export interface ErrorMeta { status?: number | null; code?: string | null }
+export function errorKind(message: string | null | undefined, meta: ErrorMeta = {}): ErrorKind {
   const msg = message ?? '';
   if (/\bnot_member\b/.test(msg)) return 'member';
   if (AUTH.test(msg)) return 'auth';
+  // refresh token ตาย → supabase-js ส่ง anon key → HTTP 401 "permission denied for function dsales_…" (42501) เพราะ revoke จาก anon
+  // (ผู้ใช้ที่ล็อกอินแล้วขาด grant ได้ 403 จึงใช้ 401 เป็นสัญญาณ auth ได้)
+  if (meta.status === 401 || (meta.code != null && /^PGRST30[0-3]$/.test(meta.code))) return 'auth';
   if (NETWORK.test(msg)) return 'network';
   return 'other';
 }
@@ -49,10 +54,10 @@ export function errorKind(message: string | null | undefined): ErrorKind {
 /** error ที่ rpc.ts โยน: message = ข้อความไทย, kind = ประเภทจากข้อความดิบของ server */
 export class RpcError extends Error {
   readonly kind: ErrorKind;
-  constructor(raw: string | null | undefined) {
+  constructor(raw: string | null | undefined, meta: ErrorMeta = {}) {
     super(toThaiError(raw));
     this.name = 'RpcError';
-    this.kind = errorKind(raw);
+    this.kind = errorKind(raw, meta);
   }
 }
 

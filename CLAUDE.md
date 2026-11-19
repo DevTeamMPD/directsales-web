@@ -147,6 +147,7 @@ TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtu
 
 - ประสิทธิภาพต่อแถว: `ChatButton` แต่ละปุ่มเรียก `useJst()` (subscribe context ต่อปุ่ม) ถ้าพิมพ์ค้นหาแล้วหน่วงเมื่อลีดเยอะ ให้ยก `openJst` ไปไว้ที่ `LeadTable` และ `memo(LeadRow)`
 - session หมดอายุระหว่างใช้งาน: ตอนนี้ error จาก RPC แสดงแค่ toast ควรพิจารณา redirect/ขึ้นข้อความให้ล็อกอินใหม่เมื่อเจอ error แนว 401 / JWT expired / `not_member`
+- ข้ามเที่ยงคืน: ช่วงวันที่ที่เก็บไว้เป็นวันจริง (preset "วันนี้"/"7 วัน"/"เดือนนี้") จะค้างเป็นของเมื่อวาน ต้องคำนวณใหม่เมื่อ `today` เปลี่ยน
 - StrictMode (dev เท่านั้น): `loadLive` ที่ถูกยกเลิกอาจยัง redirect ได้
 - คลิกแท็บที่ active อยู่แล้วใน popup ลูกค้า ยังไม่รีเซ็ต scroll/โฟกัสเหมือน prototype (เล็กน้อย)
 - `docs/DATABASE.md` และ `README.md` ยังอธิบายโครงสร้างเดิม (public/`index.html`/ลงทะเบียนอัตโนมัติ) ต้องอัปเดต

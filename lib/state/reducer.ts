@@ -52,7 +52,13 @@ export type Action =
   | { type: 'setPool'; patch: Partial<PoolUi> }
   | { type: 'invalidatePool' };
 
+const DATA_ACTIONS: ReadonlySet<Action['type']> = new Set<Action['type']>([
+  'upsertLead', 'patchLead', 'removeLead', 'upsertCampaign', 'setUi', 'setPool', 'invalidatePool',
+]);
+
 export function reducer(state: AppState, action: Action): AppState {
+  // หลัง sessionLost/noAccess ห้ามมี action ที่ค้างอยู่ (เช่น RPC ที่ตอบกลับช้า) เติมข้อมูลกลับเข้ามา
+  if (state.phase !== 'ready' && DATA_ACTIONS.has(action.type)) return state;
   switch (action.type) {
     case 'loaded':
       return { ...state, ...action.payload, phase: 'ready', error: '' };

@@ -33,6 +33,14 @@ describe('rpc wrappers', () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'customer_not_found' } });
     await expect(claimCustomer('0812345678', 'bebeplay')).rejects.toThrow('ไม่พบลูกค้ารายนี้');
   });
+  it('carries the PostgREST status and code into RpcError (401 → auth)', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'permission denied for function dsales_me', code: '42501' }, status: 401 });
+    await expect(getMe()).rejects.toMatchObject({ kind: 'auth' });
+    rpc.mockResolvedValue({ data: null, error: { message: 'permission denied for function dsales_me', code: '42501' }, status: 403 });
+    await expect(getMe()).rejects.toMatchObject({ kind: 'other' });
+    rpc.mockResolvedValue({ data: null, error: { message: 'not_member', code: '42501' }, status: 403 });
+    await expect(getMe()).rejects.toMatchObject({ kind: 'member' });
+  });
   it('logContact passes the dsales_log arguments of the prototype (L572)', async () => {
     rpc.mockResolvedValue({ data: { id: 'L1' }, error: null });
     await logContact({ leadId: 'L1', type: 'chat', result: 'ตอบกลับแล้ว', note: 'n', status: 'won', callback: null, interest: 'i', bills: ['1'], amount: 990 });
