@@ -45,7 +45,7 @@ Vercel: production deploy จาก branch `main` (branch อื่นได้ 
 ## เปิดแชตใน JST / โทร / ตรวจการทักแชต
 
 - ปุ่มโทร (เปิด `tel:` + คัดลอกเบอร์) และไอคอนช่องทางแชตแยกตามร้าน อยู่ในตารางลีดและ popup ลูกค้า
-- กดไอคอน หรือกด "จอง" เว็บสั่งตัวช่วยบนเครื่องเซลล์ให้เปิดแชตลูกค้าใน JST — ดู `tools/jst-helper/README.md` (ไม่ได้รันตัวช่วย = คัดลอกชื่อแชตให้ไปค้นหาเอง)
+- กดไอคอน หรือกด "จอง" เว็บเปิดหน้าแชต JST (`NEXT_PUBLIC_JST_CHAT_URL`, ค่าเริ่ม `https://asia-web.jsterp.com/iim/index`) ในแท็บเดิม + คัดลอกชื่อแชต แล้วสคริปต์ Tampermonkey บนหน้า JST ค้นหาและเปิดห้องให้เอง — ดู `tools/jst-userscript/README.md` (ไม่ได้ติดตั้งสคริปต์ = กด Ctrl+V ในช่องค้นหา JST เอง) · ตั้ง `NEXT_PUBLIC_JST_CHAT_URL` เป็นค่าว่างเพื่อกลับไปใช้ตัวช่วยเดิม `tools/jst-helper`
 - ตรวจว่าเซลล์ทักแชตจริงด้วย `dsales_customer_chats` (นับข้อความฝั่งแอดมินหลังเวลาจอง) — ตรวจอัตโนมัติไม่เกิน 10 ลีดต่อรอบเมื่อเปิดหน้า Direct Sale
 
 ฐานข้อมูล: `docs/DATABASE.md` · แผน/สเปก: `docs/superpowers/`

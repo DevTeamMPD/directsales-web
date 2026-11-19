@@ -39,6 +39,8 @@ export const CRIT: Record<CritType, { label: string; fields: readonly CritField[
 
 export const JST_HELPER_URL = process.env.NEXT_PUBLIC_JST_HELPER_URL || 'http://127.0.0.1:47321';
 export const JST_URL_TEMPLATE = process.env.NEXT_PUBLIC_JST_URL_TEMPLATE || '';
+/** หน้าแชตของ JST: ปุ่มแชตเปิดหน้านี้ (แท็บเดิม) พร้อมชื่อแชตใน hash ให้สคริปต์ Tampermonkey (tools/jst-userscript) ค้นหาและเปิดห้อง — ตั้งเป็นค่าว่างเพื่อปิด */
+export const JST_CHAT_URL = process.env.NEXT_PUBLIC_JST_CHAT_URL ?? 'https://asia-web.jsterp.com/iim/index';
 
 /** โหมด fixture (next dev เท่านั้น): ปุ่มที่เขียนข้อมูลไม่เรียก RPC เพื่อไม่ให้ id ตัวอย่างวิ่งไป Supabase จริง */
 export const FIXTURE_NO_WRITE = 'โหมด fixture: ไม่ได้บันทึกลง Supabase';
