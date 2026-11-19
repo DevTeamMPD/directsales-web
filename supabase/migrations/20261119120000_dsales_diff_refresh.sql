@@ -1,5 +1,10 @@
 -- dsales: refresh that writes only the rows that changed (2026-11-19).
--- STATUS 2026-11-19: not applied to production yet (waiting for the changed-rows test); production still runs the delete + insert versions.
+-- Applied to production 2026-11-19 as Supabase migration `dsales_diff_refresh` (same code, without the comments).
+-- Tested on production in rolled-back transactions against the previous functions:
+--   no change between runs: 0 rows written, identical tables
+--   with ~9,400 rows made stale, 200 + 100 removed and 5 + 5 bogus rows added: identical tables (0 differing rows),
+--     manual chat links untouched
+-- The first run of a day still updates every row that has a last order date (dormant_days grows by 1).
 -- Both functions used to delete their whole table and insert it again on every run (18,800 + 2,300 rows,
 -- ~10 MB of writes and an autovacuum pass each time) although only a handful of rows differ between runs.
 -- The result is the same set of rows; what changes is how it is written:
