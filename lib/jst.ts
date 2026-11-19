@@ -1,7 +1,7 @@
 import { errorMessage } from '@/lib/api/errors';
 import { getCustomerChats } from '@/lib/api/rpc';
 import type { Channel, ChatCheck, ChatSessionJson, Lead, Rep } from '@/lib/api/types';
-import { JST_HELPER_URL, JST_URL_TEMPLATE, PLAT, type Brand, type Platform } from '@/lib/constants';
+import { JST_CHAT_URL, JST_HELPER_URL, JST_URL_TEMPLATE, PLAT, type Brand, type Platform } from '@/lib/constants';
 import { fmtDT, localStamp } from '@/lib/format';
 
 // การเชื่อม JST ของ prototype (legacy/app.js L397-479): ช่องทางแชต, เปิดแชต, ตรวจว่าเซลล์ทักแชทแล้วหรือยัง
@@ -40,10 +40,37 @@ export const JST_TIMEOUT_MS = 2500;
 export interface JstDeps {
   helperUrl: string;
   urlTemplate: string;
+  /** หน้าแชต JST (ว่าง = ไม่ใช้ แล้วใช้ตัวช่วย/urlTemplate/คัดลอกแบบเดิม) */
+  chatUrl: string;
   fetch: (url: string, init: RequestInit) => Promise<{ ok: boolean }>;
   open: (url: string) => void;
+  /** เปิดหน้าแชต JST ในแท็บชื่อเดิม (ใช้แท็บซ้ำ) — false = เบราว์เซอร์บล็อกป๊อปอัป */
+  openJst: (url: string) => boolean;
   clipboard: { writeText: (text: string) => Promise<void> } | undefined;
   toast: (msg: string) => void;
+  now: () => number;
+}
+
+/** ลิงก์หน้าแชต JST + hash ที่สคริปต์ Tampermonkey อ่าน: คำค้น, ms_id (ถ้ารู้) และ nonce ให้คลิกชื่อเดิมซ้ำแล้ว hash ยังเปลี่ยน */
+export function jstChatUrl(chatUrl: string, t: JstTarget, now: number): string {
+  const q = new URLSearchParams({ 'dsales-chat': t.chat || t.phone || '', 'dsales-ms': t.ms_id == null ? '' : String(t.ms_id), 'dsales-t': String(now) });
+  return chatUrl + '#' + q.toString().replace(/\+/g, '%20');
+}
+
+/**
+ * เปิดหน้าแชต JST: เริ่มคัดลอกก่อน (ตอนเอกสารยังโฟกัส) แล้วเปิดแท็บในจังหวะเดียวกัน (ยังอยู่ใน user activation ของการคลิก)
+ * สคริปต์ Tampermonkey บนหน้า JST ค้นหาแล้วเปิดห้องให้ ถ้าไม่ได้ติดตั้งสคริปต์ เซลล์กด Ctrl+V ในช่องค้นหาเอง
+ */
+async function openChatPage(t: JstTarget, deps: JstDeps, auto: boolean): Promise<boolean> {
+  const txt = t.chat || t.phone || '';
+  const copy = deps.clipboard ? deps.clipboard.writeText(txt).then(() => true, () => false) : Promise.resolve(false);
+  const opened = deps.openJst(jstChatUrl(deps.chatUrl, t, deps.now()));
+  const copied = await copy;
+  if (!auto) {
+    if (!opened) deps.toast(copied ? 'เบราว์เซอร์บล็อกการเปิดแท็บ JST · คัดลอกชื่อแชตแล้ว นำไปค้นหาใน JST' : 'เบราว์เซอร์บล็อกการเปิดแท็บ JST · ค้นหาใน JST ด้วย: ' + txt);
+    else deps.toast(copied ? 'เปิดแชตใน JST แล้ว · ถ้าแชตไม่เปิดเอง กด Ctrl+V ในช่องค้นหา' : 'เปิดแชตใน JST แล้ว · ถ้าแชตไม่เปิดเอง ค้นหาด้วย: ' + txt);
+  }
+  return opened;
 }
 
 /**
@@ -51,6 +78,7 @@ export interface JstDeps {
  * auto = เปิดเองหลังจอง: ไม่ toast ตอนสำเร็จ และไม่คัดลอก
  */
 export async function jstOpen(t: JstTarget, rep: string, deps: JstDeps, { auto = false }: { auto?: boolean } = {}): Promise<boolean> {
+  if (deps.chatUrl) return openChatPage(t, deps, auto);
   const payload: Record<string, unknown> = { ...t, rep };
   if (deps.helperUrl) {
     const ac = new AbortController();
@@ -89,12 +117,30 @@ export function browserJstDeps(toast: (msg: string) => void): JstDeps {
   return {
     helperUrl: JST_HELPER_URL,
     urlTemplate: JST_URL_TEMPLATE,
+    chatUrl: JST_CHAT_URL,
     fetch: (url, init) => window.fetch(url, init),
     open: (url) => {
       window.open(url, '_blank', 'noopener');
     },
+    openJst: (url) => {
+      // ชื่อแท็บคงที่ = คลิกครั้งต่อไปใช้แท็บ JST เดิม (เปลี่ยนแค่ hash ไม่โหลดหน้าใหม่) · ตัด opener ทันทีตอนยังเป็น about:blank
+      const w = window.open(url, 'dsales-jst');
+      if (!w) return false;
+      try {
+        w.opener = null;
+      } catch {
+        /* แท็บเดิมเป็นโดเมน JST แล้ว ตั้ง opener ไม่ได้ (ไม่จำเป็น) */
+      }
+      try {
+        w.focus();
+      } catch {
+        /* บางเบราว์เซอร์ไม่ยอมให้โฟกัสแท็บอื่น */
+      }
+      return true;
+    },
     clipboard: typeof navigator !== 'undefined' ? navigator.clipboard : undefined,
     toast,
+    now: () => Date.now(),
   };
 }
 

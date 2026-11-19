@@ -26,7 +26,8 @@ export default defineConfig({
       url: 'http://127.0.0.1:3100/login',
       reuseExistingServer: !process.env.CI,
       timeout: 180_000,
-      env: { NEXT_PUBLIC_FIXTURES: '1' },
+      // JST_CHAT_URL ว่าง = test ไม่เปิดแท็บ JST จริงตอนจอง/กดแชต (ใช้ทางคัดลอกชื่อแชตแบบเดิม)
+      env: { NEXT_PUBLIC_FIXTURES: '1', NEXT_PUBLIC_JST_CHAT_URL: '' },
     },
   ],
 });

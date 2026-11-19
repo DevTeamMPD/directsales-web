@@ -6,7 +6,7 @@ vi.mock('@/lib/supabase/client', () => ({ db: () => ({ rpc }) }));
 import type { ChatSessionJson, Lead } from '@/lib/api/types';
 import { fixturePayload } from '@/lib/fixtures/load';
 import {
-  chatAria, chatCheckFor, chatCheckView, channelsOf, chatTitle, jstOpen, jstTarget, JST_TIMEOUT_MS, localChatCheck, nextChatCheck, platformOf, shouldStartVerify,
+  chatAria, chatCheckFor, chatCheckView, channelsOf, chatTitle, jstChatUrl, jstOpen, jstTarget, JST_TIMEOUT_MS, localChatCheck, nextChatCheck, platformOf, shouldStartVerify,
   runVerify, summarizeChats, verifyTodo, type ChatCheckResult, type JstDeps, type JstTarget,
 } from './jst';
 
@@ -23,12 +23,14 @@ const T: JstTarget = {
 const mocks = () => ({
   fetch: vi.fn<JstDeps['fetch']>(),
   open: vi.fn<JstDeps['open']>(),
+  openJst: vi.fn<JstDeps['openJst']>(),
   writeText: vi.fn<(text: string) => Promise<void>>(),
   toast: vi.fn<(msg: string) => void>(),
 });
 type Mocks = ReturnType<typeof mocks>;
 const depsOf = (m: Mocks, over: Partial<JstDeps> = {}): JstDeps => ({
-  helperUrl: 'http://127.0.0.1:47321', urlTemplate: '', fetch: m.fetch, open: m.open, clipboard: { writeText: m.writeText }, toast: m.toast, ...over,
+  helperUrl: 'http://127.0.0.1:47321', urlTemplate: '', chatUrl: '', fetch: m.fetch, open: m.open, openJst: m.openJst,
+  clipboard: { writeText: m.writeText }, toast: m.toast, now: () => 1700000000000, ...over,
 });
 
 const S = (o: Partial<ChatSessionJson>): ChatSessionJson => ({
@@ -124,6 +126,46 @@ describe('jstOpen (prototype L415-435)', () => {
     await expect(jstOpen(T, 'Dev MPD', depsOf(m), { auto: true })).resolves.toBe(false);
     expect(m.writeText).not.toHaveBeenCalled();
     expect(m.toast).not.toHaveBeenCalled();
+  });
+});
+
+describe('jstOpen with the JST chat page (Tampermonkey script opens the chat)', () => {
+  const CHAT = 'https://asia-web.jsterp.com/iim/index';
+  it('jstChatUrl puts the search text, ms_id and a nonce in the hash', () => {
+    expect(jstChatUrl(CHAT, { ...T, chat: '😊😊A o m 😊😊', ms_id: 130427 }, 5)).toBe(
+      CHAT + '#dsales-chat=' + encodeURIComponent('😊😊A o m 😊😊') + '&dsales-ms=130427&dsales-t=5',
+    );
+    expect(jstChatUrl(CHAT, { ...T, chat: '', ms_id: null }, 6)).toBe(CHAT + '#dsales-chat=0869684532&dsales-ms=&dsales-t=6');
+  });
+  it('opens the JST tab before anything async, copies the chat name and skips the helper', async () => {
+    const m = mocks();
+    const order: string[] = [];
+    m.writeText.mockImplementation(async () => { order.push('copy'); });
+    m.openJst.mockImplementation(() => { order.push('open'); return true; });
+    await expect(jstOpen(T, 'Dev MPD', depsOf(m, { chatUrl: CHAT }))).resolves.toBe(true);
+    expect(m.openJst).toHaveBeenCalledWith(CHAT + '#dsales-chat=mom_ploy114_sh&dsales-ms=&dsales-t=1700000000000');
+    expect(order).toEqual(['copy', 'open']); // writeText เริ่มก่อน (เอกสารยังโฟกัสอยู่) แล้วเปิดแท็บทันทีในจังหวะเดียวกัน
+    expect(m.fetch).not.toHaveBeenCalled();
+    expect(m.toast).toHaveBeenCalledWith('เปิดแชตใน JST แล้ว · ถ้าแชตไม่เปิดเอง กด Ctrl+V ในช่องค้นหา');
+  });
+  it('auto mode (after a claim) opens and copies without a toast', async () => {
+    const m = mocks();
+    m.writeText.mockResolvedValue();
+    m.openJst.mockReturnValue(true);
+    await expect(jstOpen(T, 'Dev MPD', depsOf(m, { chatUrl: CHAT }), { auto: true })).resolves.toBe(true);
+    expect(m.openJst).toHaveBeenCalledTimes(1);
+    expect(m.toast).not.toHaveBeenCalled();
+  });
+  it('clipboard failure shows the search text; a blocked tab says so', async () => {
+    const m = mocks();
+    m.writeText.mockRejectedValue(new Error('denied'));
+    m.openJst.mockReturnValue(true);
+    await jstOpen(T, 'Dev MPD', depsOf(m, { chatUrl: CHAT }));
+    expect(m.toast).toHaveBeenLastCalledWith('เปิดแชตใน JST แล้ว · ถ้าแชตไม่เปิดเอง ค้นหาด้วย: mom_ploy114_sh');
+    m.openJst.mockReturnValue(false);
+    m.writeText.mockResolvedValue();
+    await expect(jstOpen(T, 'Dev MPD', depsOf(m, { chatUrl: CHAT }))).resolves.toBe(false);
+    expect(m.toast).toHaveBeenLastCalledWith('เบราว์เซอร์บล็อกการเปิดแท็บ JST · คัดลอกชื่อแชตแล้ว นำไปค้นหาใน JST');
   });
 });
 
