@@ -39,12 +39,14 @@ components/
   leads/                        # PeriodCard, LeadToolbar, ContactBar, LeadTable, LeadsPage, useJst, useLeadActions, useVerifyMine
   campaigns/                    # CampaignPage, CampaignCards, PoolPanel, BasePage (/mine /pool), RowButton, BrandTags, useCustomerClaim
   modals/                       # CustomerModal (+ChatCheckBody), LogModal, ConfirmUnclaimModal, PickFromBucketModal, PoolDetailModal (E), CampaignFormModal (F)
+  dashboard/DashboardPage.tsx   # KPI, เปรียบเทียบแบรนด์, ค่าคอม + คัดลอก TSV, ผลงานรายเซลล์, กิจกรรมล่าสุด
+  setup/SetupPage.tsx           # ทีม (เพิ่มด้วยอีเมล/ปิดใช้งาน), วิธีจองของแคมเปญ, ผูก tag JST
 lib/
   supabase/client.ts            # supabase() ใช้กับ auth, db() = schema('dsales')
   supabase/server.ts
   api/                          # types, map (mapLead/mapCampaign/mapPoolRow), errors (toThaiError), rpc (wrapper ทุก RPC)
   state/                        # reducer + AppProvider (context แยก state / actions / toast / modal) + session.ts, toast.ts, busy.ts
-  domain/                       # period, leads, log, campaigns, pool (ฟังก์ชันล้วน มี test)
+  domain/                       # period, leads, log, campaigns, pool, dashboard, setup (ฟังก์ชันล้วน มี test)
   jst.ts                        # ช่องทางแชต, jstOpen, ตรวจทักแชท (chatCheckFor / verifyMine)
   fixtures/                     # โหมด fixture (next dev เท่านั้น)
   format.ts constants.ts phone.ts icons.ts routes.ts nav.ts
@@ -57,7 +59,7 @@ e2e/                            # Playwright visual parity
 docs/                           # spec, plan, DATABASE.md
 ```
 
-ดึงข้อมูลฝั่ง client เป็นหลักเหมือน prototype: ทุก RPC เรียกผ่าน `lib/api/rpc.ts` (โยน `Error` ข้อความไทยจาก `toThaiError`) และหลังแก้ข้อมูลให้ `upsertLead(lead)` แทนการโหลดใหม่ทั้งหน้า แล้ว `dispatch({ type: 'invalidatePool' })` (ถังลูกค้าโหลดใหม่ = `ui.pool.loaded = false` ของ prototype)
+ดึงข้อมูลฝั่ง client เป็นหลักเหมือน prototype: ทุก RPC เรียกผ่าน `lib/api/rpc.ts` (โยน `RpcError` ข้อความไทยจาก `toThaiError`) และหลังแก้ข้อมูลให้ `upsertLead(lead)` แทนการโหลดใหม่ทั้งหน้า แล้ว `dispatch({ type: 'invalidatePool' })` (ถังลูกค้าโหลดใหม่ = `ui.pool.loaded = false` ของ prototype)
 - component ที่ไม่ต้องอ่าน state ใช้ `useActions()` (คงที่ ไม่ re-render) อ่าน state ด้วย `useAppState()`; toast/modal อยู่คนละ context
 - error ระหว่างใช้งานหน้าแสดงด้วย `toastError(e)` เท่านั้น (reducer ไม่รับ `failed` หลัง phase `ready`)
 - ถังลูกค้า: ส่วนที่คงค่าข้ามหน้า (แบรนด์/คำค้น/หน้า/จำนวนรวม) อยู่ใน `state.pool` (`setPool`) แถวที่โหลดอยู่ใน `PoolPanel` / `BasePage` และโหลดใหม่เมื่อ mount / `poolVersion` / คำค้น (debounce 300 ms) / หน้า / ช่วงวันที่เปลี่ยน
@@ -76,6 +78,8 @@ docs/                           # spec, plan, DATABASE.md
   - `20261117100100_dsales_access_hardening.sql` — RLS ต้องเป็นสมาชิก active ผ่าน `dsales.dsales_is_member()`, ห้ามเขียน `dsales_members` ตรง ๆ (ต้องผ่าน RPC), RPC จัดการสมาชิกใช้ advisory lock
   - `20261117100200_dsales_revoke_truncate.sql` — ถอน TRUNCATE/TRIGGER/REFERENCES จาก `authenticated`/`anon`
   - test คู่กัน: `supabase/tests/06_members_only.sql`, `supabase/tests/06b_access_hardening.sql`
+  - `20261119120000_dsales_set_member_tags_fast.sql` — `dsales_set_member_tags` / `dsales_set_member_active` ไม่เรียก `dsales_refresh_customer_base()` แล้ว (หนัก เกิน `statement_timeout` 8 วินาทีของ `authenticated`) แต่อัปเดต `dsales_customer_base.owner_id` ในที่เดิมจาก `owner_tag` (~0.04 วินาที) บันทึก tag/ปิด-เปิดสมาชิกมีผลกับความเป็นเจ้าของทันที ส่วนการเปลี่ยน tag ฝั่ง JST ของลูกค้ายังรอ cron รายชั่วโมง; test คู่กัน: `supabase/tests/07_member_tags_fast.sql`
+- cron `dsales-refresh-customer-base` (`5 * * * *` = ทุกชั่วโมง) ตั้งรายชั่วโมงไว้ก่อนโดยตั้งใจ — ทบทวนเวลารัน/โหลด DB หลังใช้งานจริงประมาณ 1 สัปดาห์แล้วตัดสินใจว่าจะลดเป็นวันละครั้งไหม (ดู `docs/DATABASE.md` หัวข้อ 3)
 - `iim_messages.time` เร็วกว่าจริง 7 ชม. ให้ใช้ view `dsales.dsales_chat_messages_v`
 
 ## Migration และ SQL test (ทำตามลำดับนี้เสมอ)
@@ -115,8 +119,9 @@ node tools/port-legacy.mjs icons                     # สร้าง lib/icons
 TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtures/data.ts ใหม่
 ```
 
-- e2e เทียบภาพกับ prototype ครอบคลุม `/leads`, หน้าแคมเปญ + ถังลูกค้า และ popup A–F (25 tests); ค่า limit วัดจริงด้วย `PARITY_MEASURE=1` (รัน 3 ครั้ง ×1.25) — ถ้าเกินให้วัดใหม่ ห้ามเพิ่ม limit เอง; สีตรวจด้วย computed-style
-- `/mine` `/pool` ไม่มีใน prototype: เทียบกับภาพของตัวเองที่ commit ไว้ใน `e2e/.legacy-shots/app/` (ตั้งใจเปลี่ยนหน้าตา → `npx playwright test -g "<ชื่อ test>" --update-snapshots=changed` แล้วตรวจภาพด้วยตาก่อน commit)
+- e2e เทียบภาพกับ prototype ครอบคลุม `/leads`, หน้าแคมเปญ + ถังลูกค้า, Dashboard, ตั้งค่า และ popup A–F (29 tests); ค่า limit วัดจริงด้วย `PARITY_MEASURE=1` (รัน 3 ครั้ง ×1.25) — ถ้าเกินให้วัดใหม่ ห้ามเพิ่ม limit เอง; สีตรวจด้วย computed-style
+- `/mine` `/pool` และหน้าตั้งค่าทั้งหน้าเทียบกับภาพของตัวเองที่ commit ไว้ใน `e2e/.legacy-shots/app/` (ตั้งใจเปลี่ยนหน้าตา → `npx playwright test -g "<ชื่อ test>" --update-snapshots=changed` แล้วตรวจภาพด้วยตาก่อน commit)
+- teeth check (`PARITY_INJECT_CSS`): ต้องเลือก CSS ที่เปลี่ยนภาพเกินค่า limit ของ test นั้น — `.tag { … }` ไม่มีผลกับ `/mine` `/pool` ที่มือถือ (คอลัมน์แบรนด์ถูกซ่อน) และ `.kpi-value { letter-spacing: … }` เล็กเกินกว่า limit ของ dashboard (ใช้ `.kpi-value { font-size: 26px; }` แทน)
 - **หลัง `npm run test:e2e` ให้รัน `npm run build` ใหม่ก่อน `npm run check:fixtures` เสมอ** (e2e เขียนทับ `.next` ด้วยผลลัพธ์ของ dev)
 
 ## โหมด fixture
@@ -134,7 +139,7 @@ TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtu
 - Spec หน้าเว็บ Next.js: `docs/superpowers/specs/2026-11-17-nextjs-frontend-design.md`
 - รายการ feature ของ prototype (อ้างเลขบรรทัด `legacy/app.js`): `docs/superpowers/specs/2026-11-17-prototype-inventory.md`
 - แผน: `docs/superpowers/plans/2026-11-17-dsales-phase-0-1.md` (DB เฟส 0–1), `docs/superpowers/plans/2026-11-17-nextjs-plan-a-foundation.md` (แผน A), `docs/superpowers/plans/2026-11-18-nextjs-plan-b-leads.md` (แผน B), `docs/superpowers/plans/2026-11-19-nextjs-plan-c1-campaigns-pool.md` / `2026-11-19-nextjs-plan-c2-dashboard-setup-deploy.md` (แผน C)
-- ฐานข้อมูล: `docs/DATABASE.md`
+- ฐานข้อมูล: `docs/DATABASE.md` (schema `dsales`, สิทธิ์สมาชิก, RPC ทั้งหมด)
 - ตัวช่วยเปิดแชต JST บนเครื่องเซลล์: `tools/jst-helper/README.md`
 
 ## Coding Conventions
@@ -149,7 +154,9 @@ TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtu
 8. **Tailwind:** ห้ามใช้ utility ที่ชื่อชนกับ class ของ prototype (มีใน `blocklist` ของ `tailwind.config.ts` เช่น `outline`) เจอชื่อชนเพิ่มให้เพิ่มใน blocklist
 9. อย่ารัน `npm run test:e2e` ขณะเปิด `npm start` อยู่ (ใช้ `.next` ร่วมกัน)
 
-## งานค้างสำหรับแผน C (ส่วน C2)
+## งานค้าง (หลังแผน C)
 
-- `docs/DATABASE.md` และ `README.md` ยังอธิบายโครงสร้างเดิม (public/`index.html`/ลงทะเบียนอัตโนมัติ) ต้องอัปเดต
-- Dashboard, ตั้งค่า (สมาชิก/tag JST/วิธีจอง), รอบมือถือ, deploy และย้าย `legacy/` — ดู `docs/superpowers/plans/2026-11-19-nextjs-plan-c2-dashboard-setup-deploy.md`
+- funnel ของตัวสร้างแคมเปญเป็น 0 ตอนล็อกอินจริง และแคมเปญยังไม่สร้างลีดจาก `criteria` (ต้องมี RPC ใหม่ — เฟส 2)
+- โหมด `auto` ยังอ่านเป็น `self` และปุ่ม "จัดสรรให้เซลล์ที่ขายล่าสุด" ขึ้น "ไม่มีลีดที่ต้องจัดสรร" เสมอ (ยังไม่มีการผูกผู้ขายล่าสุดกับเซลล์)
+- ผลตรวจทักแชตไม่ถูกบันทึกลง DB (ดู `docs/DATABASE.md` ข้อ 5.5)
+- ทบทวน cron `dsales-refresh-customer-base` (ตอนนี้รายชั่วโมง) หลังใช้งานจริง 1 สัปดาห์: ดูเวลารัน/โหลด DB แล้วตัดสินใจว่าจะลดเป็นวันละครั้งไหม
