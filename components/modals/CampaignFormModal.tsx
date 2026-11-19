@@ -68,7 +68,7 @@ export function CampaignFormModal({ brand }: { brand: Brand }) {
         router.push(`/campaigns/${c.brand}`);
         toast('สร้างแคมเปญแล้ว · เลือกลูกค้าเข้าแคมเปญจากถัง "ลูกค้าทั้งหมด" ด้วยปุ่ม จอง');
       } catch (e) {
-        handleAuthError(e);
+        if (handleAuthError(e)) return;
         toast('สร้างแคมเปญไม่สำเร็จ: ' + errorMessage(e));
       }
     });
