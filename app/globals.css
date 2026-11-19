@@ -1,0 +1,3 @@
+/* Tailwind เฉพาะ components/utilities: ไม่มี @tailwind base (preflight ปิดใน tailwind.config.ts) หน้าตาหลักมาจาก styles/prototype.css */
+@tailwind components;
+@tailwind utilities;

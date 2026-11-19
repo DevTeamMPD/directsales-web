@@ -1,0 +1,25 @@
+'use client';
+
+import { usePathname } from 'next/navigation';
+import { PATHS } from '@/lib/constants';
+import { routeMeta } from '@/lib/routes';
+import { useApp } from '@/lib/state/AppProvider';
+import { useShell } from './ShellContext';
+
+export function Topbar() {
+  const { state } = useApp();
+  const { openMenu, setActionsEl } = useShell();
+  const { title, sub } = routeMeta(usePathname(), state.campaigns);
+  return (
+    <header className="topbar">
+      <button className="icon-btn menu-btn" id="menu-btn" aria-label="เปิดเมนู" onClick={openMenu}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d={PATHS.menu} /></svg>
+      </button>
+      <div className="topbar-title">
+        <h1 id="page-title">{title}</h1>
+        <span id="page-sub" className="page-sub">{sub}</span>
+      </div>
+      <div className="topbar-actions" id="topbar-actions" ref={setActionsEl} />
+    </header>
+  );
+}

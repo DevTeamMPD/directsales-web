@@ -1,0 +1,7 @@
+{
+  "port": 47321,
+  "allowedOrigins": ["https://directsales-web.vercel.app"],
+  "mode": "url",
+  "urlTemplate": "https://REPLACE-WITH-JST-CHAT-URL/?chat={chat}&shop={shop}&ms_id={ms_id}",
+  "command": []
+}

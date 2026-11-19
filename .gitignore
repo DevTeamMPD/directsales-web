@@ -1,0 +1,11 @@
+node_modules/
+.next/
+out/
+.env*.local
+.vercel
+*.tsbuildinfo
+test-results/
+playwright-report/
+e2e/.legacy-shots/*
+!e2e/.legacy-shots/app/
+next-env.d.ts
