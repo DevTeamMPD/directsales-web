@@ -37,13 +37,14 @@ components/
   shell/                        # Shell, Sidebar, Topbar, TopbarActions, MeBox, Toast, ModalRoot
   ui/                           # ChIcon, CloseButton, StatusBadge/DueTag
   leads/                        # PeriodCard, LeadToolbar, ContactBar, LeadTable, LeadsPage, useJst, useLeadActions, useVerifyMine
-  modals/                       # CustomerModal (+ChatCheckBody), LogModal, ConfirmUnclaimModal, PickFromBucketModal
+  campaigns/                    # CampaignPage, CampaignCards, PoolPanel, BasePage (/mine /pool), RowButton, BrandTags, useCustomerClaim
+  modals/                       # CustomerModal (+ChatCheckBody), LogModal, ConfirmUnclaimModal, PickFromBucketModal, PoolDetailModal (E), CampaignFormModal (F)
 lib/
   supabase/client.ts            # supabase() ใช้กับ auth, db() = schema('dsales')
   supabase/server.ts
   api/                          # types, map (mapLead/mapCampaign/mapPoolRow), errors (toThaiError), rpc (wrapper ทุก RPC)
-  state/                        # reducer + AppProvider (context แยก state / actions / toast / modal) + session.ts, toast.ts
-  domain/                       # period, leads, log (ฟังก์ชันล้วน มี test)
+  state/                        # reducer + AppProvider (context แยก state / actions / toast / modal) + session.ts, toast.ts, busy.ts
+  domain/                       # period, leads, log, campaigns, pool (ฟังก์ชันล้วน มี test)
   jst.ts                        # ช่องทางแชต, jstOpen, ตรวจทักแชท (chatCheckFor / verifyMine)
   fixtures/                     # โหมด fixture (next dev เท่านั้น)
   format.ts constants.ts phone.ts icons.ts routes.ts nav.ts
@@ -59,6 +60,9 @@ docs/                           # spec, plan, DATABASE.md
 ดึงข้อมูลฝั่ง client เป็นหลักเหมือน prototype: ทุก RPC เรียกผ่าน `lib/api/rpc.ts` (โยน `Error` ข้อความไทยจาก `toThaiError`) และหลังแก้ข้อมูลให้ `upsertLead(lead)` แทนการโหลดใหม่ทั้งหน้า แล้ว `dispatch({ type: 'invalidatePool' })` (ถังลูกค้าโหลดใหม่ = `ui.pool.loaded = false` ของ prototype)
 - component ที่ไม่ต้องอ่าน state ใช้ `useActions()` (คงที่ ไม่ re-render) อ่าน state ด้วย `useAppState()`; toast/modal อยู่คนละ context
 - error ระหว่างใช้งานหน้าแสดงด้วย `toastError(e)` เท่านั้น (reducer ไม่รับ `failed` หลัง phase `ready`)
+- ถังลูกค้า: ส่วนที่คงค่าข้ามหน้า (แบรนด์/คำค้น/หน้า/จำนวนรวม) อยู่ใน `state.pool` (`setPool`) แถวที่โหลดอยู่ใน `PoolPanel` / `BasePage` และโหลดใหม่เมื่อ mount / `poolVersion` / คำค้น (debounce 300 ms) / หน้า / ช่วงวันที่เปลี่ยน
+- `rpc.ts` โยน `RpcError` (ข้อความไทย + `kind`): `toastError` / `handleAuthError` เปลี่ยนเป็นการ์ด "หมดเวลาการเข้าสู่ระบบ" (`auth`) หรือ "ถูกปิดใช้งาน" (`member`) เอง — โค้ดที่ catch error แล้วไม่ใช้ `toastError` ต้องเรียก `handleAuthError(e)` ก่อนแสดง error ในหน้า
+- ปุ่มที่เรียก RPC เขียนข้อมูลกันกดซ้ำด้วย `once(key, fn)` ของ `useActions()`
 - ตรวจแชตอัตโนมัติ (`useVerifyMine`) ตั้งใจให้รันเฉพาะตอนเข้าหน้า / เมื่อชุดลีดที่ต้องตรวจเปลี่ยน โดยชุดลีดเดิมต้องห่างกันอย่างน้อย 30 วินาที ส่วนชุดที่เปลี่ยนรันทันที (รอรอบที่กำลังรันจบก่อน) ห้ามแก้กลับเป็นตรวจทุกครั้งที่ render (ฐานข้อมูล production ใช้ร่วมกัน)
 
 ## Supabase (ใช้ร่วมกับระบบอื่น — ระวัง)
@@ -111,7 +115,8 @@ node tools/port-legacy.mjs icons                     # สร้าง lib/icons
 TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtures/data.ts ใหม่
 ```
 
-- e2e เทียบภาพกับ prototype ครอบคลุม `/leads` และ popup ลีดทั้งหมด (15 tests); ค่า limit วัดจริงด้วย `PARITY_MEASURE=1` (รัน 3 ครั้ง ×1.25) — ถ้าเกินให้วัดใหม่ ห้ามเพิ่ม limit เอง; สีตรวจด้วย computed-style
+- e2e เทียบภาพกับ prototype ครอบคลุม `/leads`, หน้าแคมเปญ + ถังลูกค้า และ popup A–F (25 tests); ค่า limit วัดจริงด้วย `PARITY_MEASURE=1` (รัน 3 ครั้ง ×1.25) — ถ้าเกินให้วัดใหม่ ห้ามเพิ่ม limit เอง; สีตรวจด้วย computed-style
+- `/mine` `/pool` ไม่มีใน prototype: เทียบกับภาพของตัวเองที่ commit ไว้ใน `e2e/.legacy-shots/app/` (ตั้งใจเปลี่ยนหน้าตา → `npx playwright test -g "<ชื่อ test>" --update-snapshots=changed` แล้วตรวจภาพด้วยตาก่อน commit)
 - **หลัง `npm run test:e2e` ให้รัน `npm run build` ใหม่ก่อน `npm run check:fixtures` เสมอ** (e2e เขียนทับ `.next` ด้วยผลลัพธ์ของ dev)
 
 ## โหมด fixture
@@ -120,6 +125,7 @@ TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtu
 - มีผลเฉพาะ `next dev`: เงื่อนไขต้องเขียนตรงตัว `process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_FIXTURES === '1'` และโหลด fixture ด้วย dynamic import ในเงื่อนไขนั้นเท่านั้น (`lib/fixtures/guard.test.ts` ตรวจ) ห้าม import `lib/fixtures` แบบปกติจากโค้ดหน้าเว็บ
 - `lib/fixtures/data.ts` และ `lib/icons.ts` สร้างด้วยสคริปต์ ห้ามแก้มือ
 - `state.live = false` ในโหมด fixture: ฝั่งอ่านทำแบบโหมดตัวอย่างของ prototype (ไม่โหลดประวัติซื้อ, ไม่รัน verifyMine, ตรวจแชตจากบันทึกในแอป) ปุ่มที่เขียนข้อมูลแสดง toast "โหมด fixture: ไม่ได้บันทึกลง Supabase"
+- `state.customers` = ลูกค้าตัวอย่างของ `legacy/data.js` (โหมด fixture เท่านั้น ล็อกอินจริงเป็น `[]` เหมือน prototype) ใช้กับถังลูกค้า (`demoPool`), การ์ดถัง, funnel ของตัวสร้างแคมเปญ และ `/mine` `/pool` (`demoBase`)
 - `/leads?claim=<leadId>` (เฉพาะโหมด fixture) ทำเหมือน Dev MPD จองลีดนั้น — e2e ใช้เปิด popup ยกเลิกจอง
 
 ## เอกสาร
@@ -127,7 +133,7 @@ TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtu
 - Spec ระบบรวม: `docs/superpowers/specs/2026-11-17-direct-sale-design.md`
 - Spec หน้าเว็บ Next.js: `docs/superpowers/specs/2026-11-17-nextjs-frontend-design.md`
 - รายการ feature ของ prototype (อ้างเลขบรรทัด `legacy/app.js`): `docs/superpowers/specs/2026-11-17-prototype-inventory.md`
-- แผน: `docs/superpowers/plans/2026-11-17-dsales-phase-0-1.md` (DB เฟส 0–1), `docs/superpowers/plans/2026-11-17-nextjs-plan-a-foundation.md` (แผน A), `docs/superpowers/plans/2026-11-18-nextjs-plan-b-leads.md` (แผน B)
+- แผน: `docs/superpowers/plans/2026-11-17-dsales-phase-0-1.md` (DB เฟส 0–1), `docs/superpowers/plans/2026-11-17-nextjs-plan-a-foundation.md` (แผน A), `docs/superpowers/plans/2026-11-18-nextjs-plan-b-leads.md` (แผน B), `docs/superpowers/plans/2026-11-19-nextjs-plan-c1-campaigns-pool.md` / `2026-11-19-nextjs-plan-c2-dashboard-setup-deploy.md` (แผน C)
 - ฐานข้อมูล: `docs/DATABASE.md`
 - ตัวช่วยเปิดแชต JST บนเครื่องเซลล์: `tools/jst-helper/README.md`
 
@@ -143,17 +149,7 @@ TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtu
 8. **Tailwind:** ห้ามใช้ utility ที่ชื่อชนกับ class ของ prototype (มีใน `blocklist` ของ `tailwind.config.ts` เช่น `outline`) เจอชื่อชนเพิ่มให้เพิ่มใน blocklist
 9. อย่ารัน `npm run test:e2e` ขณะเปิด `npm start` อยู่ (ใช้ `.next` ร่วมกัน)
 
-## งานค้างสำหรับแผน C
+## งานค้างสำหรับแผน C (ส่วน C2)
 
-- ประสิทธิภาพต่อแถว: `ChatButton` แต่ละปุ่มเรียก `useJst()` (subscribe context ต่อปุ่ม) ถ้าพิมพ์ค้นหาแล้วหน่วงเมื่อลีดเยอะ ให้ยก `openJst` ไปไว้ที่ `LeadTable` และ `memo(LeadRow)`
-- session หมดอายุระหว่างใช้งาน: ตอนนี้ error จาก RPC แสดงแค่ toast ควรพิจารณา redirect/ขึ้นข้อความให้ล็อกอินใหม่เมื่อเจอ error แนว 401 / JWT expired / `not_member`
-- ข้ามเที่ยงคืน: ช่วงวันที่ที่เก็บไว้เป็นวันจริง (preset "วันนี้"/"7 วัน"/"เดือนนี้") จะค้างเป็นของเมื่อวาน ต้องคำนวณใหม่เมื่อ `today` เปลี่ยน
-- StrictMode (dev เท่านั้น): `loadLive` ที่ถูกยกเลิกอาจยัง redirect ได้
-- คลิกแท็บที่ active อยู่แล้วใน popup ลูกค้า ยังไม่รีเซ็ต scroll/โฟกัสเหมือน prototype (เล็กน้อย)
 - `docs/DATABASE.md` และ `README.md` ยังอธิบายโครงสร้างเดิม (public/`index.html`/ลงทะเบียนอัตโนมัติ) ต้องอัปเดต
-- หน้าแคมเปญใช้ `LeadTable` กับ `opts.mode` / `opts.perCamp` (ปุ่มจอง + `maxPerRep` + เปิด JST อัตโนมัติ, select มอบหมาย มีแล้ว) และโหลดถังใหม่เมื่อ `state.poolVersion` เปลี่ยน; ถ้า `ui.focusSearch` เป็นจริงให้ล้างคำค้นถัง โฟกัสช่อง `#pool-q` จนโหลดเสร็จแล้วตั้งกลับเป็น false
-- รายการแผน C ที่เหลือ (แคมเปญ/ถังลูกค้า/popup E,F/Dashboard/ตั้งค่า/`/mine`/`/pool`/รอบมือถือ/deploy) ดู "สิ่งที่แผนนี้ยังไม่ทำ" ใน `docs/superpowers/plans/2026-11-18-nextjs-plan-b-leads.md`
-- กันกดซ้ำ (double-click) ยังไม่มีใน `restoreNoCall` / `claim` / `assign` (ปุ่ม claim สำคัญที่สุดตอนทำถังลูกค้า) ให้ใช้ ref `busy` แบบเดียวกับ LogModal / ConfirmUnclaimModal
-- LogModal: ถ้า RPC สำเร็จแค่บางขั้น (เช่น logContact ผ่านแต่ setNoCall/unclaim ล้ม) แล้วกดบันทึกซ้ำ จะบันทึกประวัติซ้ำ 2 รอบ
-- error จากเครือข่าย (fetch ล้ม / offline) ยังไม่ถูกแปลเป็นข้อความไทยใน `toThaiError`
-- `today` (`useAppState().today`) ตั้งครั้งเดียวตอนโหลดหน้า ถ้าเปิดค้างข้ามเที่ยงคืนจะยังเป็นวันเดิม
+- Dashboard, ตั้งค่า (สมาชิก/tag JST/วิธีจอง), รอบมือถือ, deploy และย้าย `legacy/` — ดู `docs/superpowers/plans/2026-11-19-nextjs-plan-c2-dashboard-setup-deploy.md`
