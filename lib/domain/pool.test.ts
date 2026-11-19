@@ -107,6 +107,7 @@ describe('/mine and /pool (dsales_base_customers, spec ข้อ 3)', () => {
     expect(baseAction(row({ noCall: true, mine: true }), mineCtx)).toEqual({ kind: 'disabled', text: 'ไม่สะดวกให้โทร' });
     expect(baseAction(row({ mine: true, taken: 'r4', leadId: 'L9' }), mineCtx)).toEqual({ kind: 'unclaim', text: 'ยกเลิกจอง', leadId: 'L9' });
     expect(baseAction(row({ mine: true, taken: 'r4', leadId: 'L8' }), mineCtx)).toEqual({ kind: 'disabled', text: 'จองแล้ว' });
+    expect(baseAction(row({ mine: true, taken: 'r4', leadId: 'L404' }), mineCtx)).toEqual({ kind: 'disabled', text: 'จองแล้ว' });
     expect(baseAction(row({ mine: true, taken: 'r4', leadId: null, ownerTag: 'Admin_Dev' }), mineCtx)).toEqual({ kind: 'claim', text: 'เริ่มติดตาม' });
     expect(baseAction(row({ taken: 'other', takenName: 'กมลชนก' }), mineCtx)).toEqual({ kind: 'disabled', text: 'เป็นลูกค้าของ กมลชนก' });
     expect(baseAction(row({ taken: 'other', ownerTag: 'Admin_Ploy' }), mineCtx)).toEqual({ kind: 'disabled', text: 'เป็นลูกค้าของ Admin_Ploy' });

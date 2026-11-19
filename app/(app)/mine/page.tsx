@@ -1,5 +1,5 @@
-import { Placeholder } from '@/components/shell/Placeholder';
+import { BasePage } from '@/components/campaigns/BasePage';
 
 export default function MinePage() {
-  return <Placeholder plan="C" />;
+  return <BasePage scope="mine" />;
 }

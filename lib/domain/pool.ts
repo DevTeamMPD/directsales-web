@@ -122,8 +122,11 @@ export const NO_BRAND_TEXT = 'เลือกแบรนด์ที่ช่�
 export function baseAction(r: PoolRow, ctx: Pick<PoolCtx, 'meId' | 'leads'>): RowAction {
   if (r.noCall) return disabled('ไม่สะดวกให้โทร');
   if (r.mine) {
-    const l = r.leadId ? ctx.leads.find((x) => x.id === r.leadId) : undefined;
-    if (l && r.leadId && l.owner === ctx.meId) return canUnclaimAny(l, ctx.meId) ? unclaim(r.leadId) : disabled('จองแล้ว');
+    if (r.leadId) {
+      // มีลีดแล้ว = จองอยู่แล้ว แม้ลีดยังไม่อยู่ใน state (เกิน 1000 แถว / จองจากแท็บอื่น) — ไม่แสดง "เริ่มติดตาม"
+      const l = ctx.leads.find((x) => x.id === r.leadId);
+      return l && l.owner === ctx.meId && canUnclaimAny(l, ctx.meId) ? unclaim(r.leadId) : disabled('จองแล้ว');
+    }
     return { kind: 'claim', text: 'เริ่มติดตาม' };
   }
   if (r.taken) {
