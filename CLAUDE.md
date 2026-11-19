@@ -78,8 +78,9 @@ docs/                           # spec, plan, DATABASE.md
   - `20261117100100_dsales_access_hardening.sql` — RLS ต้องเป็นสมาชิก active ผ่าน `dsales.dsales_is_member()`, ห้ามเขียน `dsales_members` ตรง ๆ (ต้องผ่าน RPC), RPC จัดการสมาชิกใช้ advisory lock
   - `20261117100200_dsales_revoke_truncate.sql` — ถอน TRUNCATE/TRIGGER/REFERENCES จาก `authenticated`/`anon`
   - test คู่กัน: `supabase/tests/06_members_only.sql`, `supabase/tests/06b_access_hardening.sql`
-  - `20261119120000_dsales_set_member_tags_fast.sql` — `dsales_set_member_tags` / `dsales_set_member_active` ไม่เรียก `dsales_refresh_customer_base()` แล้ว (หนัก เกิน `statement_timeout` 8 วินาทีของ `authenticated`) แต่อัปเดต `dsales_customer_base.owner_id` ในที่เดิมจาก `owner_tag` (~0.04 วินาที) บันทึก tag/ปิด-เปิดสมาชิกมีผลกับความเป็นเจ้าของทันที ส่วนการเปลี่ยน tag ฝั่ง JST ของลูกค้ายังรอ cron รายชั่วโมง; test คู่กัน: `supabase/tests/07_member_tags_fast.sql`
-- cron `dsales-refresh-customer-base` (`5 * * * *` = ทุกชั่วโมง) ตั้งรายชั่วโมงไว้ก่อนโดยตั้งใจ — ทบทวนเวลารัน/โหลด DB หลังใช้งานจริงประมาณ 1 สัปดาห์แล้วตัดสินใจว่าจะลดเป็นวันละครั้งไหม (ดู `docs/DATABASE.md` หัวข้อ 3)
+  - `20261119120000_dsales_diff_refresh.sql` (มาจาก PR #3 บน `main`) — refresh เขียนเฉพาะแถวที่เปลี่ยน + cron เปลี่ยนเป็นวันละ 3 รอบ
+  - `20261119130000_dsales_set_member_tags_fast.sql` — `dsales_set_member_tags` / `dsales_set_member_active` ไม่เรียก `dsales_refresh_customer_base()` แล้ว (หนัก เกิน `statement_timeout` 8 วินาทีของ `authenticated`) แต่อัปเดต `dsales_customer_base.owner_id` ในที่เดิมจาก `owner_tag` (~0.04 วินาที) บันทึก tag/ปิด-เปิดสมาชิกมีผลกับความเป็นเจ้าของทันที ส่วนการเปลี่ยน tag ฝั่ง JST ของลูกค้ายังรอ cron รอบถัดไป; test คู่กัน: `supabase/tests/07_member_tags_fast.sql`
+- cron `dsales-refresh-customer-base` รันวันละ 3 รอบ 07:05, 12:05, 16:05 น. (`5 0,5,9 * * *` UTC, เปลี่ยนใน production 2026-11-19) และเขียนเฉพาะแถวที่เปลี่ยน — DB ใช้ร่วมหลายแอป อย่าเพิ่มรอบโดยไม่จำเป็น (ดู `docs/DATABASE.md` หัวข้อ 3)
 - `iim_messages.time` เร็วกว่าจริง 7 ชม. ให้ใช้ view `dsales.dsales_chat_messages_v`
 
 ## Migration และ SQL test (ทำตามลำดับนี้เสมอ)
@@ -159,4 +160,5 @@ TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtu
 - funnel ของตัวสร้างแคมเปญเป็น 0 ตอนล็อกอินจริง และแคมเปญยังไม่สร้างลีดจาก `criteria` (ต้องมี RPC ใหม่ — เฟส 2)
 - โหมด `auto` ยังอ่านเป็น `self` และปุ่ม "จัดสรรให้เซลล์ที่ขายล่าสุด" ขึ้น "ไม่มีลีดที่ต้องจัดสรร" เสมอ (ยังไม่มีการผูกผู้ขายล่าสุดกับเซลล์)
 - ผลตรวจทักแชตไม่ถูกบันทึกลง DB (ดู `docs/DATABASE.md` ข้อ 5.5)
-- ทบทวน cron `dsales-refresh-customer-base` (ตอนนี้รายชั่วโมง) หลังใช้งานจริง 1 สัปดาห์: ดูเวลารัน/โหลด DB แล้วตัดสินใจว่าจะลดเป็นวันละครั้งไหม
+- `dsales_set_member_tags` / `dsales_set_member_active` ยังไม่ถือ advisory lock ของ refresh: ถ้าหัวหน้าบันทึกตรงกับช่วง ~3 วินาทีที่ cron รัน owner_id อาจถูกเขียนทับด้วยค่าเก่าจนถึงรอบถัดไป (เติม `pg_advisory_xact_lock(hashtext('dsales_refresh_customer_base'))`) และ `set_member_tags` ยังไม่ถือ `dsales_admin_guard` lock
+- `getMyLeads(1000, 0)` โหลดลีดสูงสุด 1,000 แถว Dashboard และ /leads จะตัดเงียบเมื่อเกิน

@@ -114,10 +114,11 @@ migration `20261117100000_dsales_members_only.sql`, `20261117100100_dsales_acces
 
 ### ฐานลูกค้าและ cron
 
-- `dsales_customer_base` คำนวณใหม่ด้วย `dsales_refresh_customer_base()` (หนัก: เฉลี่ย ~8.6 วินาที สูงสุด ~17 วินาที) เรียกโดย **pg_cron job `dsales-refresh-customer-base` ทุกชั่วโมงที่นาทีที่ 5** (`5 * * * *`: `dsales_seed_chat_links_by_name()` แล้ว `dsales_refresh_customer_base()`) ไม่มี RPC ให้หน้าเว็บสั่ง refresh เอง
-- **ตั้ง cron เป็นรายชั่วโมงไว้ก่อนโดยตั้งใจ** — ต้องทบทวนหลังใช้งานจริงประมาณ 1 สัปดาห์ (ดูเวลาที่ job รันและโหลด DB ใน `cron.job_run_details`) แล้วตัดสินใจว่าจะลดเป็นวันละครั้งหรือไม่
+- `dsales_customer_base` คำนวณใหม่ด้วย `dsales_refresh_customer_base()` เรียกโดย **pg_cron job `dsales-refresh-customer-base` วันละ 3 รอบ 07:05, 12:05, 16:05 น.** (`5 0,5,9 * * *` UTC: `dsales_seed_chat_links_by_name()` แล้ว `dsales_refresh_customer_base()`) ไม่มี RPC ให้หน้าเว็บสั่ง refresh เอง
+- เปลี่ยนจากรายชั่วโมงเป็นวันละ 3 รอบเมื่อ 2026-11-19 (ข้อมูลต้นทาง ออเดอร์/ยอดขาย เข้าวันละไม่กี่ครั้ง) และ **เขียนเฉพาะแถวที่เปลี่ยน** (migration `20261119120000_dsales_diff_refresh.sql`, Supabase `dsales_diff_refresh`): ลบแถวที่หลุด เพิ่มแถวใหม่ แก้แถวที่ค่าเปลี่ยน แถวที่เหมือนเดิมไม่แตะ ผลลัพธ์เท่าเดิม รอบแรกของวันยังแก้ ~9,100 แถวเพราะ `dormant_days` เพิ่มวันละ 1 · `refreshed_at` / `linked_at` จึงหมายถึงเวลาที่แถวนั้นถูกเขียนล่าสุด
+- refresh ใช้ `pg_advisory_xact_lock(hashtext('dsales_refresh_customer_base'))` กันรันซ้อน · ฐานข้อมูลใช้ร่วมหลายแอป งานนี้อ่านตารางออเดอร์/ยอดขายทั้งก้อน อย่าเพิ่มรอบโดยไม่จำเป็น
 - การเปลี่ยน tag ของห้องแชตฝั่ง JST มีผลกับ `owner_tag` ตอน cron รอบถัดไปเท่านั้น
-- **หัวหน้าบันทึก tag (`dsales_set_member_tags`) และปิด/เปิดใช้งานสมาชิก (`dsales_set_member_active`) ไม่เรียก refresh เต็มแล้ว** (migration `20261119120000_dsales_set_member_tags_fast.sql`, test `supabase/tests/07_member_tags_fast.sql`): refresh เต็มเกิน `statement_timeout` 8 วินาทีของ role `authenticated` ฟังก์ชันทั้งสองจึงอัปเดต `dsales_customer_base.owner_id` ในที่เดิมจาก `owner_tag` ที่คำนวณไว้แล้ว (กติกา tagmap เดียวกับ refresh: tag ของสมาชิก active, ไม่สนตัวพิมพ์, tag ซ้ำ = `user_id` น้อยสุด; ~0.04 วินาที) ผลคือบันทึก tag แล้วลูกค้าของ tag นั้นเปลี่ยนเจ้าของทันที และปิดใช้งานสมาชิก = เสียความเป็นเจ้าของตาม tag ทันที (เปิดใช้งานคืน = ได้คืนทันที)
+- **หัวหน้าบันทึก tag (`dsales_set_member_tags`) และปิด/เปิดใช้งานสมาชิก (`dsales_set_member_active`) ไม่เรียก refresh เต็มแล้ว** (migration `20261119130000_dsales_set_member_tags_fast.sql`, test `supabase/tests/07_member_tags_fast.sql`): refresh เต็มเกิน `statement_timeout` 8 วินาทีของ role `authenticated` ฟังก์ชันทั้งสองจึงอัปเดต `dsales_customer_base.owner_id` ในที่เดิมจาก `owner_tag` ที่คำนวณไว้แล้ว (กติกา tagmap เดียวกับ refresh: tag ของสมาชิก active, ไม่สนตัวพิมพ์, tag ซ้ำ = `user_id` น้อยสุด; ~0.04 วินาที) ผลคือบันทึก tag แล้วลูกค้าของ tag นั้นเปลี่ยนเจ้าของทันที และปิดใช้งานสมาชิก = เสียความเป็นเจ้าของตาม tag ทันที (เปิดใช้งานคืน = ได้คืนทันที)
 
 ## 4. ฟังก์ชัน (RPC) ฝั่ง Direct Sale
 
@@ -141,7 +142,7 @@ migration `20261117100000_dsales_members_only.sql`, `20261117100100_dsales_acces
 | `dsales_log(p_lead, p_type, p_result, p_note, p_status, p_callback, p_interest, p_bills, p_amount)` / `dsales_set_nocall(p_lead, p_on)` | บันทึกโทร/แชต + สถานะ / ห้ามโทร | popup บันทึก, ตาราง |
 | `dsales_uid()`, `dsales_is_admin()`, `dsales_is_member()` | ตรวจสิทธิ์ (ใช้ใน RPC และ RLS) | — ไม่เรียกตรง |
 | `dsales_register()` | ตรวจสิทธิ์เท่านั้น (ไม่เพิ่มสมาชิกแล้ว) | — |
-| `dsales_refresh_customer_base()`, `dsales_seed_chat_links_by_name()` | งานเบื้องหลัง (pg_cron รายชั่วโมง) — ไม่มี grant ให้ `authenticated` | — |
+| `dsales_refresh_customer_base()`, `dsales_seed_chat_links_by_name()` | งานเบื้องหลัง (pg_cron วันละ 3 รอบ) — ไม่มี grant ให้ `authenticated` | — |
 | `dsales_lead_json`, `dsales_norm_phone`, `dsales_norm_platform`, `dsales_valid_phone`, `dsales_touch_updated_at` | helper / trigger | — |
 
 ทุก migration อยู่ใน `supabase/migrations/` (เริ่มจาก `20261117090000_baseline_public_dsales_functions.sql`) พร้อม SQL test ใน `supabase/tests/` (`01`–`07`) — ขั้นตอนเพิ่ม migration ดู `CLAUDE.md`
@@ -175,7 +176,7 @@ migration `20261117100000_dsales_members_only.sql`, `20261117100100_dsales_acces
 - ✅ migration ของ `dsales` อยู่ใน `supabase/migrations/` ครบ (export baseline จาก DB แล้ว)
 - ⚠️ ผลตรวจ "ทักแชตแล้ว" (ข้อ 6) ยังเก็บแค่ในหน่วยความจำของหน้าเว็บ (`lead.chatCheck`) รีเฟรชแล้วต้องตรวจใหม่
 - ⚠️ funnel ของตัวสร้างแคมเปญยังเป็น 0 ตอนล็อกอินจริง (ไม่มี RPC กรองลูกค้าตามเงื่อนไข) และแคมเปญยังไม่สร้างลีดจาก `criteria` — เฟส 2
-- ⚠️ cron `dsales-refresh-customer-base` ตั้งรายชั่วโมงไว้ก่อน — ทบทวนเวลารัน/โหลด DB หลังใช้งานจริง 1 สัปดาห์ (ดูหัวข้อ 3)
+- ✅ cron `dsales-refresh-customer-base` ลดเป็นวันละ 3 รอบและเขียนเฉพาะแถวที่เปลี่ยนแล้ว (2026-11-19, ดูหัวข้อ 3) · tag ที่ติดใหม่ใน JST จึงเข้าระบบช้าสุดถึงรอบถัดไป (ข้ามคืนได้ ~15 ชม.)
 
 ## 6. ระบบ "ขุด → เปิดแชต JST → ตรวจว่าทักจริง"
 
