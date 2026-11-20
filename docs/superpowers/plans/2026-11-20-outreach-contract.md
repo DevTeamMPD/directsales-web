@@ -56,3 +56,9 @@ error เป็นข้อความ token (เช่น `forbidden`) ให�
 | ส่งข้อความ | `POST /iim/SendMsg` | `{ms_id, chat_account_id, content, translate_content: '', send_message_to_buyer_type: 'ChatAccount', template_type: 'txt'}` | ยังไม่ได้ยิงจริง — ทดสอบครั้งแรกกับห้องทดสอบของผู้ใช้ |
 
 ห้ามส่งรหัสผ่าน/cookie ไปที่อื่นนอกจาก `asia-web.jsterp.com` · ห้าม log รหัสผ่าน cookie หรือ header
+
+## 4. ผลทดสอบจริงครั้งแรก (2026-11-20, เครื่อง dev ของผู้ใช้เป็น worker `dev-pc`)
+- ผู้ใช้สร้าง template → เลือกลูกค้า 1 คนจากถังกลาง (ห้อง LINE Bebeplayofficial) → ส่งเข้าคิว → เลือกห้องทดสอบ (`ms_id` 65298 ห้องของพนักงาน) ในการ์ด Worker
+- worker (HTTP ล้วน, session จาก `import-session.mjs`) หยิบงานภายในไม่กี่วินาทีหลังบันทึกห้องทดสอบ → `getSessions` precise ใช้ได้ → `POST /iim/SendMsg` สำเร็จ → `data` = เลขข้อความ JST (`3560591`) → รายงาน `sent` ใช้เวลาส่ง+รายงาน ~1 วินาที
+- ข้อความขึ้นใน JST ในนาม `rpa@mpdgroup.co` พร้อมคำนำหน้า `[ทดสอบ → <ชื่อลูกค้า>]` · ไม่ต้องเปิดห้องใน UI ก่อน (ไม่มี setSupportStaff)
+- ยังไม่ได้ทดสอบ: worker ล็อกอิน JST เองเมื่อ session หลุด (มี `JST_USER`/`JST_PASSWORD` ใน `.env.local` แล้ว), ห้อง Shopee/Lazada/FB จริง, โหมดปกติ (ปิดโหมดทดสอบ)
