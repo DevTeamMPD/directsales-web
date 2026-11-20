@@ -27,9 +27,29 @@ function parseArgs(argv) {
   return out;
 }
 
+/** KEY=VALUE จาก .env.local ที่รากโปรเจกต์ (นอก git) — ใช้เติมค่าที่ config.json เว้นว่าง; process.env มาก่อน */
+function readEnvFile(path) {
+  const out = {};
+  if (!existsSync(path)) return out;
+  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
+    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
+    if (m) out[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
+  }
+  return out;
+}
+
 function loadConfig(path) {
   if (!existsSync(path)) throw new Error(`ไม่พบ ${path} — คัดลอก config.example.json เป็น config.json แล้วกรอกค่า`);
   const c = JSON.parse(readFileSync(path, 'utf8'));
+  const env = { ...readEnvFile(resolve(ROOT, '..', '..', '.env.local')), ...process.env };
+  c.jst = c.jst || {};
+  c.supabase = c.supabase || {};
+  c.jst.accountId ||= env.JST_USER || '';
+  c.jst.password ||= env.JST_PASSWORD || '';
+  c.supabase.url ||= env.NEXT_PUBLIC_SUPABASE_URL || '';
+  c.supabase.anonKey ||= env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  c.supabase.email ||= env.DSALES_WORKER_EMAIL || '';
+  c.supabase.password ||= env.DSALES_WORKER_PASSWORD || '';
   const missing = [];
   if (!c.workerId) missing.push('workerId');
   if (!c.supabase?.url) missing.push('supabase.url');

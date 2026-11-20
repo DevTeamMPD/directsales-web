@@ -22,6 +22,8 @@ copy config.example.json config.json
 ต้องมี Google Chrome ในเครื่อง (ใช้กับ `import-session.mjs` เท่านั้น)
 
 ## ตั้งค่า `config.json` (อยู่นอก git — ห้าม commit/แชร์)
+ค่าที่เว้นว่างใน `config.json` worker จะเติมจาก environment หรือ `.env.local` ที่รากโปรเจกต์ (นอก git): `JST_USER`, `JST_PASSWORD`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `DSALES_WORKER_EMAIL`, `DSALES_WORKER_PASSWORD`
+
 | ค่า | ความหมาย |
 |---|---|
 | `workerId` | ชื่อเครื่อง worker (แสดงในการ์ด Worker หน้าตั้งค่า) |
