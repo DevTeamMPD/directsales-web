@@ -60,6 +60,8 @@ function loadConfig(path) {
   return {
     workerId: String(c.workerId),
     pollSeconds: Number(c.pollSeconds) > 0 ? Number(c.pollSeconds) : 5,
+    // ผูกห้องด้วยรหัสผู้ซื้อตอนไม่มีงานส่ง — ปิดได้ด้วย "linkSync": false (เช่นเครื่องสำรอง)
+    linkSync: c.linkSync !== false,
     jst: { baseUrl: c.jst?.baseUrl || DEFAULT_BASE_URL, accountId: c.jst?.accountId || '', password: c.jst?.password || '' },
     supabase: c.supabase,
   };
@@ -112,7 +114,7 @@ async function main() {
     clock: { now: () => Date.now() },
     sleep,
     log,
-    config: { workerId: config.workerId, pollSeconds: config.pollSeconds },
+    config: { workerId: config.workerId, pollSeconds: config.pollSeconds, linkSync: config.linkSync },
   });
 
   let stopping = false;
@@ -134,6 +136,7 @@ async function main() {
     once: !!args.once,
     jstSession: jst.hasSession() ? 'loaded' : 'none',
     jstAutoLogin: !!(config.jst.accountId && config.jst.password),
+    linkSync: config.linkSync,
   });
   const last = await worker.run({ once: !!args.once });
   log('info', 'worker exit', { last, ...worker.status });

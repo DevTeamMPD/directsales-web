@@ -431,3 +431,139 @@ test('run --once with Supabase down → returns queue_error', async () => {
   queue.claimError = new Error('down');
   assert.equal(await worker.run({ once: true }), 'queue_error');
 });
+
+/* ---------- link sync (ผูกห้องด้วยรหัสผู้ซื้อ ตอนไม่มีงานส่ง) ---------- */
+
+function withLink(ctx, { targets = [[{ buyer_id: 'U1', shop_prefix: 'LOA' }, { buyer_id: 'U2', shop_prefix: 'FB' }]], rooms = {} } = {}) {
+  const { queue, jst } = ctx;
+  const batches = [...targets];
+  queue.targetCalls = 0;
+  queue.saves = [];
+  queue.linkTargets = async (w, limit) => {
+    assert.equal(w, 'w1');
+    assert.ok(limit > 0);
+    queue.targetCalls++;
+    return batches.shift() ?? [];
+  };
+  queue.linkSave = async (w, id, r, err) => {
+    queue.saves.push({ id, rooms: r, err: err ?? null });
+    return (r || []).length;
+  };
+  jst.searched = [];
+  jst.searchByBuyerId = async (id) => {
+    jst.searched.push(id);
+    const v = rooms[id];
+    if (v instanceof Error) throw v;
+    return v ?? [{ ms_id: 7, outer_user_id: id, provider: 'Line', page: 'Bebeplayofficial', name: 'x', expired: false, last_message_time: null }];
+  };
+  return ctx;
+}
+
+test('link: idle worker searches one buyer id per round and saves the rooms', async () => {
+  const ctx = withLink(setup());
+  const { worker, queue, jst } = ctx;
+  assert.equal(await worker.processOne(), 'linked');
+  assert.equal(await worker.processOne(), 'linked');
+  assert.deepEqual(jst.searched, ['U1', 'U2']);
+  assert.equal(queue.targetCalls, 1, 'targets fetched once per batch');
+  assert.deepEqual(queue.saves.map((s) => [s.id, s.rooms.length, s.err]), [['U1', 1, null], ['U2', 1, null]]);
+  assert.equal(worker.status.linkLookups, 2);
+  assert.equal(worker.status.linksWritten, 2);
+  assert.equal(jst.sends.length, 0);
+});
+
+test('link: a queued send always goes first', async () => {
+  const ctx = withLink(setup({ jobs: [job()] }));
+  assert.equal(await ctx.worker.processOne(), 'sent');
+  assert.equal(ctx.jst.searched.length, 0);
+});
+
+test('link: no targets → idle, and targets are not asked again for linkIdleMinutes', async () => {
+  const ctx = withLink(setup({ config: { linkIdleMinutes: 30 } }), { targets: [] });
+  const { worker, queue, clock } = ctx;
+  assert.equal(await worker.processOne(), 'idle');
+  assert.equal(await worker.processOne(), 'idle');
+  assert.equal(queue.targetCalls, 1);
+  clock.t += 31 * 60_000;
+  assert.equal(await worker.processOne(), 'idle');
+  assert.equal(queue.targetCalls, 2);
+});
+
+test('link: linkSync false or fakes without link methods → never searches', async () => {
+  const off = withLink(setup({ config: { linkSync: false } }));
+  assert.equal(await off.worker.processOne(), 'idle');
+  assert.equal(off.jst.searched.length, 0);
+  const bare = setup();
+  assert.equal(await bare.worker.processOne(), 'idle');
+});
+
+test('link: JST error → id kept for later, link sync pauses, nothing saved, sender unaffected', async () => {
+  const ctx = withLink(setup({ config: { linkPauseMinutes: 5 } }), { rooms: { U1: new JstError('busy') } });
+  const { worker, queue, jst, clock } = ctx;
+  assert.equal(await worker.processOne(), 'idle');
+  assert.equal(queue.saves.length, 0);
+  assert.equal(worker.status.state, 'running');
+  assert.equal(await worker.processOne(), 'idle');
+  assert.equal(jst.searched.length, 1, 'paused');
+  clock.t += 6 * 60_000;
+  jst.searchByBuyerId = async (id) => {
+    jst.searched.push(id);
+    return [];
+  };
+  assert.equal(await worker.processOne(), 'linked');
+  assert.deepEqual(jst.searched, ['U1', 'U1'], 'same id retried after the pause');
+  assert.deepEqual(queue.saves[0], { id: 'U1', rooms: [], err: null });
+});
+
+test('link: session expired → re-login and retry once', async () => {
+  let n = 0;
+  const ctx = withLink(setup({ jst: { accountId: 'x' } }));
+  const { worker, jst, queue } = ctx;
+  jst.searchByBuyerId = async (id) => {
+    jst.searched.push(id);
+    if (n++ === 0) throw new SessionExpired('expired');
+    return [];
+  };
+  assert.equal(await worker.processOne(), 'linked');
+  assert.equal(jst.logins, 1);
+  assert.deepEqual(jst.searched, ['U1', 'U1']);
+  assert.equal(queue.saves.length, 1);
+});
+
+test('link: unexpected JST shape → link sync off for this run, sender keeps running', async () => {
+  const ctx = withLink(setup(), { rooms: { U1: new ShapeError('/iim/getSessions: bad field(s) ms_id') } });
+  const { worker, jst, queue } = ctx;
+  assert.equal(await worker.processOne(), 'idle');
+  assert.equal(await worker.processOne(), 'idle');
+  assert.equal(jst.searched.length, 1);
+  assert.equal(worker.status.state, 'running');
+  assert.equal(worker.status.linkDisabled, true);
+  queue.jobs.push(job());
+  assert.equal(await worker.processOne(), 'sent');
+});
+
+test('link: Supabase down while saving → QueueUnavailable (worker backs off)', async () => {
+  const ctx = withLink(setup());
+  ctx.queue.linkSave = async () => {
+    throw new Error('503');
+  };
+  await assert.rejects(ctx.worker.processOne(), QueueUnavailable);
+});
+
+test('run: after a lookup the worker waits linkIntervalMs, not pollSeconds', async () => {
+  const ctx = withLink(setup({ config: { pollSeconds: 5, linkIntervalMs: 1500 } }));
+  const { worker, sleeps, queue } = ctx;
+  const orig = queue.linkSave;
+  queue.linkSave = async (...a) => {
+    if (queue.saves.length >= 1) worker.stop();
+    return orig(...a);
+  };
+  // กันลูปไม่จบถ้าไม่เคยค้น (test ล้มแทนค้าง)
+  const origClaim = queue.claim;
+  queue.claim = async (w) => {
+    if (queue.claims >= 10) worker.stop();
+    return origClaim(w);
+  };
+  await worker.run();
+  assert.deepEqual(sleeps, [1500, 1500]);
+});

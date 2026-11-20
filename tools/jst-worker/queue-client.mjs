@@ -64,6 +64,21 @@ export function createQueueClient({ supabaseUrl, anonKey, email, password, creat
         p_jst_msg_id: jstMsgId == null ? null : String(jstMsgId),
       });
     },
+    /** รหัสผู้ซื้อที่ต้องค้นห้องใน JST → [{ buyer_id, shop_prefix }] */
+    async linkTargets(workerId, limit) {
+      const data = await rpc('dsales_worker_link_targets', { p_worker: workerId, p_limit: limit });
+      return Array.isArray(data) ? data : [];
+    },
+    /** บันทึกผลค้น (ห้องของรหัสนั้น หรือ error) → จำนวนคู่ห้อง-เบอร์ที่ผูก */
+    async linkSave(workerId, buyerId, rooms, error = null) {
+      const data = await rpc('dsales_worker_link_save', {
+        p_worker: workerId,
+        p_buyer_id: buyerId,
+        p_rooms: Array.isArray(rooms) ? rooms : [],
+        p_error: error ?? null,
+      });
+      return Number(data) || 0;
+    },
     async heartbeat(workerId, state, sessionOk, lastError = null) {
       await rpc('dsales_worker_heartbeat', {
         p_worker: workerId,

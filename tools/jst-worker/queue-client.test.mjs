@@ -55,3 +55,26 @@ test('sign-in failure throws and is retried on the next call', async () => {
   assert.equal(log.filter((l) => l.signIn).length, 2);
   assert.equal(log.filter((l) => l.rpc).length, 0);
 });
+
+test('link sync RPCs: targets and save with contract args', async () => {
+  const log = [];
+  const targets = [{ buyer_id: 'U1', shop_prefix: 'LOA' }];
+  const q = createQueueClient({
+    ...base,
+    createClient: fakeCreateClient(log, { rpcResult: (n) => ({ data: n === 'dsales_worker_link_targets' ? targets : n === 'dsales_worker_link_save' ? 2 : null, error: null }) }),
+  });
+  assert.deepEqual(await q.linkTargets('w1', 50), targets);
+  const rooms = [{ ms_id: 1, outer_user_id: 'U1' }];
+  assert.equal(await q.linkSave('w1', 'U1', rooms), 2);
+  assert.equal(await q.linkSave('w1', 'U2', null, 'jst_error: x'), 2);
+  assert.deepEqual(log.filter((l) => l.rpc).map((r) => [r.rpc, r.args]), [
+    ['dsales_worker_link_targets', { p_worker: 'w1', p_limit: 50 }],
+    ['dsales_worker_link_save', { p_worker: 'w1', p_buyer_id: 'U1', p_rooms: rooms, p_error: null }],
+    ['dsales_worker_link_save', { p_worker: 'w1', p_buyer_id: 'U2', p_rooms: [], p_error: 'jst_error: x' }],
+  ]);
+});
+
+test('linkTargets with null data returns []', async () => {
+  const q = createQueueClient({ ...base, createClient: fakeCreateClient([]) });
+  assert.deepEqual(await q.linkTargets('w1', 10), []);
+});

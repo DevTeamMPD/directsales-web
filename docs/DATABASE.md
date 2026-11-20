@@ -169,6 +169,18 @@ migration `20261117100000_dsales_members_only.sql`, `20261117100100_dsales_acces
 
 ทุก migration อยู่ใน `supabase/migrations/` (เริ่มจาก `20261117090000_baseline_public_dsales_functions.sql`) พร้อม SQL test ใน `supabase/tests/` (`01`–`08g`) — ขั้นตอนเพิ่ม migration ดู `CLAUDE.md`
 
+### ผูกห้องแชตด้วยรหัสผู้ซื้อ (buyer ID)
+
+migration `20261120150000_dsales_buyer_id_room_links.sql` (test `supabase/tests/10_buyer_id_room_links.sql`):
+- JST ค้นห้องด้วย "รหัสผู้ซื้อออนไลน์" ได้ (`/iim/getSessions` + `query_type: 'outer_user_id'`) และ `outer_user_id` ของห้อง = `order_tracking.buyer_account_no` (LINE MiniShop = LINE userId, FB = PSID, Shopee/Lazada = buyer id; TikTok ไม่พบห้อง) — ตรวจ 2026-11-20: สุ่มรหัสของลูกค้าที่ยังไม่มีห้อง 40 รหัส พบห้อง FB 12/12, LINE 7/7, Shopee 7/7, Lazada 5/12 (ทุกห้อง `is_expired`), TikTok 0/2 และ 31/32 ห้องที่พบ**ไม่อยู่ใน `iim_sessions`**
+- worker ค้นตอนไม่มีงานส่ง: `dsales_worker_link_targets(p_worker, p_limit)` (รหัสบนร้าน FB_/LOA_/SH_/LA_/TT_/IG_ ของลูกค้า eligible ที่ยังไม่เคยค้น มูลค่าสูงก่อน แล้วค้นซ้ำทุก 14 วัน; ~0.6 วินาที) → `dsales_worker_link_save(p_worker, p_buyer_id, p_rooms, p_error)` เก็บห้องใน `dsales_jst_rooms` และผูก `dsales_chat_links` (`method = 'buyer_id'`, `confidence = 'high'`; คู่ที่เคยผูกด้วยชื่อถูกอัปเกรด, `manual` ไม่ถูกแตะ) — ทั้งสอง RPC ตรวจ `dsales_worker_uid()`
+- รหัสที่สั่งซื้อด้วยเบอร์มากกว่า `dsales_link_max_phones()` = 3 เบอร์ (ตัวแทน/พนักงาน) ไม่ถูกผูก (`dsales_buyer_lookups.error = 'too_many_phones'`)
+- ตารางใหม่ `dsales_jst_rooms` (ms_id, outer_user_id, provider, page, name, expired, last_message_time), `dsales_buyer_lookups` (ประวัติการค้นต่อรหัส) — RLS ไม่มี policy ไม่มี grant
+- view `dsales_rooms_v` = `iim_sessions` (ค่าจาก JST ทับเมื่อมี) + ห้องที่มีเฉพาะใน `dsales_jst_rooms` · `dsales_outreach_room`, `dsales_customer_rooms`, `dsales_sendable_rooms`, ตัวกรองช่องทางของ `dsales_base_customers`, `dsales_worker_find_rooms` อ่านจาก view นี้
+- `is_expired` ของ JST = ห้องส่งไม่ได้ (Lazada) แต่**ไม่ได้บอกช่วง 24 ชม. ของ Meta** (ห้อง FB เงียบ 2 เดือนยังเป็น false) → Facebook/Instagram ยังต้องมีข้อความลูกค้าใน 24 ชม. ตามเดิม
+- `dsales_customer_rooms` ของห้อง Facebook/Instagram มี `outer_user_id` (PSID), `meta_page_id` (setting `meta_page_ids`: ชื่อเพจ → page id ของ Meta) และ `meta_business_id` (setting) — Business Suite ไม่รับ PSID เป็น `selected_item_id` (ทดสอบ 2026-11-20) จึงเปิดได้แค่ Inbox ของเพจ ไม่ใช่แชตของลูกค้าคนนั้น
+- ผลข้างเคียง: `dsales_refresh_customer_base` เลือก `chat_name` / `owner_tag` (tag Admin_* ของ JST) จากห้องที่ผูกและอยู่ใน `iim_sessions` → ผูกห้องได้มากขึ้น = ลูกค้ามีเจ้าของจาก tag มากขึ้น
+
 ## 5. ข้อสังเกต / สิ่งที่ต้องแก้
 
 ### 5.1 การจับคู่แชต JST กับลูกค้ายังไม่แม่น
@@ -178,7 +190,7 @@ migration `20261117100000_dsales_members_only.sql`, `20261117100100_dsales_acces
 - `buyer_account_no` จับคู่กับ `iim_sessions.customer` / `mop_id` ได้ 0 แถว
 - `iim_sessions.customer_id` มีค่าแค่ ~3% และชี้ไป `customers_bbps`
 
-**แนะนำ:** ให้ตัวดึงแชตเก็บ ID ผู้ซื้อของแต่ละแพลตฟอร์ม (Shopee buyer id, FB PSID, LINE userId ฯลฯ) ลง `iim_sessions` เพื่อผูกกับ `order_tracking.buyer_account_no` ได้แน่นอน
+**แก้แล้วบางส่วน (2026-11-20):** ห้องแชตของคิวส่งข้อความผูกด้วยรหัสผู้ซื้อผ่าน worker แล้ว (ดูหัวข้อ "ผูกห้องแชตด้วยรหัสผู้ซื้อ") ส่วน `dsales_customer_chats` ยังจับด้วยชื่อ · เดิมแนะนำ: ให้ตัวดึงแชตเก็บ ID ผู้ซื้อของแต่ละแพลตฟอร์ม (Shopee buyer id, FB PSID, LINE userId ฯลฯ) ลง `iim_sessions` เพื่อผูกกับ `order_tracking.buyer_account_no` ได้แน่นอน
 
 ### 5.2 เวลาใน `iim_messages.time` น่าจะเพี้ยน timezone
 ข้อความล่าสุดมีเวลาล้ำปัจจุบันราว 413 นาที (~7 ชม.) → น่าจะบันทึกเวลาไทยเป็น UTC
