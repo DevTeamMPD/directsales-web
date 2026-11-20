@@ -9,12 +9,14 @@ import { BRAND, FIXTURE_NO_WRITE, MODES } from '@/lib/constants';
 import { activeToggle, ownedCount, roleLabel, tagChoices, tagsChanged, tagsOf, toggleTag, withMemberTags } from '@/lib/domain/setup';
 import { fmtDate } from '@/lib/format';
 import { useActions, useAppState } from '@/lib/state/AppProvider';
+import { TemplatePanel, WorkerPanel } from './OutreachPanels';
 
 /**
  * ตั้งค่า (renderSetup L369-382) หัวหน้าเท่านั้น — ต่างจาก prototype โดยตั้งใจ:
  * - ทีมเซลล์มาจาก dsales_team: เพิ่มด้วยอีเมล + บทบาท (dsales_add_member) และปิด/เปิดใช้งาน (dsales_set_member_active)
  * - การ์ดใหม่ "ผูก tag JST กับเซลล์" (dsales_jst_admin_tags / dsales_member_tags / dsales_set_member_tags)
  * - ไม่มีการ์ด "ข้อมูลตัวอย่าง" (รีเซ็ต localStorage ของโหมดตัวอย่าง)
+ * - การ์ด "Template ข้อความ" และ "Worker ส่งข้อความ" (ส่งข้อความผ่าน JST worker, OutreachPanels.tsx)
  */
 export function SetupPage() {
   return (
@@ -22,6 +24,8 @@ export function SetupPage() {
       <TeamPanel />
       <CampaignPanel />
       <TagPanel />
+      <TemplatePanel />
+      <WorkerPanel />
     </div>
   );
 }

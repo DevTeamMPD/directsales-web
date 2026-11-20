@@ -94,14 +94,15 @@ async function openLegacyShell(page: Page) {
   await page.goto(LEGACY);
   await page.locator('#l-demo').click();
   await expect(page.locator('#login')).toBeHidden();
-  // ส่วนที่เว็บใหม่ตั้งใจต่างจาก prototype: กลุ่มเมนู "ฐานลูกค้าเก่า" และกล่อง me แบบล็อกอินแล้ว
-  await page.evaluate(({ person, list }) => {
+  // ส่วนที่เว็บใหม่ตั้งใจต่างจาก prototype: กลุ่มเมนู "ฐานลูกค้าเก่า" (+ ส่งข้อความ) และกล่อง me แบบล็อกอินแล้ว
+  await page.evaluate(({ person, list, send }) => {
     const campaigns = Array.from(document.querySelectorAll('.nav-group')).find((g) => g.textContent === 'แคมเปญ');
     campaigns?.insertAdjacentHTML(
       'beforebegin',
       '<div class="nav-group">ฐานลูกค้าเก่า</div>' +
         `<a class="nav-item" href="#mine" data-route="mine"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${person}"></path></svg><span>ลูกค้าของฉัน</span></a>` +
-        `<a class="nav-item" href="#pool" data-route="pool"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${list}"></path></svg><span>ถังกลาง</span></a>`,
+        `<a class="nav-item" href="#pool" data-route="pool"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${list}"></path></svg><span>ถังกลาง</span></a>` +
+        `<a class="nav-item" href="#outreach" data-route="outreach"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${send}"></path></svg><span>ส่งข้อความ</span></a>`,
     );
     const label = document.querySelector('#me-label');
     if (label) label.textContent = 'เข้าสู่ระบบแล้ว';
@@ -110,7 +111,7 @@ async function openLegacyShell(page: Page) {
       select.innerHTML = '<option>Dev MPD</option>';
       select.disabled = true;
     }
-  }, { person: PATHS.person, list: PATHS.list });
+  }, { person: PATHS.person, list: PATHS.list, send: PATHS.send });
   await settle(page);
 }
 
@@ -612,8 +613,9 @@ for (const s of SIZES) {
         await page.goto(`${APP}/${path}`);
         await expect(page.locator('#view tbody tr')).toHaveCount(rows, { timeout: 60_000 });
         await expect(page.locator('#page-title')).toHaveText(path === 'mine' ? 'ลูกค้าของฉัน' : 'ถังกลาง');
-        await expect(page.locator('#view thead th')).toHaveText(['ชื่อ / เบอร์', 'ไม่ซื้อมา / tag', 'กลุ่มลูกค้า', 'ยอดซื้อสะสม', 'ออเดอร์', 'ซื้อล่าสุด', 'แบรนด์', '']);
-        await expect(page.locator('#view tbody tr').first().locator('td').nth(1)).toContainText(/^ไม่ซื้อมา [\d,]+ วัน/);
+        // คอลัมน์แรก = ช่องติ๊กเลือกลูกค้าเพื่อส่งข้อความ (outreach), คอลัมน์ที่ 3 = ปุ่มโทร + ไอคอนห้องแชต (ตั้งใจต่างจากเดิม)
+        await expect(page.locator('#view thead th')).toHaveText(['', 'ชื่อ / เบอร์', 'ช่องทาง', 'ไม่ซื้อมา / tag', 'กลุ่มลูกค้า', 'ยอดซื้อสะสม', 'ออเดอร์', 'ซื้อล่าสุด', 'แบรนด์', '']);
+        await expect(page.locator('#view tbody tr').first().locator('td').nth(3)).toContainText(/^ไม่ซื้อมา [\d,]+ วัน/);
         await expect(page.locator('#view tbody tr').first().locator('td:last-child button')).toHaveText(first);
         await expect(page.locator('#base-brand option')).toHaveText(['ทุกแบรนด์', 'Bebeplay', 'Hosttail']);
         if (INJECT) await page.addStyleTag({ content: INJECT });
@@ -621,8 +623,8 @@ for (const s of SIZES) {
         await expect.soft(page.locator('#view')).toHaveScreenshot(['app', `${path}-${s.tag}.png`], { maxDiffPixels: 0, threshold: 0.1 });
       }
       await page.locator('#base-brand').selectOption('hosttail');
-      await expect(page.locator('#view tbody tr td:nth-child(7)').first()).toHaveText('Hosttail');
-      expect(new Set(await page.locator('#view tbody tr td:nth-child(7)').allInnerTexts())).toEqual(new Set(['Hosttail']));
+      await expect(page.locator('#view tbody tr td:nth-child(9)').first()).toHaveText('Hosttail');
+      expect(new Set(await page.locator('#view tbody tr td:nth-child(9)').allInnerTexts())).toEqual(new Set(['Hosttail']));
     });
   });
 }
@@ -734,7 +736,7 @@ for (const s of SIZES) {
       await openAppRoute(page, '/setup', '.settings');
       expect(await setupText(page)).toEqual(legacy);
       await expect.soft(page.locator('.settings > .panel:nth-child(2)')).toHaveScreenshot(`setup-campaigns-${s.tag}.png`, shotC2(`setup-campaigns-${s.tag}`));
-      await expect(page.locator('.settings > .panel .panel-h h2')).toHaveText(['ทีมเซลล์', 'แคมเปญ', 'ผูก tag JST กับเซลล์']);
+      await expect(page.locator('.settings > .panel .panel-h h2')).toHaveText(['ทีมเซลล์', 'แคมเปญ', 'ผูก tag JST กับเซลล์', 'Template ข้อความ', 'Worker ส่งข้อความ']);
       await expect(page.locator('#rep-email')).toHaveAttribute('type', 'email');
       await expect(page.locator('#reset')).toHaveCount(0);
       await unclipView(page);

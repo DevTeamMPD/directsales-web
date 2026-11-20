@@ -17,6 +17,7 @@ describe('routes', () => {
     expect(routeMeta('/setup', [])).toEqual({ key: 'setup', title: 'ตั้งค่า', sub: '' });
     expect(routeMeta('/mine', [])).toEqual({ key: 'mine', title: 'ลูกค้าของฉัน', sub: '' });
     expect(routeMeta('/pool', [])).toEqual({ key: 'pool', title: 'ถังกลาง', sub: '' });
+    expect(routeMeta('/outreach', [])).toEqual({ key: 'outreach', title: 'ส่งข้อความ', sub: '' });
   });
   it('counts the brand campaigns in the campaign sub', () => {
     expect(routeMeta('/campaigns/bebeplay', camps)).toEqual({ key: 'campaign-bebeplay', title: 'แคมเปญ Bebeplay', sub: '2 แคมเปญ' });

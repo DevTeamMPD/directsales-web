@@ -58,17 +58,32 @@ export interface TeamRow { user_id: string; display_name: string | null; role: s
 export interface Rep { id: string; name: string; initials: string; role: Role; email?: string; active?: boolean }
 export interface MemberJson { user_id: string; email: string; display_name: string; role: Role; active: boolean }
 
-/** แถวของ dsales_customer_pool_v3/_v4 และ dsales_base_customers (2 คอลัมน์ท้ายมีเฉพาะ base_customers) */
+/**
+ * ห้องแชตที่ผูกกับลูกค้า (dsales_base_customers.chat_rooms เรียงห้องที่ส่งได้ก่อน)
+ * brand null = เพจนอก 2 แบรนด์; sendable false = brand null หรือ Facebook/Instagram ที่ลูกค้าไม่ได้ทักมาใน 24 ชม.
+ */
+export interface ChatRoomJson { ms_id: number; provider: string | null; page: string | null; brand: string | null; sendable: boolean }
+export interface ChatRoom { msId: number; provider: string; page: string; brand: Brand | null; sendable: boolean }
+
+/** p_filters ของ dsales_base_customers (สร้างจาก UI ด้วย lib/domain/baseFilters.ts buildFilterJson) — ไม่มีตัวกรอง = {} */
+export type BaseFilterJson = Partial<{
+  rfm: string[]; dormant_min: number; dormant_max: number; ltv_min: number; orders_min: number; tag: string; has_chat: boolean; provider: string;
+  sort: 'ltv' | 'dormant_asc' | 'dormant_desc' | 'last_desc' | 'orders_desc';
+}>;
+
+/** แถวของ dsales_customer_pool_v3/_v4 และ dsales_base_customers (คอลัมน์ dormant_days ถึง chat_brands มีเฉพาะ base_customers) */
 export interface PoolRowJson {
   identity_id: string | null; name: string; phone: string; chat_name: string | null; segment: string | null; rfm_segment: string | null;
   ltv: number | string | null; order_count: number | null; last_order_date: string | null; brands: string[] | null;
   total_count: number | string; lead_id?: string | null; taken?: boolean; mine?: boolean; no_call?: boolean; reserved_by?: string | null;
-  dormant_days?: number | null; owner_tag?: string | null;
+  dormant_days?: number | null; owner_tag?: string | null; chat_rooms?: ChatRoomJson[] | null; chat_brands?: string[] | null;
 }
 export interface PoolRow {
   id: string; name: string; phone: string; segment: string; ltv: number | null; orders: number | null; last: string | null; brands: string[];
   chat: string; leadId: string | null; mine: boolean; noCall: boolean; takenName: string; taken: string | null;
   dormantDays: number | null; ownerTag: string | null;
+  /** ห้องแชต (ส่งได้ก่อน) และแบรนด์ที่มีห้องส่งได้อย่างน้อย 1 ห้อง — ถังลูกค้าของหน้าแคมเปญ = [] */
+  chatRooms: ChatRoom[]; chatBrands: Brand[];
   /** โหมด fixture (prototype โหมดตัวอย่าง L640): เซลล์คนนี้เคยคัดออก / ลีดที่จองไว้ยกเลิกได้ */
   releasedByMe?: boolean; mineReserved?: boolean;
 }
@@ -76,6 +91,8 @@ export interface PoolRow {
 /** ลูกค้าในถังของโหมดตัวอย่าง (window.DS_DATA.customers) — ล็อกอินจริงเป็น [] เสมอ (prototype loadLive L980) */
 export interface DemoCustomer {
   id: string; name: string; phone: string; address: string; brand: Brand; shop: string; chatName: string; channels: Channel[]; purchases: Purchase[];
+  /** โหมด fixture ของ /mine /pool (withBaseExtras ของ fixture): ห้องแชต, กลุ่ม RFM, tag เจ้าของใน JST */
+  chatRooms?: ChatRoom[]; rfm?: string | null; ownerTag?: string | null;
 }
 
 export interface PurchaseRowJson {
@@ -89,3 +106,51 @@ export interface ChatSessionJson {
 }
 export interface JstTagRow { tag: string; sessions: number }
 export interface MemberTagsRow { user_id: string; jst_tags: string[] }
+
+/* ---------- ส่งข้อความผ่าน JST worker (docs/superpowers/plans/2026-11-20-outreach-contract.md) ---------- */
+/** เหตุผลที่ preview ข้ามลูกค้า (dsales_outreach_preview.skip) */
+export type OutreachSkip = 'customer_not_found' | 'taken' | 'already_queued' | 'no_chat_room' | 'window_closed';
+/** เหตุผลที่ enqueue ข้าม (preview + no_call / claim_failed) */
+export type EnqueueSkipReason = OutreachSkip | 'no_call' | 'claim_failed';
+export type OutreachStatus = 'queued' | 'sending' | 'sent' | 'failed' | 'cancelled';
+export type WorkerState = 'running' | 'paused' | 'needs_login' | 'stopped';
+
+export interface Template { id: string; brand: Brand; name: string; body: string; active: boolean; updated_at: string | null }
+export interface TemplateInput { id: string | null; brand: Brand; name: string; body: string; active: boolean }
+export interface PreviewRow {
+  phone: string; name: string | null; ms_id: number | null; page: string | null; provider: string | null; chat_name: string | null;
+  message: string | null; skip: OutreachSkip | null;
+}
+export interface SkippedPhone { phone: string; reason: string }
+export interface EnqueueResult { batch_id: string | null; queued: number; skipped: SkippedPhone[] }
+export interface OutreachCounts { queued: number; sending: number; sent: number; failed: number; cancelled: number }
+export interface BatchRow {
+  id: string; created_at: string; brand: Brand; requested_by: string | null; template_name: string | null; total: number;
+  /** จำนวนที่ถูกข้ามตอน enqueue */
+  skipped: number; counts: OutreachCounts;
+}
+export interface BatchItem {
+  id: string; phone: string; lead_id: string | null; ms_id: number | null; page: string | null; provider: string | null; chat_name: string | null;
+  message: string | null; status: OutreachStatus; attempts: number; error: string | null; enqueued_at: string | null; sent_at: string | null;
+}
+export interface BatchDetail {
+  batch: { id: string; created_at: string; brand: Brand; template_name: string | null; total: number; skipped: SkippedPhone[]; requested_by: string | null };
+  items: BatchItem[];
+}
+export interface WorkerRow {
+  worker_id: string; state: WorkerState; jst_session_ok: boolean | null; heartbeat_at: string | null; online: boolean;
+  sent_last_hour: number; queue_waiting: number; last_error: string | null;
+}
+export interface WorkerSettings { interval_seconds: number; line_monthly_cap: number; test_mode: boolean; test_ms_ids: number[]; max_batch: number }
+export interface WorkerStatus {
+  workers: WorkerRow[];
+  queue: { queued: number; sending: number; sent_last_hour: number; line_sent_this_month: number };
+  settings: WorkerSettings;
+}
+export interface WorkerSettingsInput { interval: number; lineCap: number; testMode: boolean; testMsIds: number[] }
+export interface WorkerRoom { ms_id: number; customer: string | null; channel: string | null; page: string | null; last_time: string | null }
+
+/** ข้อมูลตัวอย่างของหน้าส่งข้อความในโหมด fixture (ล็อกอินจริง = ไม่มี) */
+export interface OutreachDemo {
+  templates: Template[]; batches: BatchRow[]; details: Record<string, BatchDetail>; worker: WorkerStatus; rooms: WorkerRoom[];
+}

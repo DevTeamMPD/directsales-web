@@ -17,6 +17,18 @@ export const ERROR_TEXT: Readonly<Record<string, string>> = {
   cannot_deactivate_self: 'ปิดใช้งานบัญชีของตัวเองไม่ได้',
   last_admin: 'ต้องมีหัวหน้าอย่างน้อย 1 คน',
   statement_timeout: 'ระบบฐานข้อมูลตอบช้า กรุณาลองใหม่อีกครั้ง',
+  // ส่งข้อความผ่าน JST worker (outreach contract)
+  template_not_found: 'ไม่พบ template นี้ หรือถูกปิดใช้งานแล้ว',
+  batch_too_large: 'เลือกลูกค้าเกินจำนวนสูงสุดต่อชุด',
+  invalid_template: 'template ไม่ถูกต้อง ต้องมีชื่อและข้อความ',
+  invalid_setting: 'ค่าตั้งค่าไม่ถูกต้อง (ระยะห่าง 5–3600 วินาที, เพดาน LINE ตั้งแต่ 0)',
+  not_worker: 'บัญชีนี้ไม่ใช่บัญชีของ worker',
+  already_queued: 'ลูกค้ารายนี้อยู่ในคิวส่งข้อความแล้ว',
+  no_chat_room: 'ไม่พบห้องแชตของลูกค้าในแบรนด์นี้',
+  window_closed: 'หมดช่วงที่ร้านส่งข้อความได้ (ลูกค้าไม่ได้ทักมาเกิน 24 ชม.)',
+  claim_failed: 'จองลูกค้าไม่สำเร็จ',
+  invalid_state: 'สถานะของรายการเปลี่ยนไปแล้ว',
+  invalid_status: 'สถานะไม่ถูกต้อง',
 };
 
 /** fetch ล้ม / offline: Chrome "Failed to fetch", Firefox "NetworkError when attempting…", Safari "Load failed", Node "fetch failed" */

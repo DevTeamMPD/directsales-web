@@ -1,0 +1,9 @@
+{
+  "jstUrl": "https://asia-web.jsterp.com/iim/index",
+  "profileDir": ".profile",
+  "channel": "chrome",
+  "probeMinutes": 30,
+  "testChats": [
+    { "name": "ชื่อห้องแชตทดสอบของพนักงาน (LINE)", "msId": 0, "note": "LINE" }
+  ]
+}

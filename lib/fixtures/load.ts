@@ -1,5 +1,7 @@
 import type { LoadedPayload } from '@/lib/state/reducer';
+import { withBaseExtras } from './base';
 import { FIXTURE_DATA } from './data';
+import { FIXTURE_OUTREACH } from './outreach';
 
 /** prototype โหมดตัวอย่างเริ่มที่ "Dev MPD" (หัวหน้า) */
 export const FIXTURE_ME_ID = 'r4';
@@ -24,7 +26,8 @@ export function fixturePayload(search = ''): LoadedPayload {
     reps: d.reps,
     campaigns: d.campaigns.map((c) => ({ ...c, maxPerRep: null, active: true, criteria: [] })),
     leads: d.leads,
-    customers: d.customers,
+    customers: withBaseExtras(d.customers), // + ห้องแชต / RFM / tag ของ /mine /pool
     today: d.today,
+    outreachDemo: structuredClone(FIXTURE_OUTREACH),
   };
 }

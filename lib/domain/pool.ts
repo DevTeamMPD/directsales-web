@@ -1,5 +1,6 @@
 import type { Campaign, DemoCustomer, Lead, PoolRow, Rep } from '@/lib/api/types';
 import { PAGE, type Brand } from '@/lib/constants';
+import { EMPTY_FILTERS, matchesFilters, sortBaseRows, type BaseFilters } from './baseFilters';
 import { canUnclaimAny, isDnc, releasedByMe, repName, type Viewer } from './leads';
 import { hasPeriod, inPeriod } from './period';
 import type { Period } from '@/lib/state/reducer';
@@ -98,7 +99,7 @@ export function demoPool(
     return {
       id: c.id, name: c.name, phone: c.phone, segment: '', ltv: sumAmount(c), orders: c.purchases.length, last: c.purchases[0]?.date ?? null,
       brands: [c.brand], chat: c.chatName, leadId: tl?.id ?? null, mine: false, noCall: false, takenName: '', taken: tl?.owner ?? null,
-      dormantDays: null, ownerTag: null,
+      dormantDays: null, ownerTag: null, chatRooms: [], chatBrands: [],
       releasedByMe: leads.some((l) => l.phone === c.phone && releasedByMe(l, o.viewer)),
       mineReserved: tl?.owner === o.viewer.meId && !tl?.noCall && tl?.status !== 'won',
     };
@@ -148,29 +149,35 @@ export const keepTotal = (rowsTotal: number, rowCount: number, page: number, pre
 
 const daysBetween = (from: string, to: string): number => Math.round((Date.parse(to + 'T00:00:00Z') - Date.parse(from.slice(0, 10) + 'T00:00:00Z')) / 864e5);
 
-/** โหมด fixture ของ /mine, /pool: ของฉัน = มีลีดเบอร์นี้ที่ฉันดูแล, ถังกลาง = ไม่มีใครดูแล — เรียงยอดซื้อมากสุด */
+/** โหมด fixture ของ /mine, /pool: ของฉัน = มีลีดเบอร์นี้ที่ฉันดูแล, ถังกลาง = ไม่มีใครดูแล — กรอง/เรียงตาม p_filters (ค่าเริ่ม = ยอดซื้อมากสุด) */
 export function demoBase(
   customers: ReadonlyArray<DemoCustomer>, leads: ReadonlyArray<Lead>, scope: BaseScopeKey,
-  o: { brand: Brand | null; q: string; page: number; today: string; meId: string },
+  o: { brand: Brand | null; q: string; page: number; today: string; meId: string; filters?: BaseFilters },
 ): { rows: PoolRow[]; total: number } {
   const q = o.q.trim().toLowerCase();
   const qd = q.replace(/\D/g, '');
-  const all = customers
-    .filter((c) => {
-      const owner = ownedLead(leads, c.phone)?.owner ?? null;
-      return (scope === 'mine' ? owner === o.meId : owner === null) && (!o.brand || c.brand === o.brand)
-        && (!q || c.name.toLowerCase().includes(q) || (c.chatName || '').toLowerCase().includes(q) || (!!qd && c.phone.includes(qd)));
-    })
-    .sort((a, b) => sumAmount(b) - sumAmount(a));
-  const rows = all.slice(o.page * PAGE, o.page * PAGE + PAGE).map((c): PoolRow => {
-    const l = leads.find((x) => x.phone === c.phone);
-    const owner = l?.owner ?? null;
-    const last = c.purchases[0]?.date ?? null;
-    return {
-      id: c.id, name: c.name, phone: c.phone, segment: '', ltv: sumAmount(c), orders: c.purchases.length, last, brands: [c.brand],
-      chat: c.chatName, leadId: l?.id ?? null, mine: owner === o.meId, noCall: !!l?.noCall, takenName: '',
-      taken: owner ? (owner === o.meId ? o.meId : 'other') : null, dormantDays: last ? daysBetween(last, o.today) : null, ownerTag: null,
-    };
-  });
-  return { rows, total: all.length };
+  const f = o.filters ?? EMPTY_FILTERS;
+  const all = sortBaseRows(
+    customers
+      .filter((c) => {
+        const owner = ownedLead(leads, c.phone)?.owner ?? null;
+        return (scope === 'mine' ? owner === o.meId : owner === null) && (!o.brand || c.brand === o.brand)
+          && (!q || c.name.toLowerCase().includes(q) || (c.chatName || '').toLowerCase().includes(q) || (!!qd && c.phone.includes(qd)));
+      })
+      .map((c): PoolRow => {
+        const l = leads.find((x) => x.phone === c.phone);
+        const owner = l?.owner ?? null;
+        const last = c.purchases[0]?.date ?? null;
+        const chatRooms = c.chatRooms ?? [];
+        return {
+          id: c.id, name: c.name, phone: c.phone, segment: c.rfm ?? '', ltv: sumAmount(c), orders: c.purchases.length, last, brands: [c.brand],
+          chat: c.chatName, leadId: l?.id ?? null, mine: owner === o.meId, noCall: !!l?.noCall, takenName: '',
+          taken: owner ? (owner === o.meId ? o.meId : 'other') : null, dormantDays: last ? daysBetween(last, o.today) : null, ownerTag: c.ownerTag ?? null,
+          chatRooms, chatBrands: [...new Set(chatRooms.filter((x) => x.sendable && x.brand).map((x) => x.brand as Brand))],
+        };
+      })
+      .filter((r) => matchesFilters(r, f, o.brand)),
+    f.sort,
+  );
+  return { rows: all.slice(o.page * PAGE, o.page * PAGE + PAGE), total: all.length };
 }

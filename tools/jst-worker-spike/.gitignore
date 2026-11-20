@@ -1,0 +1,5 @@
+# session ของ JST (= รหัสผ่าน) และ log — ห้าม commit
+.profile/
+logs/
+config.json
+node_modules/

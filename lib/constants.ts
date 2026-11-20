@@ -45,7 +45,7 @@ export const JST_CHAT_URL = process.env.NEXT_PUBLIC_JST_CHAT_URL ?? 'https://asi
 /** โหมด fixture (next dev เท่านั้น): ปุ่มที่เขียนข้อมูลไม่เรียก RPC เพื่อไม่ให้ id ตัวอย่างวิ่งไป Supabase จริง */
 export const FIXTURE_NO_WRITE = 'โหมด fixture: ไม่ได้บันทึกลง Supabase';
 
-/** path ของ SVG 24x24 ที่ prototype ใช้ (index.html และ app.js) + เมนูใหม่ 2 รายการ */
+/** path ของ SVG 24x24 ที่ prototype ใช้ (index.html และ app.js) + เมนูใหม่ 3 รายการ */
 export const PATHS = {
   phone: 'M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z',
   megaphone: 'M3 10v4a1 1 0 0 0 1 1h2l5 4V5L6 9H4a1 1 0 0 0-1 1zm13.5 2A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z',
@@ -58,5 +58,7 @@ export const PATHS = {
   close: 'M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7l1.4-1.4 6.3 6.3 6.3-6.3z',
   search: 'M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z',
   chat: 'M4 4h16v12H7l-3 3z',
+  /** เมนูส่งข้อความ (ส่งข้อความผ่าน JST worker) */
+  send: 'M2.5 21 23 12 2.5 3 2.5 10l14.5 2-14.5 2z',
   trash: 'M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z',
 } as const;

@@ -2,10 +2,10 @@ import type { Campaign } from '@/lib/api/types';
 import { BRAND } from '@/lib/constants';
 
 /** key เดียวกับ data-route ของ prototype */
-export type RouteKey = 'leads' | 'mine' | 'pool' | 'campaign-bebeplay' | 'campaign-hosttail' | 'dashboard' | 'setup';
+export type RouteKey = 'leads' | 'mine' | 'pool' | 'outreach' | 'campaign-bebeplay' | 'campaign-hosttail' | 'dashboard' | 'setup';
 
 const PATH_KEYS: Record<string, RouteKey> = {
-  '/leads': 'leads', '/mine': 'mine', '/pool': 'pool', '/campaigns/bebeplay': 'campaign-bebeplay',
+  '/leads': 'leads', '/mine': 'mine', '/pool': 'pool', '/outreach': 'outreach', '/campaigns/bebeplay': 'campaign-bebeplay',
   '/campaigns/hosttail': 'campaign-hosttail', '/dashboard': 'dashboard', '/setup': 'setup',
 };
 
@@ -13,6 +13,7 @@ const TITLES: Record<Exclude<RouteKey, 'campaign-bebeplay' | 'campaign-hosttail'
   leads: ['Direct Sale', 'ลูกค้าเก่า Direct Sale Lead'],
   mine: ['ลูกค้าของฉัน', ''],
   pool: ['ถังกลาง', ''],
+  outreach: ['ส่งข้อความ', ''],
   dashboard: ['Dashboard', 'ภาพรวมทีม Direct Sale'],
   setup: ['ตั้งค่า', ''],
 };
