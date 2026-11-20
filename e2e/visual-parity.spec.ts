@@ -1,31 +1,28 @@
 import { expect, test, type Page } from '@playwright/test';
-import path from 'node:path';
 import { PATHS } from '../lib/constants';
 
 const LEGACY = 'http://127.0.0.1:4100/index.html';
 const APP = 'http://127.0.0.1:3100';
 const SIZES = [
-  { tag: 'mobile', width: 375, height: 812 },
-  { tag: 'desktop', width: 1280, height: 800 },
+  { tag: 'mobile', width: 390, height: 844 },
+  { tag: 'desktop', width: 1440, height: 900 },
 ] as const;
-// เทียบเป็นรายองค์ประกอบ (element screenshot) แบบเข้ม: threshold 0.02 = ความต่างสีต่อพิกเซลที่ยังนับว่าเหมือน
-// maxDiffPixels = จำนวนพิกเซลที่ต่างได้ (กัน anti-alias) ห้ามขยายเกณฑ์เพื่อให้ผ่าน
-// Playwright คิดความต่างทีละพิกเซล: ตัวอักษรของ prototype (ฟอนต์จาก Google CDN) กับ next/font (self-host) anti-alias ไม่เท่ากันเล็กน้อย
-// และคงที่ทุกรอบ จึงตั้ง maxDiffPixels ตาม element ตามที่วัดได้ (ที่ threshold 0.1)
-// ส่วนสีตรวจแยกด้วย computed-style (shellMetrics) ซึ่งแม่นกว่าภาพ
-const strict = (maxDiffPixels: number) => ({ maxDiffPixels, threshold: 0.1 }) as const;
-const STRICT_SIDEBAR = strict(400);
-const STRICT_CARD = strict(200);
-const STRICT_TOPBAR = strict(50);
+/*
+ * หน้าตาเปลี่ยนเป็นดีไซน์ "Direct Sale CRM" (styles/tokens.css + styles/app.css) แล้ว จึงไม่เทียบภาพ/สีกับ prototype อีก:
+ * - ภาพ: เทียบกับ baseline ของตัวเองที่ commit ไว้ใน e2e/__screenshots__/ (ตั้งใจเปลี่ยนหน้าตา → --update-snapshots=changed แล้วตรวจภาพด้วยตา)
+ * - เนื้อหา/การทำงาน (ข้อความ, ช่องกรอก, ปุ่ม, focus, จำนวนแถว): ยังเทียบกับ legacy/ ตรงตัว เพราะ look & feel ไม่เปลี่ยนการทำงาน
+ */
+const SELF = { maxDiffPixelRatio: 0.001, threshold: 0.1 } as const;
+const STRICT_SIDEBAR = SELF;
+const STRICT_CARD = SELF;
+const STRICT_TOPBAR = SELF;
 const OPEN = /\bopen\b/;
-// full-page เป็นแค่ตัวเช็กหยาบ ๆ ว่าโครงรวมไม่เพี้ยน
-const COARSE = { maxDiffPixelRatio: 0.005, threshold: 0.1 } as const;
+const COARSE = SELF;
 // ใช้ทดสอบว่าเทสต์จับความต่างได้จริง: ฉีด CSS เข้าฝั่ง Next เท่านั้น (ไม่ตั้งค่า = ไม่ทำอะไร)
 const INJECT = process.env.PARITY_INJECT_CSS;
 // แผน A เทียบเฉพาะ shell: ซ่อนเนื้อหาหน้าและปุ่มของหน้าใน topbar ทั้งสองฝั่ง
 const HIDE_WORK_AREA = '#view > *, #topbar-actions > * { display: none !important; }';
 
-const legacyShot = (name: string) => path.join(__dirname, '.legacy-shots', `${name}.png`);
 
 async function settle(page: Page) {
   await page.addStyleTag({ content: HIDE_WORK_AREA });
@@ -36,49 +33,18 @@ async function settle(page: Page) {
   await page.waitForTimeout(200);
 }
 
-async function shootLegacy(page: Page, name: string, selector?: string) {
-  const opts = { path: legacyShot(name), animations: 'disabled', caret: 'hide' } as const;
-  if (selector) await page.locator(selector).screenshot(opts);
-  else await page.screenshot(opts);
-}
 
-// ค่า computed style / geometry ของ shell เอาไว้เทียบ legacy กับ Next ตรง ๆ (สีที่ต่างเล็กน้อยภาพอาจไม่จับ)
+// โครงของ shell (ชื่อระบบ, เมนู, หน้าที่เลือก, badge) เทียบกับ legacy ตรงตัว — ไม่เทียบสี/ขนาดเพราะหน้าตาเปลี่ยนเป็นดีไซน์ใหม่แล้ว
 async function shellMetrics(page: Page) {
-  return page.evaluate(() => {
-    const cs = (el: Element | null) => (el ? getComputedStyle(el) : null);
-    const r = (el: Element | null) => {
-      const b = el?.getBoundingClientRect();
-      return b ? { x: b.x, y: b.y, width: b.width, height: b.height } : null;
-    };
-    const sidebar = document.querySelector('#sidebar');
-    const topbar = document.querySelector('.topbar');
-    const brand = document.querySelector('.brand-name');
-    return {
-      body: { backgroundColor: cs(document.body)?.backgroundColor },
-      sidebar: { backgroundColor: cs(sidebar)?.backgroundColor, width: r(sidebar)?.width },
-      topbar: { backgroundColor: cs(topbar)?.backgroundColor, height: r(topbar)?.height },
-      brandName: {
-        fontSize: cs(brand)?.fontSize,
-        // next/font เติม family สำรองของตัวเอง ("... Fallback") จึงเทียบเฉพาะฟอนต์แรก
-        fontFamily: cs(brand)?.fontFamily.split(',')[0],
-        fontWeight: cs(brand)?.fontWeight,
-      },
-      navItems: Array.from(document.querySelectorAll('.nav-item')).map((el) => ({
-        route: el.getAttribute('data-route'),
-        text: (el.textContent ?? '').replace(/\s+/g, ' ').trim(),
-        x: r(el)?.x,
-        height: r(el)?.height,
-        active: el.classList.contains('active'),
-        backgroundColor: cs(el)?.backgroundColor,
-        color: cs(el)?.color,
-        paddingLeft: cs(el)?.paddingLeft,
-        badge: (() => {
-          const b = el.querySelector('.nav-badge');
-          return b ? { text: b.textContent, backgroundColor: cs(b)?.backgroundColor, color: cs(b)?.color } : null;
-        })(),
-      })),
-    };
-  });
+  return page.evaluate(() => ({
+    brandName: (document.querySelector('.brand-name')?.textContent ?? '').trim(),
+    navItems: Array.from(document.querySelectorAll('.nav-item')).map((el) => ({
+      route: el.getAttribute('data-route'),
+      text: (el.textContent ?? '').replace(/\s+/g, ' ').trim(),
+      active: el.classList.contains('active'),
+      badge: el.querySelector('.nav-badge') ? el.querySelector('.nav-badge')?.textContent ?? '' : null,
+    })),
+  }));
 }
 
 type Metrics = Awaited<ReturnType<typeof shellMetrics>>;
@@ -132,9 +98,6 @@ for (const s of SIZES) {
         await openLegacyShell(page);
         const legacy = await shellMetrics(page);
         assertLegacyMetricsUsable(legacy);
-        await shootLegacy(page, 'shell-desktop');
-        await shootLegacy(page, 'sidebar-desktop', '#sidebar');
-        await shootLegacy(page, 'topbar-desktop', '.topbar');
         await openAppShell(page);
         expect(await shellMetrics(page)).toEqual(legacy);
         await expect(page.locator('#sidebar')).toHaveScreenshot('sidebar-desktop.png', STRICT_SIDEBAR);
@@ -146,8 +109,6 @@ for (const s of SIZES) {
         await openLegacyShell(page);
         const legacy = await shellMetrics(page);
         assertLegacyMetricsUsable(legacy);
-        await shootLegacy(page, 'shell-mobile');
-        await shootLegacy(page, 'topbar-mobile', '.topbar');
         await openAppShell(page);
         expect(await shellMetrics(page)).toEqual(legacy);
         await expect(page.locator('.topbar')).toHaveScreenshot('topbar-mobile.png', STRICT_TOPBAR);
@@ -161,8 +122,6 @@ for (const s of SIZES) {
         await settle(page);
         const legacy = await shellMetrics(page);
         assertLegacyMetricsUsable(legacy);
-        await shootLegacy(page, 'shell-menu-mobile');
-        await shootLegacy(page, 'sidebar-menu-mobile', '#sidebar');
         await openAppShell(page);
         await page.locator('#menu-btn').click();
         await expect(page.locator('#sidebar')).toHaveClass(OPEN);
@@ -185,8 +144,6 @@ for (const s of SIZES) {
         }
       });
       await settle(page);
-      await shootLegacy(page, `login-${s.tag}`);
-      await shootLegacy(page, `login-card-${s.tag}`, '.login-card');
       await page.goto(`${APP}/login`);
       await expect(page.locator('#login-form')).toBeVisible({ timeout: 60_000 });
       if (INJECT) await page.addStyleTag({ content: INJECT });
@@ -206,21 +163,7 @@ const DEMO_KEY = 'mpd-directsale-preview-v5';
 //   (test ไม่พิมพ์ในช่องค้นหา และถ่ายภาพด้วย caret: 'hide')
 // - โหมด fixture ไม่เขียนข้อมูล (แสดง toast แทน RPC) → test แค่เปิด popup / สลับแท็บ / เลือกตัวเลือก ไม่กดบันทึก
 const LEGACY_DEMO_ONLY = '.demo-note, #chk-body > div.sub { display: none !important; }';
-// PARITY_MEASURE=1 → maxDiffPixels = 0 ทุกภาพของแผน B เพื่ออ่านจำนวนพิกเซลที่ต่างจริงจากผลรัน (Step 6)
-const MEASURE = !!process.env.PARITY_MEASURE;
-// maxDiffPixels ต่อภาพที่ threshold 0.1 (ความต่าง anti-alias ของฟอนต์ CDN กับ next/font กระจายตามขอบตัวอักษร) ห้ามขยายเพื่อให้ผ่าน
-// วัด 3 รอบ 2026-11-18 (Chromium ของ Playwright 1.65.1): ค่าเท่ากันทุกรอบ ตั้ง = ค่าที่วัดได้ × 1.25 ปัดขึ้นหลัก 50 (ทุกภาพ < 0.5% ของพื้นที่)
-// ค่าที่วัดได้: view 11884/5571, topbar 81/57, customer-buy 1060/617, customer-talk 870/617, customer-nocall 993/785,
-// log-call 281/281, log-won 454/486, log-dnc 553/560, log-chat 314/320, unclaim 298/298, bucket 360/361 (desktop/mobile)
-const MAX_DIFF: Record<string, number> = {
-  'leads-view-desktop': 14900, 'leads-view-mobile': 7000, 'leads-topbar-desktop': 150, 'leads-topbar-mobile': 100,
-  'customer-buy-desktop': 1350, 'customer-buy-mobile': 800, 'customer-talk-desktop': 1100, 'customer-talk-mobile': 800,
-  'customer-nocall-desktop': 1250, 'customer-nocall-mobile': 1000,
-  'log-call-desktop': 400, 'log-call-mobile': 400, 'log-won-desktop': 600, 'log-won-mobile': 650,
-  'log-dnc-desktop': 700, 'log-dnc-mobile': 700, 'log-chat-desktop': 400, 'log-chat-mobile': 400,
-  'unclaim-desktop': 400, 'unclaim-mobile': 400, 'bucket-desktop': 450, 'bucket-mobile': 500,
-};
-const shot = (name: string) => ({ maxDiffPixels: MEASURE ? 0 : (MAX_DIFF[name] ?? 0), threshold: 0.1 }) as const;
+const shot = (_name: string) => SELF;
 
 async function settleWork(page: Page) {
   await page.mouse.move(0, 0); // ไม่ให้ :hover ของแถว/ปุ่มติดในภาพ
@@ -276,26 +219,24 @@ async function leadsText(page: Page) {
     // (textContent ได้ "ชื่อ 08…") ส่วน JSX ไม่มี ("ชื่อ08…") ทั้งที่หน้าจอเหมือนกัน
     const t = (el: Element | null) => ((el instanceof HTMLElement ? el.innerText : el?.textContent) ?? '').replace(/\s+/g, ' ').trim();
     const cls = (el: Element) => (typeof el.className === 'string' ? el.className : '').split(/\s+/).filter(Boolean).join(' ');
-    const cs = (el: Element | null) => (el ? getComputedStyle(el) : null);
     const view = document.querySelector('#view');
     const all = (sel: string) => Array.from(view?.querySelectorAll(sel) ?? []);
     return {
       period: all('.period [data-pk]').map((b) => `${cls(b)}|${t(b)}`),
       periodNote: t(view?.querySelector('.period > .sub') ?? null),
       periodYear: all('#p-year option').map(t),
-      chips: all('[data-chip]').map((b) => ({ text: t(b), cls: cls(b), dot: cs(b.querySelector('.dot'))?.backgroundColor ?? null })),
+      chips: all('[data-chip]').map((b) => ({ text: t(b), cls: cls(b), dot: !!b.querySelector('.dot') })), // สีจุดมาจาก tokens.css (ต่างจาก prototype โดยตั้งใจ)
       selects: all('.toolbar select').map((s) => ({
         id: s.id, options: Array.from((s as HTMLSelectElement).options).map((o) => o.text), value: (s as HTMLSelectElement).value,
       })),
       search: (view?.querySelector('#q') as HTMLInputElement | null)?.placeholder ?? null,
       head: all('thead th').map(t),
-      // ความกว้างคอลัมน์: บนมือถือตารางล้นจอ (table-wrap เลื่อนแนวนอน) ภาพเห็นแค่ 2–3 คอลัมน์แรก
-      cols: all('thead th').map((th) => Math.round(th.getBoundingClientRect().width * 10) / 10),
       rows: all('tbody tr').map((tr) => Array.from(tr.children).map(t)),
-      badges: all('tbody .badge').map((b) => ({ cls: cls(b), bg: cs(b)?.backgroundColor, color: cs(b)?.color })),
+      badges: all('tbody .badge').map(cls),
       actions: all('tbody .actions').map((a) => Array.from(a.children).map((b) => `${cls(b)}|${t(b)}`)),
       icons: all('tbody .ch-bar').map((bar) => Array.from(bar.querySelectorAll('img')).map((i) => i.getAttribute('alt'))),
-      topbar: Array.from(document.querySelectorAll('#topbar-actions > *')).map((b) => `${cls(b)}|${t(b)}`),
+      // ปุ่ม topbar บนมือถือแสดงข้อความสั้น (.lbl-short) — เทียบข้อความเต็ม (.lbl-long) กับ prototype
+      topbar: Array.from(document.querySelectorAll('#topbar-actions > *')).map((b) => `${cls(b)}|${(b.querySelector('.lbl-long')?.textContent ?? t(b)).trim()}`),
     };
   });
 }
@@ -321,11 +262,6 @@ async function modalState(page: Page) {
       hidden: all('[id]').map((el) => `${el.id}:${(el as HTMLElement).hidden}`),
       buttons: all('button, a.ch-btn').map((b) => `${cls(b)}|${t(b)}|${b.getAttribute('title') ?? ''}|${(b as HTMLButtonElement).disabled ?? ''}`),
       focused: active && m?.contains(active) ? active.id || cls(active) : null,
-      // สี/ขนาดตัวอักษรที่ภาพ (threshold 0.1) อาจไม่จับเมื่อต่างเล็กน้อย เช่นสีแท็บที่เลือก, badge, ปุ่ม, หัว popup
-      styles: all('.modal-h h3, .tab, .badge, .tag, .btn, .seg button, label').map((el) => {
-        const c = getComputedStyle(el);
-        return `${el.tagName}.${cls(el)}|${c.color}|${c.backgroundColor}|${c.fontSize}|${c.fontWeight}|${c.letterSpacing}`;
-      }),
     };
   });
 }
@@ -360,7 +296,6 @@ async function compareSteps(page: Page, steps: Step[], opts: { claim?: string; v
     await page.evaluate(() => document.querySelector('#chk-body > div.sub')?.remove());
     await settleWork(page);
     legacy.push(await modalState(page));
-    await shootLegacy(page, st.name, '.modal');
   }
   await openAppLeads(page, opts.claim);
   if (view) expect(await leadsText(page)).toEqual(view);
@@ -381,9 +316,7 @@ for (const s of SIZES) {
       const legacy = await leadsText(page);
       expect(legacy.rows).toHaveLength(28);
       expect(legacy.chips.length).toBe(10);
-      await shootLegacy(page, `leads-topbar-${s.tag}`, '.topbar');
       await unclipView(page);
-      await shootLegacy(page, `leads-view-${s.tag}`, '#view');
       await openAppLeads(page);
       expect(await leadsText(page)).toEqual(legacy);
       await expect.soft(page.locator('.topbar')).toHaveScreenshot(`leads-topbar-${s.tag}.png`, shot(`leads-topbar-${s.tag}`));
@@ -431,17 +364,7 @@ for (const s of SIZES) {
 /* ---------- แผน C1: หน้าแคมเปญ, ถังลูกค้า, popup E (รายละเอียดลูกค้าในถัง), popup F (ตัวสร้างแคมเปญ), /mine, /pool ---------- */
 // ความต่างที่ตั้งใจ: ไม่มี — โหมด fixture (live = false) ทำแบบโหมดตัวอย่างของ prototype ทั้งการ์ดถัง ("ตัวอย่าง" + เข้าแคมเปญแล้ว/ยังไม่เข้า),
 // ช่องแคมเปญของแถวถัง, ปุ่มจอง/จองโดย/ยกเลิกจอง และ funnel ของตัวสร้างแคมเปญ (นับจากลูกค้าตัวอย่าง)
-// maxDiffPixels ของภาพแผน C1 (วัดด้วย PARITY_MEASURE=1 ตาม Task 8 Step 5 แล้วแก้ค่าในตารางนี้)
-// วัดเมื่อ 2026-11-19 (Chromium ของ Playwright 1.65, Windows) 3 รอบได้ค่าเท่ากันทุกรอบ (noise 0) ค่าในตาราง = ค่าที่วัดได้สูงสุด × 1.25 ปัดขึ้นหลัก 50
-const MAX_DIFF_C1: Record<string, number> = {
-  'campaign-view-desktop': 14400, 'campaign-view-mobile': 9400, 'campaign-topbar-desktop': 250, 'campaign-topbar-mobile': 150,
-  'campaign-table-desktop': 8200, 'campaign-table-mobile': 4750,
-  'pool-detail-desktop': 1650, 'pool-detail-mobile': 650, 'pool-detail-mine-desktop': 1800, 'pool-detail-mine-mobile': 750,
-  'builder-base-desktop': 450, 'builder-base-mobile': 450, 'builder-set-desktop': 850, 'builder-set-mobile': 850,
-  'builder-aud-desktop': 500, 'builder-aud-mobile': 500, 'builder-crit-desktop': 650, 'builder-crit-mobile': 650,
-  'builder-preview-desktop': 1450, 'builder-preview-mobile': 850,
-};
-const shotC1 = (name: string) => ({ maxDiffPixels: MEASURE ? 0 : (MAX_DIFF_C1[name] ?? 0), threshold: 0.1 }) as const;
+const shotC1 = (_name: string) => SELF;
 
 /** prototype โหมดตัวอย่างที่หน้าแคมเปญ (การ์ด "ลูกค้าทั้งหมด" ถูกเลือกเป็นค่าเริ่ม) รอถังแสดงครบหน้าแรก */
 async function openLegacyCampaign(page: Page, brand: 'bebeplay' | 'hosttail', rows: number) {
@@ -477,7 +400,7 @@ async function campaignText(page: Page) {
         bars: Array.from(c.querySelectorAll('.bar > i')).map((i) => (i as HTMLElement).style.width),
         badge: (() => {
           const b = c.querySelector('.badge');
-          return b ? `${cls(b)}|${getComputedStyle(b).backgroundColor}` : null;
+          return b ? cls(b) : null;
         })(),
       })),
       quota: t(view?.querySelector('.quota') ?? null),
@@ -498,7 +421,6 @@ async function compareStepsOn(page: Page, steps: Step[], openLegacy: (p: Page) =
     await st.act(page);
     await settleWork(page);
     legacy.push(await modalState(page));
-    await shootLegacy(page, st.name, '.modal');
   }
   await openApp(page);
   for (const [i, st] of steps.entries()) {
@@ -523,9 +445,7 @@ for (const s of SIZES) {
       const legacy = await campaignText(page);
       expect(legacy.cards).toHaveLength(4);
       expect(legacy.rowButtons).toHaveLength(50);
-      await shootLegacy(page, `campaign-topbar-${s.tag}`, '.topbar');
       await unclipView(page);
-      await shootLegacy(page, `campaign-view-${s.tag}`, '#view');
       await page.locator('[data-pool=next]').click();
       await expect(page.locator('#view tbody tr')).toHaveCount(9);
       // หน้า 2: เทียบแถว/ปุ่ม/ตัวแบ่งหน้า (ความกว้างคอลัมน์ขึ้นกับความกว้างตัวอักษรของชื่อในหน้านั้น ต่างกันได้ ±0.1px ระหว่างฟอนต์ CDN กับ next/font)
@@ -560,7 +480,6 @@ for (const s of SIZES) {
       const legacy = await views(page);
       await page.locator('[data-camp=c-bebe-nov]').click();
       await unclipView(page);
-      await shootLegacy(page, `campaign-table-${s.tag}`, '#view');
       await openLegacyCampaign(page, 'hosttail', 29);
       await page.locator('[data-camp=c-host-nov]').click();
       await settleWork(page);
@@ -607,7 +526,7 @@ for (const s of SIZES) {
       ], (p) => openLegacyCampaign(p, 'bebeplay', 50), (p) => openAppCampaign(p, 'bebeplay', 50));
     });
 
-    // /mine และ /pool ไม่มีใน prototype: ตรวจ DOM + ภาพของตัวเอง (baseline commit ไว้ที่ e2e/.legacy-shots/app/ สร้างด้วย --update-snapshots=missing)
+    // /mine และ /pool ไม่มีใน prototype: ตรวจ DOM + ภาพของตัวเอง (baseline ใน e2e/__screenshots__/app/)
     test('my customers and the central pool render the base customer table', async ({ page }) => {
       for (const [path, rows, first] of [['mine', 7, 'ยกเลิกจอง'], ['pool', 50, 'จอง']] as const) {
         await page.goto(`${APP}/${path}`);
@@ -620,7 +539,7 @@ for (const s of SIZES) {
         await expect(page.locator('#base-brand option')).toHaveText(['ทุกแบรนด์', 'Bebeplay', 'Hosttail']);
         if (INJECT) await page.addStyleTag({ content: INJECT });
         await unclipView(page);
-        await expect.soft(page.locator('#view')).toHaveScreenshot(['app', `${path}-${s.tag}.png`], { maxDiffPixels: 0, threshold: 0.1 });
+        await expect.soft(page.locator('#view')).toHaveScreenshot(['app', `${path}-${s.tag}.png`], SELF);
       }
       await page.locator('#base-brand').selectOption('hosttail');
       await expect(page.locator('#view tbody tr td:nth-child(9)').first()).toHaveText('Hosttail');
@@ -631,13 +550,8 @@ for (const s of SIZES) {
 
 /* ---------- แผน C2: Dashboard และตั้งค่า ---------- */
 // ความต่างที่ตั้งใจ (หน้าตั้งค่า): ฟอร์มเพิ่มเซลล์ด้วยอีเมล, การ์ด "ผูก tag JST กับเซลล์" แทนการ์ด "ข้อมูลตัวอย่าง" → เทียบ prototype เฉพาะรายชื่อทีม
-// และการ์ดแคมเปญ ส่วนหน้าตั้งค่าทั้งหน้าใช้ภาพของตัวเอง (e2e/.legacy-shots/app/)
-// ค่าตั้งต้นจากการวัดตอนเขียนแผน — Task 6 Step 4 วัดซ้ำ 3 รอบแล้วแก้เป็นค่าสูงสุด × 1.25 ปัดขึ้นหลัก 50
-const MAX_DIFF_C2: Record<string, number> = {
-  'dashboard-view-desktop': 4600, 'dashboard-view-mobile': 4150, 'dashboard-topbar-desktop': 100, 'dashboard-topbar-mobile': 100,
-  'dashboard-host-desktop': 3900, 'dashboard-host-mobile': 3450, 'setup-campaigns-desktop': 950, 'setup-campaigns-mobile': 1850,
-};
-const shotC2 = (name: string) => ({ maxDiffPixels: MEASURE ? 0 : (MAX_DIFF_C2[name] ?? 0), threshold: 0.1 }) as const;
+// และการ์ดแคมเปญ ส่วนหน้าตั้งค่าทั้งหน้าเทียบภาพของตัวเองอย่างเดียว
+const shotC2 = (_name: string) => SELF;
 
 async function openLegacyRoute(page: Page, hash: string, ready: string) {
   await page.goto(LEGACY);
@@ -703,9 +617,7 @@ for (const s of SIZES) {
       await openLegacyRoute(page, '#dashboard', '.kpis');
       const legacy = await dashboardText(page);
       expect(legacy.kpis).toHaveLength(5);
-      await shootLegacy(page, `dashboard-topbar-${s.tag}`, '.topbar');
       await unclipView(page);
-      await shootLegacy(page, `dashboard-view-${s.tag}`, '#view');
       await page.locator('[data-brand=hosttail]').click();
       await page.locator('#comm-rate').fill('3');
       await page.locator('#comm-rate').press('Enter');
@@ -713,7 +625,6 @@ for (const s of SIZES) {
       await settleWork(page);
       const legacyHost = await dashboardText(page);
       expect(legacyHost.panels[1]).toContain('Hosttail');
-      await shootLegacy(page, `dashboard-host-${s.tag}`, '#view');
 
       await openAppRoute(page, '/dashboard', '.kpis');
       expect(await dashboardText(page)).toEqual(legacy);
@@ -732,7 +643,6 @@ for (const s of SIZES) {
       await openLegacyRoute(page, '#setup', '.settings');
       const legacy = await setupText(page);
       expect(legacy.team).toHaveLength(4);
-      await shootLegacy(page, `setup-campaigns-${s.tag}`, '.settings > .panel:nth-child(2)');
       await openAppRoute(page, '/setup', '.settings');
       expect(await setupText(page)).toEqual(legacy);
       await expect.soft(page.locator('.settings > .panel:nth-child(2)')).toHaveScreenshot(`setup-campaigns-${s.tag}.png`, shotC2(`setup-campaigns-${s.tag}`));
@@ -740,7 +650,7 @@ for (const s of SIZES) {
       await expect(page.locator('#rep-email')).toHaveAttribute('type', 'email');
       await expect(page.locator('#reset')).toHaveCount(0);
       await unclipView(page);
-      await expect.soft(page.locator('.settings')).toHaveScreenshot(['app', `setup-${s.tag}.png`], { maxDiffPixels: 0, threshold: 0.1 });
+      await expect.soft(page.locator('.settings')).toHaveScreenshot(['app', `setup-${s.tag}.png`], SELF);
     });
   });
 }

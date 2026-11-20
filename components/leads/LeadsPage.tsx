@@ -20,7 +20,9 @@ export function LeadsPage() {
   return (
     <>
       <TopbarActions>
-        <button className="btn primary" id="add-lead" onClick={() => openModal(<PickFromBucketModal />, 'sm')}>+ เพิ่มลูกค้าจากถังลูกค้าทั้งหมด</button>
+        <button className="btn primary" id="add-lead" onClick={() => openModal(<PickFromBucketModal />, 'sm')}>
+          <span className="lbl-long">+ เพิ่มลูกค้าจากถังลูกค้าทั้งหมด</span><span className="lbl-short">+ เพิ่มจากถัง</span>
+        </button>
       </TopbarActions>
       <PeriodCard />
       <LeadToolbar base={base} withCampSelect />

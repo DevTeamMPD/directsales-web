@@ -20,12 +20,14 @@ export function LeadToolbar({ base, withCampSelect }: { base: Lead[]; withCampSe
         <svg viewBox="0 0 24 24"><path d={PATHS.search} /></svg>
         <input id="q" type="search" placeholder="ค้นหา ชื่อ, เบอร์, เลขบิล, ร้านค้า" value={ui.q} onChange={(e) => setUi({ q: e.target.value })} />
       </label>
-      {STATUS_CHIPS.map((s) => (
-        <button key={s} className={`chip ${ui.status === s ? 'active' : ''}`} data-chip={s} onClick={() => setUi({ status: s })}>
-          {s === 'all' ? null : <i className="dot" style={{ background: CHIP_DOT[s] }} />}
-          {chipLabel(s)} ({counts[s]})
-        </button>
-      ))}
+      <div className="chip-row">
+        {STATUS_CHIPS.map((s) => (
+          <button key={s} className={`chip ${ui.status === s ? 'active' : ''}`} data-chip={s} onClick={() => setUi({ status: s })}>
+            {s === 'all' ? null : <i className="dot" style={{ background: CHIP_DOT[s] }} />}
+            {chipLabel(s)} ({counts[s]})
+          </button>
+        ))}
+      </div>
       {withCampSelect ? (
         <select id="camp-sel" className="select" aria-label="แคมเปญ" value={ui.camp} onChange={(e) => setUi({ camp: e.target.value })}>
           <option value="all">แคมเปญทั้งหมด</option>

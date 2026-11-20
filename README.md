@@ -3,7 +3,7 @@
 เว็บแอปของทีม Direct Sale (MPD Group: Bebeplay / Hosttail) ให้เซลล์โทร/แชตหาลูกค้าเก่า จองลูกค้าจากถัง ติดตามแคมเปญ และให้หัวหน้าดูภาพรวมทีม
 
 - Next.js 15 (App Router) + React 19 + TypeScript · Supabase (schema `dsales`, ล็อกอินด้วยอีเมล/รหัสผ่าน) · Vercel
-- หน้าตาตาม prototype เดิม (`styles/prototype.css`) — ต้นแบบเก็บไว้ใน `legacy/` ใช้เทียบหน้าตาใน e2e เท่านั้น
+- หน้าตาตามดีไซน์ "Direct Sale CRM" (`styles/tokens.css` + `styles/app.css`) — prototype เดิมใน `legacy/` ใช้เทียบข้อความ/การทำงานใน e2e เท่านั้น
 - รายละเอียดสำหรับนักพัฒนา (กติกา DB, โหมด fixture, ขั้นตอน migration): `CLAUDE.md`
 
 ## หน้า

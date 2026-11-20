@@ -10,7 +10,7 @@ import { jstTarget, platLabel } from '@/lib/jst';
 /** ปุ่มโทร + ไอคอนห้องแชตของลูกค้า (chat_rooms) — ห้องที่ worker ส่งไม่ได้แสดงจาง แต่ยังกดเปิดแชตใน JST ได้ */
 export function ChannelCell({ r, brand, openJst }: { r: PoolRow; brand: Brand; openJst: OpenJst }) {
   return (
-    <span className="ch-bar mini" style={{ margin: 0, width: 116 }}>
+    <span className="ch-bar mini ch-cell">
       <CallButton phone={r.phone} />
       {r.chatRooms.map((room) => {
         const t = jstTarget(

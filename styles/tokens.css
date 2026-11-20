@@ -1,0 +1,89 @@
+/*
+ * Design tokens for MPD Direct Sale ("Direct Sale CRM" design, 2026-11).
+ * Components use these variables only, never a hex value.
+ * Light values come from the design mockup; dark values are derived from them.
+ */
+:root {
+  /* surfaces + text */
+  --bg: #F5F7FA;
+  --surface: #FFFFFF;
+  --surface-2: #F7F9FC;
+  --fill: #F0F3F7;          /* chip / search / segmented background */
+  --fill-2: #EEF1F5;
+  --border: #E3E8EF;
+  --border-strong: #D5DCE5; /* inputs, secondary buttons */
+  --divider: #EEF1F5;
+  --fg: #1B2430;
+  --fg-2: #3A4553;
+  --muted: #5B6676;
+
+  /* primary */
+  --accent: #1A6FE8;
+  --accent-strong: #1557C0;
+  --accent-soft: #EAF2FE;
+  --accent-fg: #FFFFFF;
+  --avatar-bg: #DCE8FD;
+
+  /* sidebar */
+  --side-bg: var(--surface);
+  --side-fg: var(--fg-2);
+  --side-muted: var(--muted);
+  --side-hover: var(--fill);
+  --side-active: var(--accent);
+  --side-active-fg: var(--accent-fg);
+
+  /* lead status chips (dsales_leads.status) */
+  --grey: #475467;    --grey-soft: #EEF1F5;    /* new */
+  --info: #1557C0;    --info-soft: #E6F0FF;    /* following */
+  --warn: #A84A05;    --warn-soft: #FFF1E0;    /* callback */
+  --ok: #157F3D;      --ok-soft: #E3F6EA;      /* won */
+  --bad: #B42318;     --bad-soft: #FDECEC;     /* lost */
+  --violet: #6A3FB5;  --violet-soft: #F1EAFB;  /* unreachable */
+  --alert: #D92D20;   /* notification dot / count badge */
+
+  /* brands */
+  --bebe: #A3204E;    --bebe-soft: #FFE9F0;
+  --host: #0F7A5C;    --host-soft: #E6F6F1;
+
+  /* shape */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-sheet: 22px;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, .06);
+  --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 8px 24px rgba(16, 24, 40, .08);
+  --scrim: rgba(16, 24, 40, .45);
+  --tap: 44px;              /* minimum touch target on mobile */
+
+  --font: var(--font-plex-thai), "IBM Plex Sans Thai", "Noto Sans Thai", "Leelawadee UI", Tahoma, system-ui, sans-serif;
+  --mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F1420; --surface: #171D29; --surface-2: #1C2331; --fill: #222A38; --fill-2: #262E3C;
+    --border: #2A3242; --border-strong: #364052; --divider: #222A38;
+    --fg: #E5E9F1; --fg-2: #C3CAD6; --muted: #9AA4B5;
+    --accent: #4C8DF6; --accent-strong: #8AB6FF; --accent-soft: #1B2C4A; --accent-fg: #FFFFFF; --avatar-bg: #1B2C4A;
+    --grey: #C3CAD6; --grey-soft: #262E3C; --info: #8AB6FF; --info-soft: #1B2C4A;
+    --warn: #F5B266; --warn-soft: #3A2A14; --ok: #6FD69A; --ok-soft: #16321F;
+    --bad: #F59A92; --bad-soft: #3D1C1C; --violet: #C4A8F5; --violet-soft: #2C2350; --alert: #F97066;
+    --bebe: #F28AB0; --bebe-soft: #3A1D29; --host: #6FD3B6; --host-soft: #15322A;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4); --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
+    --scrim: rgba(0, 0, 0, .55);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F1420; --surface: #171D29; --surface-2: #1C2331; --fill: #222A38; --fill-2: #262E3C;
+  --border: #2A3242; --border-strong: #364052; --divider: #222A38;
+  --fg: #E5E9F1; --fg-2: #C3CAD6; --muted: #9AA4B5;
+  --accent: #4C8DF6; --accent-strong: #8AB6FF; --accent-soft: #1B2C4A; --accent-fg: #FFFFFF; --avatar-bg: #1B2C4A;
+  --grey: #C3CAD6; --grey-soft: #262E3C; --info: #8AB6FF; --info-soft: #1B2C4A;
+  --warn: #F5B266; --warn-soft: #3A2A14; --ok: #6FD69A; --ok-soft: #16321F;
+  --bad: #F59A92; --bad-soft: #3D1C1C; --violet: #C4A8F5; --violet-soft: #2C2350; --alert: #F97066;
+  --bebe: #F28AB0; --bebe-soft: #3A1D29; --host: #6FD3B6; --host-soft: #15322A;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4); --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
+  --scrim: rgba(0, 0, 0, .55);
+  color-scheme: dark;
+}

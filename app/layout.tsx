@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { IBM_Plex_Mono, IBM_Plex_Sans_Thai } from 'next/font/google';
-import '@/styles/prototype.css';
+import '@/styles/tokens.css';
+import '@/styles/app.css';
 import './globals.css';
 
 const plexThai = IBM_Plex_Sans_Thai({

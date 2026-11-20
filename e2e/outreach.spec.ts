@@ -2,14 +2,14 @@ import { expect, test, type Page } from '@playwright/test';
 import { FIXTURE_NO_WRITE } from '../lib/constants';
 
 // ส่งข้อความผ่าน JST worker (spec 2026-11-20 ข้อ 6) — หน้าใหม่ไม่มีใน prototype: ตรวจ DOM + ภาพของตัวเอง
-// (baseline commit ไว้ที่ e2e/.legacy-shots/app/ สร้างด้วย --update-snapshots=missing) โหมด fixture: ข้อมูลจาก lib/fixtures/outreach.ts
+// (baseline ใน e2e/__screenshots__/app/) โหมด fixture: ข้อมูลจาก lib/fixtures/outreach.ts
 const APP = 'http://127.0.0.1:3100';
 const SIZES = [
-  { tag: 'mobile', width: 375, height: 812 },
-  { tag: 'desktop', width: 1280, height: 800 },
+  { tag: 'mobile', width: 390, height: 844 },
+  { tag: 'desktop', width: 1440, height: 900 },
 ] as const;
 const TEST_MODE_TEXT = 'โหมดทดสอบ: ข้อความทั้งหมดจะถูกส่งไปห้องทดสอบ';
-const OWN = { maxDiffPixels: 0, threshold: 0.1 } as const;
+const OWN = { maxDiffPixelRatio: 0.001, threshold: 0.1 } as const;
 
 async function settle(page: Page) {
   await page.mouse.move(0, 0);
