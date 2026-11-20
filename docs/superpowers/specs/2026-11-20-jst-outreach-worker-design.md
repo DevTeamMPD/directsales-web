@@ -63,7 +63,7 @@
 **เว็บ (สมาชิก active ผ่าน `dsales_uid()`)**
 - `dsales_templates_list(p_brand)` — template ที่ active ของแบรนด์
 - `dsales_template_save(p_id, p_brand, p_name, p_body, p_active)` — หัวหน้าเท่านั้น
-- `dsales_outreach_preview(p_phones text[], p_template uuid)` — คืนรายคน: ข้อความที่แทนตัวแปรแล้ว, ห้องที่จะส่ง (page/provider), หรือเหตุผลที่ถูกข้าม (`no_chat_room`, `taken`, `no_call`, `not_eligible`) — ไม่เขียนอะไร
+- `dsales_outreach_preview(p_phones text[], p_template uuid)` — คืนรายคน: ข้อความที่แทนตัวแปรแล้ว, ห้องที่จะส่ง (page/provider), หรือเหตุผลที่ถูกข้าม (`customer_not_found`, `taken`, `already_queued`, `no_chat_room`, `window_closed`) — ไม่เขียนอะไร · ลูกค้า "ห้ามโทร" ยังส่งแชตได้ (ห้ามแค่โทร)
 - `dsales_enqueue_outreach(p_phones text[], p_template uuid)` — ทำแบบเดียวกับ preview ใน transaction เดียว: ตรวจ ≤ `outreach_max_batch`, จองลูกค้าจากถังกลาง (ใช้กติกาเดียวกับ `dsales_claim_customer`), สร้าง batch + คิว, คืน `{batch_id, queued, skipped}`
 - `dsales_outreach_batches_mine(p_limit, p_offset)` / `dsales_outreach_batch(p_batch)` — ความคืบหน้า (หัวหน้าเห็นทุกชุด)
 - `dsales_outreach_cancel(p_ids uuid[])` — ยกเลิกรายการ `queued` ของตัวเอง (หัวหน้ายกเลิกได้ทุกรายการ)
@@ -73,7 +73,7 @@
 - `dsales_worker_claim(p_worker text)` — คืนรายการถัดไปหรือว่าง: ข้ามถ้ายังไม่ครบ `worker_interval_seconds` นับจาก `sent_at` ล่าสุด · เลือกแบบสลับระหว่างเซลล์ (เซลล์ที่ได้ส่งล่าสุดนานที่สุดก่อน) · `for update skip locked` · เคารพ `outreach_test_mode` และ `line_monthly_cap` · ตั้ง `sending`, `locked_at`, `attempts + 1`
 - `dsales_worker_report(p_id, p_status, p_error, p_jst_msg_id)` — `sent` → ตั้ง `sent_at` และเขียน `dsales_interactions` (type `chat`, result `ส่งข้อความผ่าน worker`, `outreach_id`) · `failed` → เก็บเหตุผล · `requeue` → กลับเป็น `queued` (ลองใหม่ ≤ 3 ครั้ง)
 - `dsales_worker_heartbeat(p_worker, p_state, p_session_ok, p_last_error)`
-- งาน pg_cron เบา ๆ ทุก 5 นาที: รายการ `sending` เกิน 10 นาที → `queued` (worker ตรวจข้อความในห้องก่อนส่งซ้ำ)
+- รายการ `sending` เกิน 10 นาที ถูกคืนเป็น `queued` ตอน `dsales_worker_claim` ครั้งถัดไป (ไม่ใช้ pg_cron เพิ่ม) · worker ตรวจข้อความในห้องก่อนส่งซ้ำ · ส่งได้ทีละรายการทั้งระบบ (ไม่มี 2 รายการ `sending` พร้อมกัน)
 
 `dsales_interactions` เพิ่มคอลัมน์ `outreach_id uuid null` (มีใน spec หลักอยู่แล้ว)
 
