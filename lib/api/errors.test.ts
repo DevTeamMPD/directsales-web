@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { ERROR_TEXT, errorKind, errorMessage, kindOf, NETWORK_TEXT, RpcError, toThaiError } from './errors';
 
 describe('toThaiError', () => {
+  it('maps the outreach tokens (template_not_found is not shadowed by not_found)', () => {
+    expect(toThaiError('template_not_found')).toBe('ไม่พบ template นี้ หรือถูกปิดใช้งานแล้ว');
+    expect(toThaiError('batch_too_large')).toBe('เลือกลูกค้าเกินจำนวนสูงสุดต่อชุด');
+    expect(toThaiError('invalid_template')).toBe('template ไม่ถูกต้อง ต้องมีชื่อและข้อความ');
+    expect(toThaiError('invalid_setting')).toBe('ค่าตั้งค่าไม่ถูกต้อง (ระยะห่าง 5–3600 วินาที, เพดาน LINE ตั้งแต่ 0)');
+    expect(toThaiError('not_worker')).toBe('บัญชีนี้ไม่ใช่บัญชีของ worker');
+    expect(toThaiError('already_queued')).toBe('ลูกค้ารายนี้อยู่ในคิวส่งข้อความแล้ว');
+  });
   it('maps every prototype LIVE_ERR key', () => {
     expect(toThaiError('taken')).toBe('ลูกค้ารายนี้มีคนจองไปแล้ว');
     expect(toThaiError('no_call')).toBe('ลูกค้ารายนี้ไม่สะดวกให้โทร');

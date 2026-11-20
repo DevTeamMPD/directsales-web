@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { rpc, from } = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn() }));
 vi.mock('@/lib/supabase/client', () => ({ db: () => ({ rpc, from }) }));
 
-import { addMember, claimCustomer, getBaseCustomers, getMe, logContact, setCampaignClaimMode } from './rpc';
+import {
+  addMember, cancelOutreach, claimCustomer, enqueueOutreach, findWorkerRooms, getBaseCustomers, getMe, getOutreachBatch, getOutreachBatches,
+  getTemplates, getWorkerStatus, logContact, previewOutreach, saveTemplate, setCampaignClaimMode, setWorkerSettings,
+} from './rpc';
 
 beforeEach(() => {
   rpc.mockReset();
@@ -73,5 +76,48 @@ describe('rpc wrappers', () => {
     expect(rpc).toHaveBeenCalledWith('dsales_log', {
       p_lead: 'L1', p_type: 'chat', p_result: 'ตอบกลับแล้ว', p_note: 'n', p_status: 'won', p_callback: null, p_interest: 'i', p_bills: ['1'], p_amount: 990,
     });
+  });
+});
+
+describe('outreach rpc wrappers (outreach contract ข้อ 2)', () => {
+  beforeEach(() => rpc.mockResolvedValue({ data: [], error: null }));
+  it('templates: list per brand (null = every brand) and save', async () => {
+    await getTemplates('bebeplay');
+    expect(rpc).toHaveBeenLastCalledWith('dsales_templates_list', { p_brand: 'bebeplay' });
+    await getTemplates(null);
+    expect(rpc).toHaveBeenLastCalledWith('dsales_templates_list', { p_brand: null });
+    await saveTemplate({ id: null, brand: 'hosttail', name: '  ทักลูกค้าเก่า ', body: 'สวัสดี {ชื่อ}', active: true });
+    expect(rpc).toHaveBeenLastCalledWith('dsales_template_save', { p_id: null, p_brand: 'hosttail', p_name: 'ทักลูกค้าเก่า', p_body: 'สวัสดี {ชื่อ}', p_active: true });
+  });
+  it('preview / enqueue pass phones and the template id', async () => {
+    await previewOutreach(['0811111111', '0822222222'], 'T1');
+    expect(rpc).toHaveBeenLastCalledWith('dsales_outreach_preview', { p_phones: ['0811111111', '0822222222'], p_template: 'T1' });
+    await enqueueOutreach(['0811111111'], 'T1');
+    expect(rpc).toHaveBeenLastCalledWith('dsales_enqueue_outreach', { p_phones: ['0811111111'], p_template: 'T1' });
+  });
+  it('batches, batch detail and cancel', async () => {
+    await getOutreachBatches();
+    expect(rpc).toHaveBeenLastCalledWith('dsales_outreach_batches_mine', { p_limit: 50, p_offset: 0 });
+    await getOutreachBatches(10, 20);
+    expect(rpc).toHaveBeenLastCalledWith('dsales_outreach_batches_mine', { p_limit: 10, p_offset: 20 });
+    await getOutreachBatch('B1');
+    expect(rpc).toHaveBeenLastCalledWith('dsales_outreach_batch', { p_batch: 'B1' });
+    rpc.mockResolvedValueOnce({ data: 2, error: null });
+    await expect(cancelOutreach(['Q1', 'Q2'])).resolves.toBe(2);
+    expect(rpc).toHaveBeenLastCalledWith('dsales_outreach_cancel', { p_ids: ['Q1', 'Q2'] });
+  });
+  it('worker status, settings and room search', async () => {
+    await getWorkerStatus();
+    expect(rpc).toHaveBeenLastCalledWith('dsales_worker_status_get', {});
+    await setWorkerSettings({ interval: 60, lineCap: 0, testMode: true, testMsIds: [101, 202] });
+    expect(rpc).toHaveBeenLastCalledWith('dsales_worker_settings_set', { p_interval: 60, p_line_cap: 0, p_test_mode: true, p_test_ms_ids: [101, 202] });
+    await findWorkerRooms('  สมใจ ');
+    expect(rpc).toHaveBeenLastCalledWith('dsales_worker_find_rooms', { p_query: 'สมใจ' });
+  });
+  it('maps the new error tokens to Thai', async () => {
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'batch_too_large' } });
+    await expect(enqueueOutreach(['0811111111'], 'T1')).rejects.toThrow('เลือกลูกค้าเกินจำนวนสูงสุดต่อชุด');
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'template_not_found' } });
+    await expect(previewOutreach(['0811111111'], 'T1')).rejects.toThrow('ไม่พบ template นี้ หรือถูกปิดใช้งานแล้ว');
   });
 });

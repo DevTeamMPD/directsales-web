@@ -12,6 +12,7 @@ export const NAV: NavGroup[] = [
     items: [
       { key: 'mine', href: '/mine', label: 'ลูกค้าของฉัน', icon: PATHS.person },
       { key: 'pool', href: '/pool', label: 'ถังกลาง', icon: PATHS.list },
+      { key: 'outreach', href: '/outreach', label: 'ส่งข้อความ', icon: PATHS.send },
     ],
   },
   {

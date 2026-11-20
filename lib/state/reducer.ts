@@ -1,5 +1,5 @@
 import { upsertLead } from '@/lib/api/map';
-import type { Brand, Campaign, DemoCustomer, Lead, LeadJson, Rep } from '@/lib/api/types';
+import type { Brand, Campaign, DemoCustomer, Lead, LeadJson, OutreachDemo, Rep } from '@/lib/api/types';
 import { upsertRep } from '@/lib/domain/setup';
 
 export type PeriodKey = 'all' | 'today' | '7d' | 'm0' | 'm1' | 'y0' | 'month' | 'year' | 'custom';
@@ -30,6 +30,8 @@ export interface LoadedPayload {
   /** ลูกค้าของถัง/ตัวสร้างแคมเปญในโหมดตัวอย่าง — ล็อกอินจริง = [] (prototype loadLive L980) */
   customers: DemoCustomer[];
   today: string;
+  /** ข้อมูลตัวอย่างของหน้าส่งข้อความ (template / ชุดที่ส่ง / worker) — โหมด fixture เท่านั้น ล็อกอินจริงไม่มี */
+  outreachDemo?: OutreachDemo | null;
 }
 /** expired = session หมดอายุระหว่างใช้งาน (ต้องล็อกอินใหม่) */
 export type Phase = 'loading' | 'ready' | 'no-access' | 'inactive' | 'expired' | 'error';

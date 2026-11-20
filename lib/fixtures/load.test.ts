@@ -18,6 +18,14 @@ describe('fixturePayload', () => {
     expect(p.customers[0]).toMatchObject({ id: 'C5000', name: 'ธนากร รุ่งเรือง', phone: '0864355692', brand: 'bebeplay' });
   });
 
+  it('carries sample outreach templates, batches and worker status', () => {
+    const o = fixturePayload().outreachDemo;
+    expect(o?.templates.filter((t) => t.active).map((t) => t.brand)).toEqual(['bebeplay', 'hosttail']);
+    expect(o?.batches.map((b) => b.id)).toEqual(['ob-demo-1', 'ob-demo-2']);
+    expect(Object.keys(o?.details ?? {})).toEqual(['ob-demo-1', 'ob-demo-2']);
+    expect(o?.worker.settings).toMatchObject({ test_mode: true, max_batch: 50 });
+  });
+
   it('?claim=<leadId> claims that lead as Dev MPD (popup ยกเลิกจอง ใน e2e)', () => {
     expect(fixturePayload().leads.filter((l) => l.claimedBy)).toEqual([]);
     const l = fixturePayload('?claim=L1002').leads.find((x) => x.id === 'L1002');

@@ -1,0 +1,341 @@
+'use client';
+
+import { useEffect, useState, type FormEvent } from 'react';
+import { errorMessage } from '@/lib/api/errors';
+import { findWorkerRooms, getTemplates, getWorkerStatus, saveTemplate, setWorkerSettings } from '@/lib/api/rpc';
+import type { Template, WorkerRoom, WorkerStatus } from '@/lib/api/types';
+import { BRAND, FIXTURE_NO_WRITE, type Brand } from '@/lib/constants';
+import {
+  isWorkerOnline, renderTemplate, roomLabel, SAMPLE_VALUES, stamp, TEMPLATE_VARS, toggleRoom, upsertTemplate, validateSettings, validateTemplate,
+  workerStateBadge, workerStateLabel,
+} from '@/lib/domain/outreach';
+import { useActions, useAppState } from '@/lib/state/AppProvider';
+
+interface TplForm { id: string | null; name: string; body: string; active: boolean }
+const EMPTY_TPL: TplForm = { id: null, name: '', body: '', active: true };
+
+/**
+ * การ์ด Template ข้อความ (spec ข้อ 6.4): รายการต่อแบรนด์ (หัวหน้าเห็นที่ปิดใช้ด้วย), สร้าง/แก้/ปิด-เปิดใช้งาน (dsales_template_save)
+ * พร้อมตัวอย่างการแทนตัวแปรด้วยค่าตัวอย่างระหว่างพิมพ์
+ */
+export function TemplatePanel() {
+  const { live, outreachDemo } = useAppState();
+  const { toast, toastError, once, handleAuthError } = useActions();
+  const [liveList, setLiveList] = useState<Template[] | null>(null);
+  const [err, setErr] = useState('');
+  const [brand, setBrand] = useState<Brand>('bebeplay');
+  const [form, setForm] = useState<TplForm>(EMPTY_TPL);
+  const [formErr, setFormErr] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!live) return;
+    let alive = true;
+    getTemplates(null).then(
+      (l) => {
+        if (alive) setLiveList(l || []);
+      },
+      (e: unknown) => {
+        if (!alive || handleAuthError(e)) return;
+        setErr('โหลด template ไม่สำเร็จ: ' + errorMessage(e));
+        setLiveList([]);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [live, handleAuthError]);
+
+  const all = live ? liveList : outreachDemo?.templates ?? [];
+  const list = (all ?? []).filter((t) => t.brand === brand);
+  const preview = renderTemplate(form.body, SAMPLE_VALUES);
+
+  async function save(input: TplForm, done: string) {
+    if (!live) {
+      toast(FIXTURE_NO_WRITE);
+      return;
+    }
+    await once('template-save', async () => {
+      setSaving(true);
+      try {
+        const t = await saveTemplate({ ...input, brand });
+        setLiveList((l) => upsertTemplate(l ?? [], t));
+        setForm(EMPTY_TPL);
+        toast(done);
+      } catch (e) {
+        toastError(e);
+      } finally {
+        setSaving(false);
+      }
+    });
+  }
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const v = validateTemplate(form.name, form.body);
+    setFormErr(v ?? '');
+    if (v) return;
+    void save(form, form.id ? 'บันทึก template แล้ว' : 'สร้าง template แล้ว');
+  }
+
+  return (
+    <div className="panel" id="tpl-panel">
+      <div className="panel-h">
+        <h2>Template ข้อความ</h2>
+        <select className="select" id="tpl-brand" aria-label="แบรนด์ของ template" value={brand} onChange={(e) => { setBrand(e.target.value as Brand); setForm(EMPTY_TPL); }}>
+          {(Object.keys(BRAND) as Brand[]).map((b) => <option key={b} value={b}>{BRAND[b]}</option>)}
+        </select>
+      </div>
+      <div className="panel-b">
+        {err ? <div className="login-err">{err}</div> : null}
+        {all === null ? (
+          <p className="help">กำลังโหลด template…</p>
+        ) : list.length ? (
+          list.map((t) => (
+            <div key={t.id} className="list-row" data-tpl={t.id}>
+              <div>
+                <b>{t.name}</b>
+                <div className="sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.body}</div>
+              </div>
+              {t.active ? <span className="badge s-won plain">เปิดใช้</span> : <span className="badge s-new plain">ปิดใช้</span>}
+              <button className="btn sm" data-tpl-edit={t.id} disabled={saving} onClick={() => { setForm({ id: t.id, name: t.name, body: t.body, active: t.active }); setFormErr(''); }}>แก้ไข</button>
+              <button
+                className="btn sm" data-tpl-toggle={t.id} disabled={saving}
+                onClick={() => void save({ id: t.id, name: t.name, body: t.body, active: !t.active }, t.active ? 'ปิดใช้ template แล้ว' : 'เปิดใช้ template แล้ว')}
+              >
+                {t.active ? 'ปิดใช้' : 'เปิดใช้'}
+              </button>
+            </div>
+          ))
+        ) : (
+          <div className="empty" style={{ padding: 24 }}>ยังไม่มี template ของ {BRAND[brand]}</div>
+        )}
+        <form id="tpl-form" onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+          <div className="sub"><b>{form.id ? 'แก้ไข template' : `สร้าง template ใหม่ (${BRAND[brand]})`}</b></div>
+          <input className="input" id="tpl-name" placeholder="ชื่อ template เช่น ทักลูกค้าเก่า 6 เดือน" value={form.name} disabled={saving} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+          <textarea className="textarea" id="tpl-body" placeholder="ข้อความ ใช้ตัวแปร {ชื่อ} {สินค้าล่าสุด} {ร้าน} ได้" value={form.body} disabled={saving} onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))} />
+          <label className="switch">
+            <input type="checkbox" id="tpl-active" checked={form.active} disabled={saving} onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))} />
+            <span />
+            เปิดใช้งาน
+          </label>
+          {form.body.trim() ? (
+            <div className="chk" id="tpl-preview">
+              <div className="sub"><b>ตัวอย่าง</b> (ค่าตัวอย่าง)</div>
+              <div style={{ whiteSpace: 'pre-wrap' }}>{preview.text}</div>
+              {preview.unknown.length ? <div className="sub" style={{ color: 'var(--bad)' }}>ไม่รู้จักตัวแปร {preview.unknown.join(' ')} — จะส่งตามที่พิมพ์</div> : null}
+            </div>
+          ) : null}
+          {formErr ? <div className="login-err">{formErr}</div> : null}
+          <div className="toolbar">
+            <button className="btn primary" id="tpl-save" disabled={saving}>{saving ? 'กำลังบันทึก…' : form.id ? 'บันทึก template' : 'สร้าง template'}</button>
+            {form.id ? <button type="button" className="btn" id="tpl-cancel" disabled={saving} onClick={() => setForm(EMPTY_TPL)}>ยกเลิกแก้ไข</button> : null}
+          </div>
+        </form>
+        <p className="help" style={{ marginTop: 10 }}>
+          ตัวแปร: {TEMPLATE_VARS.map((v) => `${v.key} = ${v.label}`).join(' · ')} — ลูกค้าที่ไม่มีค่านั้นจะแทนด้วยข้อความว่าง เซลล์เห็นเฉพาะ template ที่เปิดใช้
+        </p>
+      </div>
+    </div>
+  );
+}
+
+interface SetForm { interval: string; lineCap: string; testMode: boolean; testMsIds: number[] }
+const toForm = (s: WorkerStatus): SetForm => ({
+  interval: String(s.settings.interval_seconds), lineCap: String(s.settings.line_monthly_cap), testMode: !!s.settings.test_mode, testMsIds: [...(s.settings.test_ms_ids ?? [])],
+});
+
+/**
+ * การ์ด Worker (spec ข้อ 6.4): สถานะ worker (ออนไลน์ = heartbeat < 3 นาที, state, session JST, ส่งชั่วโมงนี้, คิวรอ, error ล่าสุด)
+ * และตั้งค่า (dsales_worker_settings_set): ระยะห่าง, เพดาน LINE ต่อเดือน, โหมดทดสอบ + ห้องทดสอบ (ค้นด้วย dsales_worker_find_rooms)
+ */
+export function WorkerPanel() {
+  const { live, outreachDemo } = useAppState();
+  const { toast, toastError, once, handleAuthError } = useActions();
+  const [liveStatus, setLiveStatus] = useState<WorkerStatus | null>(null);
+  const [err, setErr] = useState('');
+  const [form, setForm] = useState<SetForm | null>(() => (!live && outreachDemo ? toForm(outreachDemo.worker) : null));
+  const [formErr, setFormErr] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [q, setQ] = useState('');
+  const [rooms, setRooms] = useState<WorkerRoom[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  // ป้ายของห้องที่เคยเห็นจากผลค้นหา (dsales_worker_status_get คืนแค่ ms_id ของห้องทดสอบ)
+  const [known, setKnown] = useState<ReadonlyMap<number, WorkerRoom>>(() => new Map((outreachDemo?.rooms ?? []).map((r) => [r.ms_id, r])));
+
+  useEffect(() => {
+    if (!live) return;
+    let alive = true;
+    getWorkerStatus().then(
+      (s) => {
+        if (!alive) return;
+        setLiveStatus(s);
+        setForm(toForm(s));
+      },
+      (e: unknown) => {
+        if (!alive || handleAuthError(e)) return;
+        setErr('โหลดสถานะ worker ไม่สำเร็จ: ' + errorMessage(e));
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [live, handleAuthError]);
+
+  const status = live ? liveStatus : outreachDemo?.worker ?? null;
+
+  async function onSearch(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const text = q.trim();
+    if (text.length < 2) {
+      setRooms([]);
+      return;
+    }
+    if (!live) {
+      setRooms((outreachDemo?.rooms ?? []).filter((r) => (r.customer || '').toLowerCase().includes(text.toLowerCase())));
+      return;
+    }
+    setSearching(true);
+    try {
+      const r = (await findWorkerRooms(text)) || [];
+      setRooms(r);
+      setKnown((m) => new Map([...m, ...r.map((x) => [x.ms_id, x] as const)]));
+    } catch (e2) {
+      toastError(e2);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function onSave(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!form) return;
+    const v = validateSettings(form);
+    setFormErr(v ?? '');
+    if (v) return;
+    if (!live) {
+      toast(FIXTURE_NO_WRITE);
+      return;
+    }
+    await once('worker-settings', async () => {
+      setSaving(true);
+      try {
+        const s = await setWorkerSettings({ interval: Number(form.interval), lineCap: Number(form.lineCap), testMode: form.testMode, testMsIds: form.testMsIds });
+        setLiveStatus(s);
+        setForm(toForm(s));
+        toast('บันทึกการตั้งค่า worker แล้ว');
+      } catch (e2) {
+        toastError(e2);
+      } finally {
+        setSaving(false);
+      }
+    });
+  }
+
+  const label = (id: number) => {
+    const r = known.get(id);
+    return r ? roomLabel(r) : `ห้อง ${id}`;
+  };
+
+  return (
+    <div className="panel" id="wk-panel">
+      <div className="panel-h"><h2>Worker ส่งข้อความ</h2></div>
+      <div className="panel-b">
+        {err ? <div className="login-err">{err}</div> : null}
+        {!status ? (
+          <p className="help">{err ? '' : 'กำลังโหลดสถานะ worker…'}</p>
+        ) : (
+          <>
+            {status.workers.length ? (
+              status.workers.map((w) => {
+                const on = isWorkerOnline(w);
+                return (
+                  <div key={w.worker_id} className="list-row" data-worker={w.worker_id}>
+                    <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', flex: 'none', background: on ? 'var(--ok)' : 'var(--bad)' }} />
+                    <div>
+                      <b>{w.worker_id}</b> <span className="sub">{on ? 'ออนไลน์' : 'ออฟไลน์'} · ล่าสุด {stamp(w.heartbeat_at)}</span>
+                      <div className="sub">
+                        JST {w.jst_session_ok ? 'เชื่อมต่อแล้ว' : 'ยังไม่ได้ล็อกอิน'} · ส่งชั่วโมงนี้ {Number(w.sent_last_hour || 0).toLocaleString('th-TH')} · คิวรอ {Number(w.queue_waiting || 0).toLocaleString('th-TH')}
+                      </div>
+                      {w.last_error ? <div className="sub" style={{ color: 'var(--bad)' }}>error ล่าสุด: {w.last_error}</div> : null}
+                    </div>
+                    <span className={`badge plain ${workerStateBadge(w.state)}`}>{workerStateLabel(w.state)}</span>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="empty" style={{ padding: 24 }}>ยังไม่มี worker ส่ง heartbeat เข้ามา</div>
+            )}
+            <p className="help" style={{ marginTop: 8 }}>
+              คิวรอ {status.queue.queued.toLocaleString('th-TH')} · กำลังส่ง {status.queue.sending.toLocaleString('th-TH')} · ส่งชั่วโมงนี้ {status.queue.sent_last_hour.toLocaleString('th-TH')} · LINE เดือนนี้ {status.queue.line_sent_this_month.toLocaleString('th-TH')}
+            </p>
+          </>
+        )}
+        {form ? (
+          <>
+            <form id="wk-form" noValidate onSubmit={(e) => void onSave(e)} style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+              <div className="form-grid">
+                <div className="field">
+                  <label htmlFor="wk-interval">ระยะห่างระหว่างข้อความ (วินาที)</label>
+                  <input className="input" id="wk-interval" type="number" min={5} max={3600} step={1} value={form.interval} disabled={saving} onChange={(e) => setForm((f) => f && { ...f, interval: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label htmlFor="wk-cap">เพดาน LINE ต่อเดือน (0 = ไม่จำกัด)</label>
+                  <input className="input" id="wk-cap" type="number" min={0} step={1} value={form.lineCap} disabled={saving} onChange={(e) => setForm((f) => f && { ...f, lineCap: e.target.value })} />
+                </div>
+              </div>
+              <label className="switch">
+                <input type="checkbox" id="wk-test" checked={form.testMode} disabled={saving} onChange={(e) => setForm((f) => f && { ...f, testMode: e.target.checked })} />
+                <span />
+                โหมดทดสอบ (ส่งทุกข้อความไปห้องทดสอบแทนลูกค้าจริง)
+              </label>
+              <div>
+                <div className="sub"><b>ห้องทดสอบ</b></div>
+                {form.testMsIds.length ? (
+                  <div className="toolbar" id="wk-rooms" style={{ marginTop: 6 }}>
+                    {form.testMsIds.map((id) => (
+                      <button key={id} type="button" className="chip active" data-room={id} title="กดเพื่อเอาออก" disabled={saving}
+                        style={{ whiteSpace: 'normal', textAlign: 'left', maxWidth: '100%' }} onClick={() => setForm((f) => f && { ...f, testMsIds: toggleRoom(f.testMsIds, id) })}>
+                        {label(id)} ✕
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="help">ยังไม่ได้เลือกห้องทดสอบ — โหมดทดสอบจะไม่ส่งข้อความใด ๆ</p>
+                )}
+              </div>
+              {formErr ? <div className="login-err">{formErr}</div> : null}
+              <div className="toolbar">
+                <button className="btn primary" id="wk-save" disabled={saving}>{saving ? 'กำลังบันทึก…' : 'บันทึกการตั้งค่า'}</button>
+              </div>
+            </form>
+            <form className="inline-form" id="wk-room-search" onSubmit={(e) => void onSearch(e)}>
+              <input className="input" id="wk-room-q" type="search" placeholder="ค้นห้องทดสอบด้วยชื่อลูกค้าในแชต (อย่างน้อย 2 ตัวอักษร)" value={q} onChange={(e) => setQ(e.target.value)} />
+              <button className="btn" disabled={searching}>{searching ? 'กำลังค้น…' : 'ค้นหา'}</button>
+            </form>
+            {rooms ? (
+              rooms.length ? (
+                <div id="wk-room-results" style={{ marginTop: 6 }}>
+                  {rooms.map((r) => {
+                    const on = form.testMsIds.includes(r.ms_id);
+                    return (
+                      <div key={r.ms_id} className="list-row" data-room-result={r.ms_id}>
+                        <div>{roomLabel(r)}<div className="sub">ข้อความล่าสุด {stamp(r.last_time)}</div></div>
+                        <button type="button" className={`btn sm${on ? ' danger' : ''}`} disabled={saving} onClick={() => setForm((f) => f && { ...f, testMsIds: toggleRoom(f.testMsIds, r.ms_id) })}>
+                          {on ? 'เอาออก' : 'เพิ่ม'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="help" style={{ marginTop: 6 }}>ไม่พบห้องที่ตรงกับคำค้น</p>
+              )
+            ) : null}
+            <p className="help" style={{ marginTop: 10 }}>เลือกห้อง/เอาห้องออกแล้วกด บันทึกการตั้งค่า · โหมดทดสอบส่งทุกข้อความไปห้องทดสอบห้องแรก พร้อมคำนำหน้า [ทดสอบ → ชื่อลูกค้า]</p>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}

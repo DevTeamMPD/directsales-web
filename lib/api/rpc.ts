@@ -4,8 +4,9 @@ import { db } from '@/lib/supabase/client';
 import { RpcError } from './errors';
 import { rowsTotal } from './map';
 import type {
-  CampaignRow, ChannelRowJson, ChatSessionJson, ContactType, JstTagRow, LeadJson, LeadStatus, MeRow, MemberJson, MemberTagsRow,
-  NewCampaign, PoolRowJson, PurchaseRowJson, TeamRow,
+  BatchDetail, BatchRow, CampaignRow, ChannelRowJson, ChatSessionJson, ContactType, EnqueueResult, JstTagRow, LeadJson, LeadStatus, MeRow,
+  MemberJson, MemberTagsRow, NewCampaign, PoolRowJson, PreviewRow, PurchaseRowJson, TeamRow, Template, TemplateInput, WorkerRoom,
+  WorkerSettingsInput, WorkerStatus,
 } from './types';
 
 type Result<T> = { data: T | null; error: { message: string; code?: string } | null; status?: number };
@@ -82,3 +83,19 @@ export async function setCampaignClaimMode(id: string, mode: ClaimMode): Promise
   const rows = unwrap<{ id: string }[]>(await db().from('dsales_campaigns').update({ claim_mode: mode }).eq('id', id).select('id'));
   if (!rows?.length) throw new RpcError('forbidden');
 }
+
+/* ---------- ส่งข้อความผ่าน JST worker (outreach contract ข้อ 2) ---------- */
+export const getTemplates = (brand: Brand | null) => call<Template[]>('dsales_templates_list', { p_brand: brand || null });
+export const saveTemplate = (t: TemplateInput) =>
+  call<Template>('dsales_template_save', { p_id: t.id, p_brand: t.brand, p_name: t.name.trim(), p_body: t.body, p_active: t.active });
+export const previewOutreach = (phones: string[], templateId: string) =>
+  call<PreviewRow[]>('dsales_outreach_preview', { p_phones: phones, p_template: templateId });
+export const enqueueOutreach = (phones: string[], templateId: string) =>
+  call<EnqueueResult>('dsales_enqueue_outreach', { p_phones: phones, p_template: templateId });
+export const getOutreachBatches = (limit = PAGE, offset = 0) => call<BatchRow[]>('dsales_outreach_batches_mine', { p_limit: limit, p_offset: offset });
+export const getOutreachBatch = (batchId: string) => call<BatchDetail>('dsales_outreach_batch', { p_batch: batchId });
+export const cancelOutreach = (ids: string[]) => call<number>('dsales_outreach_cancel', { p_ids: ids });
+export const getWorkerStatus = () => call<WorkerStatus>('dsales_worker_status_get', {});
+export const setWorkerSettings = (x: WorkerSettingsInput) =>
+  call<WorkerStatus>('dsales_worker_settings_set', { p_interval: x.interval, p_line_cap: x.lineCap, p_test_mode: x.testMode, p_test_ms_ids: x.testMsIds });
+export const findWorkerRooms = (query: string) => call<WorkerRoom[]>('dsales_worker_find_rooms', { p_query: query.trim() });

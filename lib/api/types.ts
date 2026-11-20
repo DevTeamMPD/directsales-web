@@ -89,3 +89,51 @@ export interface ChatSessionJson {
 }
 export interface JstTagRow { tag: string; sessions: number }
 export interface MemberTagsRow { user_id: string; jst_tags: string[] }
+
+/* ---------- ส่งข้อความผ่าน JST worker (docs/superpowers/plans/2026-11-20-outreach-contract.md) ---------- */
+/** เหตุผลที่ preview ข้ามลูกค้า (dsales_outreach_preview.skip) */
+export type OutreachSkip = 'customer_not_found' | 'taken' | 'already_queued' | 'no_chat_room' | 'window_closed';
+/** เหตุผลที่ enqueue ข้าม (preview + no_call / claim_failed) */
+export type EnqueueSkipReason = OutreachSkip | 'no_call' | 'claim_failed';
+export type OutreachStatus = 'queued' | 'sending' | 'sent' | 'failed' | 'cancelled';
+export type WorkerState = 'running' | 'paused' | 'needs_login' | 'stopped';
+
+export interface Template { id: string; brand: Brand; name: string; body: string; active: boolean; updated_at: string | null }
+export interface TemplateInput { id: string | null; brand: Brand; name: string; body: string; active: boolean }
+export interface PreviewRow {
+  phone: string; name: string | null; ms_id: number | null; page: string | null; provider: string | null; chat_name: string | null;
+  message: string | null; skip: OutreachSkip | null;
+}
+export interface SkippedPhone { phone: string; reason: string }
+export interface EnqueueResult { batch_id: string | null; queued: number; skipped: SkippedPhone[] }
+export interface OutreachCounts { queued: number; sending: number; sent: number; failed: number; cancelled: number }
+export interface BatchRow {
+  id: string; created_at: string; brand: Brand; requested_by: string | null; template_name: string | null; total: number;
+  /** จำนวนที่ถูกข้ามตอน enqueue */
+  skipped: number; counts: OutreachCounts;
+}
+export interface BatchItem {
+  id: string; phone: string; lead_id: string | null; ms_id: number | null; page: string | null; provider: string | null; chat_name: string | null;
+  message: string | null; status: OutreachStatus; attempts: number; error: string | null; enqueued_at: string | null; sent_at: string | null;
+}
+export interface BatchDetail {
+  batch: { id: string; created_at: string; brand: Brand; template_name: string | null; total: number; skipped: SkippedPhone[]; requested_by: string | null };
+  items: BatchItem[];
+}
+export interface WorkerRow {
+  worker_id: string; state: WorkerState; jst_session_ok: boolean | null; heartbeat_at: string | null; online: boolean;
+  sent_last_hour: number; queue_waiting: number; last_error: string | null;
+}
+export interface WorkerSettings { interval_seconds: number; line_monthly_cap: number; test_mode: boolean; test_ms_ids: number[]; max_batch: number }
+export interface WorkerStatus {
+  workers: WorkerRow[];
+  queue: { queued: number; sending: number; sent_last_hour: number; line_sent_this_month: number };
+  settings: WorkerSettings;
+}
+export interface WorkerSettingsInput { interval: number; lineCap: number; testMode: boolean; testMsIds: number[] }
+export interface WorkerRoom { ms_id: number; customer: string | null; channel: string | null; page: string | null; last_time: string | null }
+
+/** ข้อมูลตัวอย่างของหน้าส่งข้อความในโหมด fixture (ล็อกอินจริง = ไม่มี) */
+export interface OutreachDemo {
+  templates: Template[]; batches: BatchRow[]; details: Record<string, BatchDetail>; worker: WorkerStatus; rooms: WorkerRoom[];
+}
