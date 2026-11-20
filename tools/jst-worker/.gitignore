@@ -1,0 +1,5 @@
+# ความลับ (รหัสผ่าน JST/Supabase, cookie ของ JST) และ log — ห้าม commit
+config.json
+.session.json
+logs/
+node_modules/

@@ -1,0 +1,19 @@
+{
+  "name": "jst-worker",
+  "private": true,
+  "type": "module",
+  "description": "JST outreach worker — ดึงงานจาก Supabase แล้วส่งแชตผ่าน endpoint ภายในของ JST (ไม่ใช้ Playwright ในการส่ง)",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node worker.mjs",
+    "once": "node worker.mjs --once",
+    "import-session": "node import-session.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.0",
+    "playwright": "1.65.1"
+  }
+}

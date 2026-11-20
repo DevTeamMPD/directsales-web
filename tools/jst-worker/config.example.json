@@ -1,0 +1,15 @@
+{
+  "workerId": "worker-office-1",
+  "pollSeconds": 5,
+  "jst": {
+    "baseUrl": "https://asia-web.jsterp.com",
+    "accountId": "",
+    "password": ""
+  },
+  "supabase": {
+    "url": "https://nroyacasuchqniaiuirk.supabase.co",
+    "anonKey": "",
+    "email": "dev@mpdgroup.co",
+    "password": ""
+  }
+}
