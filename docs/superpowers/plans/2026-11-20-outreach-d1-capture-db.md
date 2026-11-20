@@ -33,8 +33,8 @@
 | `supabase/migrations/20261120100300_dsales_outreach_enqueue.sql` | `dsales_outreach_plan` (ภายใน), `dsales_outreach_preview`, `dsales_enqueue_outreach` |
 | `supabase/migrations/20261120100400_dsales_outreach_batches.sql` | `dsales_outreach_batches_mine`, `dsales_outreach_batch`, `dsales_outreach_cancel` |
 | `supabase/migrations/20261120100500_dsales_worker_rpcs.sql` | `dsales_worker_claim`, `dsales_worker_report`, `dsales_worker_heartbeat` |
-| `supabase/migrations/20261120100600_dsales_worker_settings.sql` | `dsales_worker_status_get`, `dsales_worker_settings_set` |
-| `supabase/tests/08_outreach_tables.sql` … `08f_worker_settings.sql` | test ต่อ migration |
+| `supabase/migrations/20261120100600_dsales_worker_settings.sql` | `dsales_worker_status_get`, `dsales_worker_settings_set`, `dsales_worker_find_rooms` (contract §1) |
+| `supabase/tests/08_outreach_tables.sql` … `08g_worker_settings.sql` | test ต่อ migration |
 | `docs/DATABASE.md`, `CLAUDE.md` (แก้) | รายการตาราง/RPC/migration ใหม่ |
 
 ค่าคงที่ที่ใช้ใน test: user_id ของ `dev@mpdgroup.co` = `431a49cf-1382-426a-bb61-4eec43a9279b` (admin คนเดียวใน `dsales_members` ณ 2026-11-20) — test หา admin จากตารางเอง ไม่ hard-code
@@ -193,6 +193,8 @@ git commit -m "docs(worker-spike): record the real JST login and SendMsg formats
 
 ## ฐานข้อมูล
 
+> **อัปเดต 2026-11-20 (apply แล้ว):** SQL ในแต่ละ Task ด้านล่างตรงกับไฟล์ที่ apply จริง รวมการเปลี่ยนตาม `2026-11-20-outreach-contract.md` §1 — คิวมี `test_redirect` / `target_ms_id`, โหมดทดสอบ = ส่งไปห้องทดสอบแทน (Task 6), เพิ่ม `dsales_worker_find_rooms` (Task 7)
+
 ### Task 1: ตารางคิว + settings + helper
 
 **Files:**
@@ -213,6 +215,11 @@ begin
   assert to_regclass('dsales.dsales_worker_status') is not null, 'dsales_worker_status missing';
   assert exists (select 1 from information_schema.columns where table_schema = 'dsales' and table_name = 'dsales_interactions' and column_name = 'outreach_id'),
          'dsales_interactions.outreach_id missing';
+  -- test mode redirect columns (contract §1)
+  assert exists (select 1 from information_schema.columns where table_schema = 'dsales' and table_name = 'dsales_outreach_queue'
+                 and column_name = 'test_redirect' and data_type = 'boolean' and is_nullable = 'NO'), 'queue.test_redirect missing';
+  assert exists (select 1 from information_schema.columns where table_schema = 'dsales' and table_name = 'dsales_outreach_queue'
+                 and column_name = 'target_ms_id' and data_type = 'bigint'), 'queue.target_ms_id missing';
   assert not has_table_privilege('authenticated', 'dsales.dsales_outreach_queue', 'select'), 'queue must not be readable by authenticated';
   assert not has_table_privilege('anon', 'dsales.dsales_templates', 'select'), 'templates must not be readable by anon';
   assert (select value from dsales.dsales_settings where key = 'outreach_test_mode') = 'true'::jsonb, 'test mode must default to true';
@@ -246,6 +253,8 @@ rollback;
 -- Batch outreach through the JST worker (spec 2026-11-20-jst-outreach-worker-design.md §4):
 -- templates, batches, the send queue, worker heartbeat, settings, and two internal helpers.
 -- All tables are reached through security definer RPCs only (no grants to anon/authenticated).
+-- Test mode redirects sends to a test room (contract 2026-11-20-outreach-contract.md §1):
+-- the queue records test_redirect and target_ms_id (the room actually messaged) at claim time.
 
 create table if not exists dsales.dsales_templates (
   id uuid primary key default gen_random_uuid(),
@@ -286,7 +295,9 @@ create table if not exists dsales.dsales_outreach_queue (
   locked_at timestamptz,
   locked_by text,
   sent_at timestamptz,
-  jst_msg_id text
+  jst_msg_id text,
+  test_redirect boolean not null default false,
+  target_ms_id bigint
 );
 create index if not exists dsales_outreach_queue_status_idx on dsales.dsales_outreach_queue (status, enqueued_at);
 create index if not exists dsales_outreach_queue_batch_idx on dsales.dsales_outreach_queue (batch_id);
@@ -412,7 +423,7 @@ rollback;
 -- Message templates per brand (admin manages, everyone reads active ones)
 
 create or replace function dsales.dsales_template_json(t dsales.dsales_templates) returns jsonb
-language sql immutable as $$
+language sql immutable set search_path = dsales, public as $$
   select jsonb_build_object('id', t.id, 'brand', t.brand, 'name', t.name, 'body', t.body, 'active', t.active, 'updated_at', t.updated_at)
 $$;
 revoke all on function dsales.dsales_template_json(dsales.dsales_templates) from public, anon, authenticated;
@@ -435,8 +446,8 @@ returns jsonb language plpgsql security definer set search_path = dsales, public
 declare me uuid := dsales.dsales_uid(); t dsales.dsales_templates;
 begin
   if not dsales.dsales_is_admin() then raise exception 'forbidden'; end if;
-  if p_brand not in ('bebeplay', 'hosttail') or nullif(btrim(coalesce(p_name, '')), '') is null
-     or nullif(btrim(coalesce(p_body, '')), '') is null or length(p_name) > 100 or length(p_body) > 2000 then
+  if coalesce(p_brand, '') not in ('bebeplay', 'hosttail') or nullif(btrim(coalesce(p_name, '')), '') is null
+     or nullif(btrim(coalesce(p_body, '')), '') is null or length(btrim(p_name)) > 100 or length(btrim(p_body)) > 2000 then
     raise exception 'invalid_template';
   end if;
   if p_id is null then
@@ -618,6 +629,7 @@ begin
   e := dsales.dsales_enqueue_outreach(v_phones || array[v_none], v_tpl);
   v_secs := extract(epoch from clock_timestamp() - v_t0);
   raise notice 'enqueue % phones took % s', cardinality(v_phones) + 1, round(v_secs, 2);
+  perform set_config('test.enqueue_secs', round(v_secs, 3)::text, true);
   assert v_secs < 5, format('enqueue too slow: %s s', v_secs);
   reset role;
 
@@ -647,7 +659,8 @@ rollback;
 -- Preview and enqueue a batch (spec §4.3). dsales_outreach_plan is the shared, read-only step:
 -- dedupe phones, check ownership, pick the room, render the template. Enqueue then claims pool
 -- customers (same rules as dsales_claim_customer) and writes the batch + queue rows.
--- "ห้ามโทร" (no_call) customers stay sendable: the flag only blocks phone calls.
+-- "ห้ามโทร" (no_call) leads the rep already owns stay sendable (the flag only blocks phone calls);
+-- an unowned no_call lead cannot be claimed, so enqueue skips it with reason no_call.
 
 create or replace function dsales.dsales_outreach_plan(p_phones text[], p_template uuid, p_me uuid)
 returns table (phone text, name text, lead_id uuid, ms_id bigint, page text, provider text, chat_name text, message text, skip text)
@@ -722,7 +735,10 @@ begin
       continue;
     end if;
     v_lead := x.lead_id;
-    select owner_id into v_owner from dsales.dsales_leads where id = v_lead;
+    v_owner := null;
+    if v_lead is not null then
+      select l.owner_id into v_owner from dsales.dsales_leads l where l.id = v_lead;
+    end if;
     if v_lead is null or v_owner is null then
       begin
         v_lead := (dsales.dsales_claim_customer(x.phone, t.brand) ->> 'id')::uuid;
@@ -791,6 +807,9 @@ begin
   assert n = 1, 'only the queued row is cancelled';
   perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
   assert jsonb_array_length(dsales.dsales_outreach_batches_mine(20, 0)) >= 1, 'admin sees all batches';
+  v_ok := false;
+  begin perform dsales.dsales_outreach_batch(gen_random_uuid()); exception when others then v_ok := sqlerrm = 'not_found'; end;
+  assert v_ok, 'unknown batch -> not_found';
   reset role;
   assert (select status from dsales.dsales_outreach_queue where id = v_q1) = 'cancelled', 'q1 cancelled';
   assert (select status from dsales.dsales_outreach_queue where id = v_q2) = 'sent', 'q2 untouched';
@@ -879,9 +898,12 @@ grant execute on function dsales.dsales_outreach_batches_mine(int, int), dsales.
 
 ```sql
 begin;
+-- worker claim / report / heartbeat: gate, single flight, pacing, rotation between reps,
+-- test mode = redirect to the first test room (contract §1), requeue cap, stale release
 do $$
 declare
-  v_admin uuid; v_s1 uuid; v_s2 uuid; v_tpl uuid; v_b1 uuid; v_b2 uuid; v_lead uuid; c jsonb; c2 jsonb; v_ok boolean; v_id uuid;
+  v_admin uuid; v_s1 uuid; v_s2 uuid; v_tpl uuid; v_b1 uuid; v_b2 uuid; v_lead1 uuid; v_lead2 uuid;
+  c jsonb; c2 jsonb; v_ok boolean; v_id uuid; v_m1 uuid;
 begin
   select user_id into v_admin from dsales.dsales_members where role = 'admin' and active order by created_at limit 1;
   select id into v_s1 from auth.users where id not in (select user_id from dsales.dsales_members) order by id limit 1;
@@ -889,20 +911,24 @@ begin
   insert into dsales.dsales_members (user_id, role, display_name, active) values (v_s1, 'sales', 'S1', true), (v_s2, 'sales', 'S2', true);
   -- clean slate for the worker gate and pacing (rolled back)
   update dsales.dsales_outreach_queue set status = 'cancelled' where status in ('queued', 'sending');
+  update dsales.dsales_outreach_queue set sent_at = now() - interval '1 day' where sent_at > now() - interval '1 day';
   update dsales.dsales_settings set value = '0'::jsonb where key = 'worker_interval_seconds';
+  update dsales.dsales_settings set value = '0'::jsonb where key = 'line_monthly_cap';
   update dsales.dsales_settings set value = 'true'::jsonb where key = 'outreach_test_mode';
-  update dsales.dsales_settings set value = '[111, 222, 333]'::jsonb where key = 'outreach_test_ms_ids';
+  update dsales.dsales_settings set value = '[999, 998]'::jsonb where key = 'outreach_test_ms_ids';
 
   insert into dsales.dsales_templates (brand, name, body, created_by) values ('bebeplay', 't', 'x', v_admin) returning id into v_tpl;
   insert into dsales.dsales_leads (source, brand, name, phone, phone_normalized, owner_id, claimed_by, claimed_at, created_by)
-    values ('self', 'bebeplay', 'ทดสอบ', '0899999991', '0899999991', v_s1, v_s1, now(), v_s1) returning id into v_lead;
+    values ('self', 'bebeplay', 'ทดสอบ1', '0899999991', '0899999991', v_s1, v_s1, now(), v_s1) returning id into v_lead1;
+  insert into dsales.dsales_leads (source, brand, name, phone, phone_normalized, owner_id, claimed_by, claimed_at, created_by)
+    values ('self', 'bebeplay', 'ทดสอบ2', '0899999992', '0899999992', v_s1, v_s1, now(), v_s1) returning id into v_lead2;
   insert into dsales.dsales_outreach_batches (requested_by, template_id, brand) values (v_s1, v_tpl, 'bebeplay') returning id into v_b1;
   insert into dsales.dsales_outreach_batches (requested_by, template_id, brand) values (v_s2, v_tpl, 'bebeplay') returning id into v_b2;
-  insert into dsales.dsales_outreach_queue (batch_id, lead_id, phone_normalized, ms_id, provider, message_text, requested_by, enqueued_at) values
-    (v_b1, v_lead, '0899999991', 111, 'Line', 'm1', v_s1, now() - interval '3 min'),
-    (v_b1, null,   '0899999992', 222, 'Line', 'm2', v_s1, now() - interval '2 min'),
-    (v_b2, null,   '0899999993', 333, 'Shopee', 'm3', v_s2, now() - interval '1 min'),
-    (v_b2, null,   '0899999994', 444, 'Line', 'm4', v_s2, now());   -- not in test ids -> never claimed in test mode
+  insert into dsales.dsales_outreach_queue (batch_id, lead_id, phone_normalized, ms_id, provider, chat_name, message_text, requested_by, enqueued_at) values
+    (v_b1, v_lead1, '0899999991', 111, 'Line', null, 'm1', v_s1, now() - interval '3 min'),
+    (v_b1, v_lead2, '0899999992', 222, 'Line', 'คุณสอง', 'm2', v_s1, now() - interval '2 min'),
+    (v_b2, null,    '0899999993', 333, 'Shopee', 'ลูกค้า ก', 'm3', v_s2, now() - interval '1 min'),
+    (v_b2, null,    '0899999994', 444, 'Line', '', 'm4', v_s2, now());
 
   set local role authenticated;
   -- sales cannot use worker RPCs
@@ -911,20 +937,31 @@ begin
   begin perform dsales.dsales_worker_claim('w1'); exception when others then v_ok := sqlerrm = 'not_worker'; end;
   assert v_ok, 'sales -> not_worker';
 
+  -- test mode with test rooms: oldest item, redirected to the first test room with a prefix
   perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
   c := dsales.dsales_worker_claim('w1');
+  assert (select array_agg(k order by k) from jsonb_object_keys(c) k)
+         = array['attempts', 'chat_name', 'enqueued_at', 'id', 'message', 'ms_id', 'page', 'provider', 'requested_by', 'target_ms_id', 'test_redirect'],
+         format('claim keys must match the contract, got %s', c);
   assert (c ->> 'ms_id')::bigint = 111 and (c ->> 'attempts')::int = 1, format('oldest first, got %s', c);
+  assert (c ->> 'target_ms_id')::bigint = 999 and (c ->> 'test_redirect')::boolean, format('redirected to the first test room, got %s', c);
+  assert c ->> 'message' = '[ทดสอบ → 0899999991] m1', format('prefix uses the phone when chat_name is empty, got %s', c ->> 'message');
+  v_m1 := (c ->> 'id')::uuid;
   -- single flight: nothing else is handed out while one is sending
   assert dsales.dsales_worker_claim('w1') is null, 'one item at a time';
-  perform dsales.dsales_worker_report((c ->> 'id')::uuid, 'sent', null, 'jst-1');
+  perform dsales.dsales_worker_report(v_m1, 'sent', null, 'jst-1');
   -- fairness: s1 just got a send, so s2's item comes next even though s1's m2 is older
   c2 := dsales.dsales_worker_claim('w1');
   assert (c2 ->> 'ms_id')::bigint = 333, format('rotate between reps, got %s', c2);
+  assert c2 ->> 'message' = '[ทดสอบ → ลูกค้า ก] m3', format('prefix uses chat_name, got %s', c2 ->> 'message');
   perform dsales.dsales_worker_report((c2 ->> 'id')::uuid, 'requeue', 'jst 500', null);
   c2 := dsales.dsales_worker_claim('w1');
-  assert (c2 ->> 'ms_id')::bigint in (222, 333), 'requeued item is claimable again';
+  assert (c2 ->> 'ms_id')::bigint = 333 and (c2 ->> 'attempts')::int = 2, format('requeued item is claimable again, got %s', c2);
   v_id := (c2 ->> 'id')::uuid;
   perform dsales.dsales_worker_report(v_id, 'failed', 'window_closed', null);
+  v_ok := false;
+  begin perform dsales.dsales_worker_report(v_id, 'sent', null, null); exception when others then v_ok := sqlerrm = 'invalid_state'; end;
+  assert v_ok, 'report on a non-sending item -> invalid_state';
 
   -- pacing: interval 60 s and a send just happened -> nothing
   reset role;
@@ -935,29 +972,56 @@ begin
   perform dsales.dsales_worker_heartbeat('w1', 'running', true, null);
   reset role;
 
-  assert (select status from dsales.dsales_outreach_queue where ms_id = 111) = 'sent', 'm1 sent';
-  assert (select jst_msg_id from dsales.dsales_outreach_queue where ms_id = 111) = 'jst-1', 'jst msg id stored';
-  assert exists (select 1 from dsales.dsales_interactions i join dsales.dsales_outreach_queue q on q.id = i.outreach_id
-                 where q.ms_id = 111 and i.type = 'chat' and i.rep_id = v_s1 and i.lead_id = v_lead), 'sent writes a chat interaction for the requester';
-  assert (select status from dsales.dsales_leads where id = v_lead) = 'following', 'new lead moves to following';
+  assert (select status from dsales.dsales_outreach_queue where id = v_m1) = 'sent', 'm1 sent';
+  assert (select jst_msg_id from dsales.dsales_outreach_queue where id = v_m1) = 'jst-1', 'jst msg id stored';
+  assert (select test_redirect and target_ms_id = 999 from dsales.dsales_outreach_queue where id = v_m1), 'queue row records the redirect';
+  assert not exists (select 1 from dsales.dsales_interactions i where i.outreach_id = v_m1), 'test-redirect send writes no interaction';
+  assert (select status from dsales.dsales_leads where id = v_lead1) = 'new', 'test-redirect send leaves the lead status';
   assert (select status from dsales.dsales_outreach_queue where id = v_id) = 'failed', 'failed recorded';
-  assert (select status from dsales.dsales_outreach_queue where ms_id = 444) = 'queued', 'test mode holds other rooms';
   assert (select state from dsales.dsales_worker_status where worker_id = 'w1') = 'running', 'heartbeat upserted';
 
-  -- stale sending (> 10 min) is released on the next claim; attempts cap at 3 -> failed
+  -- test mode without test rooms -> nothing is sent
   update dsales.dsales_settings set value = '0'::jsonb where key = 'worker_interval_seconds';
-  update dsales.dsales_outreach_queue set status = 'sending', locked_at = now() - interval '11 min', attempts = 1 where ms_id = 444;
-  update dsales.dsales_settings set value = '[444]'::jsonb where key = 'outreach_test_ms_ids';
-  update dsales.dsales_outreach_queue set sent_at = now() - interval '1 hour' where ms_id = 111;
+  update dsales.dsales_settings set value = '[]'::jsonb where key = 'outreach_test_ms_ids';
+  set local role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  assert dsales.dsales_worker_claim('w1') is null, 'test mode with no test rooms -> null';
+
+  -- normal mode: real room, message unchanged, sent writes an interaction for the requester
+  reset role;
+  update dsales.dsales_settings set value = 'false'::jsonb where key = 'outreach_test_mode';
+  update dsales.dsales_outreach_queue set sent_at = now() - interval '1 hour' where id = v_m1;
+  set local role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  c := dsales.dsales_worker_claim('w1');   -- s2 has no send yet -> m4 before s1's m2
+  assert (c ->> 'ms_id')::bigint = 444 and (c ->> 'target_ms_id')::bigint = 444 and not (c ->> 'test_redirect')::boolean,
+         format('normal mode targets the real room, got %s', c);
+  assert c ->> 'message' = 'm4', 'normal mode message has no prefix';
+  perform dsales.dsales_worker_report((c ->> 'id')::uuid, 'sent', null, 'jst-4');
+  c := dsales.dsales_worker_claim('w1');
+  assert (c ->> 'ms_id')::bigint = 222 and (c ->> 'target_ms_id')::bigint = 222 and c ->> 'message' = 'm2', format('m2 next, got %s', c);
+  perform dsales.dsales_worker_report((c ->> 'id')::uuid, 'sent', null, 'jst-2');
+  reset role;
+  assert exists (select 1 from dsales.dsales_interactions i where i.outreach_id = (c ->> 'id')::uuid
+                 and i.type = 'chat' and i.rep_id = v_s1 and i.lead_id = v_lead2), 'sent writes a chat interaction for the requester';
+  assert (select status from dsales.dsales_leads where id = v_lead2) = 'following', 'new lead moves to following';
+  assert (select not test_redirect from dsales.dsales_outreach_queue where id = (c ->> 'id')::uuid), 'normal send is not a redirect';
+
+  -- stale sending (> 10 min) is released on the next claim; attempts cap at 3 -> failed
+  update dsales.dsales_outreach_queue set status = 'sending', locked_at = now() - interval '11 min', attempts = 1 where ms_id = 333;
   set local role authenticated;
   perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
   c := dsales.dsales_worker_claim('w1');
-  assert (c ->> 'ms_id')::bigint = 444 and (c ->> 'attempts')::int = 2, format('stale item released and reclaimed, got %s', c);
+  assert (c ->> 'ms_id')::bigint = 333 and (c ->> 'attempts')::int = 2, format('stale item released and reclaimed, got %s', c);
   perform dsales.dsales_worker_report((c ->> 'id')::uuid, 'requeue', 'e', null);
   c := dsales.dsales_worker_claim('w1');
+  assert (c ->> 'attempts')::int = 3, format('third attempt, got %s', c);
   perform dsales.dsales_worker_report((c ->> 'id')::uuid, 'requeue', 'e', null);
+  v_ok := false;
+  begin perform dsales.dsales_worker_report((c ->> 'id')::uuid, 'bogus', null, null); exception when others then v_ok := sqlerrm = 'invalid_status'; end;
+  assert v_ok, 'unknown report status -> invalid_status';
   reset role;
-  assert (select status from dsales.dsales_outreach_queue where ms_id = 444) = 'failed', 'third failure -> failed';
+  assert (select status from dsales.dsales_outreach_queue where ms_id = 333) = 'failed', 'third failure -> failed';
   raise notice 'OK 08f_worker_rpcs';
 end $$;
 rollback;
@@ -970,8 +1034,12 @@ rollback;
 ```sql
 -- Worker side of the queue (spec §4.3, §5). Callers must be in worker_user_ids (dsales_worker_uid).
 -- claim: releases stale 'sending' rows (> 10 min), keeps one send in flight, paces sends by
--- worker_interval_seconds, rotates between reps (rep whose last send is oldest goes first),
--- honours test mode and the monthly LINE cap. report: sent / failed / requeue (max 3 attempts).
+-- worker_interval_seconds, rotates between reps (rep whose last send is oldest goes first) and
+-- honours the monthly LINE cap. report: sent / failed / requeue (max 3 attempts).
+-- Test mode = redirect (contract 2026-11-20-outreach-contract.md §1): with outreach_test_mode on,
+-- claim hands out items as usual but target_ms_id = the first room in outreach_test_ms_ids and the
+-- message gets a "[ทดสอบ → <chat name or phone>] " prefix; with no test rooms nothing is handed out.
+-- A redirected send is marked sent but writes no interaction and leaves the lead status alone.
 
 create or replace function dsales.dsales_worker_claim(p_worker text) returns jsonb
 language plpgsql security definer set search_path = dsales, public as $$
@@ -979,9 +1047,11 @@ declare
   me uuid := dsales.dsales_worker_uid();
   v_interval int := coalesce((dsales.dsales_setting('worker_interval_seconds') #>> '{}')::int, 60);
   v_test boolean := coalesce((dsales.dsales_setting('outreach_test_mode') #>> '{}')::boolean, true);
-  v_test_ids bigint[] := (select coalesce(array_agg(x::bigint), '{}') from jsonb_array_elements_text(coalesce(dsales.dsales_setting('outreach_test_ms_ids'), '[]'::jsonb)) x);
+  v_test_ids bigint[] := (select coalesce(array_agg(x.v::bigint order by x.n), '{}')
+                          from jsonb_array_elements_text(coalesce(dsales.dsales_setting('outreach_test_ms_ids'), '[]'::jsonb))
+                               with ordinality as x(v, n));
   v_line_cap int := coalesce((dsales.dsales_setting('line_monthly_cap') #>> '{}')::int, 0);
-  v_line_sent int; q dsales.dsales_outreach_queue;
+  v_line_sent int; v_id uuid; q dsales.dsales_outreach_queue;
 begin
   perform pg_advisory_xact_lock(hashtext('dsales_worker_claim'));
   update dsales.dsales_outreach_queue
@@ -989,6 +1059,7 @@ begin
          error = case when attempts >= 3 then coalesce(error, 'stale_sending') else error end,
          locked_at = null, locked_by = null
    where status = 'sending' and locked_at < now() - interval '10 minutes';
+  if v_test and cardinality(v_test_ids) = 0 then return null; end if;
   if exists (select 1 from dsales.dsales_outreach_queue where status = 'sending') then return null; end if;
   if v_interval > 0 and exists (select 1 from dsales.dsales_outreach_queue where sent_at > now() - make_interval(secs => v_interval)) then
     return null;
@@ -997,33 +1068,40 @@ begin
    where status = 'sent' and lower(provider) = 'line'
      and sent_at >= date_trunc('month', now() at time zone 'Asia/Bangkok') at time zone 'Asia/Bangkok';
 
-  select x.* into q from dsales.dsales_outreach_queue x
+  select x.id into v_id from dsales.dsales_outreach_queue x
    where x.status = 'queued'
-     and (not v_test or x.ms_id = any(v_test_ids))
      and (v_line_cap <= 0 or lower(coalesce(x.provider, '')) <> 'line' or v_line_sent < v_line_cap)
    order by (select max(y.sent_at) from dsales.dsales_outreach_queue y where y.requested_by = x.requested_by) asc nulls first,
             x.enqueued_at
    limit 1
    for update skip locked;
-  if not found then return null; end if;
+  if v_id is null then return null; end if;
 
-  update dsales.dsales_outreach_queue set status = 'sending', locked_at = now(), locked_by = left(p_worker, 100), attempts = attempts + 1
-   where id = q.id returning * into q;
-  return jsonb_build_object('id', q.id, 'ms_id', q.ms_id, 'page', q.page, 'provider', q.provider, 'chat_name', q.chat_name,
-                            'message', q.message_text, 'attempts', q.attempts, 'enqueued_at', q.enqueued_at, 'requested_by', q.requested_by);
+  update dsales.dsales_outreach_queue
+     set status = 'sending', locked_at = now(), locked_by = left(p_worker, 100), attempts = attempts + 1,
+         test_redirect = v_test, target_ms_id = case when v_test then v_test_ids[1] else ms_id end
+   where id = v_id returning * into q;
+  return jsonb_build_object(
+    'id', q.id, 'ms_id', q.ms_id, 'target_ms_id', q.target_ms_id, 'test_redirect', q.test_redirect,
+    'page', q.page, 'provider', q.provider, 'chat_name', q.chat_name,
+    'message', case when q.test_redirect
+                    then '[ทดสอบ → ' || coalesce(nullif(q.chat_name, ''), q.phone_normalized) || '] ' || q.message_text
+                    else q.message_text end,
+    'attempts', q.attempts, 'enqueued_at', q.enqueued_at, 'requested_by', q.requested_by);
 end $$;
 
 create or replace function dsales.dsales_worker_report(p_id uuid, p_status text, p_error text, p_jst_msg_id text) returns void
 language plpgsql security definer set search_path = dsales, public as $$
 declare me uuid := dsales.dsales_worker_uid(); q dsales.dsales_outreach_queue;
 begin
+  if coalesce(p_status, '') not in ('sent', 'failed', 'requeue') then raise exception 'invalid_status'; end if;
   select * into q from dsales.dsales_outreach_queue where id = p_id for update;
   if not found then raise exception 'not_found'; end if;
   if q.status <> 'sending' then raise exception 'invalid_state'; end if;
   if p_status = 'sent' then
     update dsales.dsales_outreach_queue set status = 'sent', sent_at = now(), jst_msg_id = left(p_jst_msg_id, 100), error = null,
            locked_at = null, locked_by = null where id = q.id;
-    if q.lead_id is not null then
+    if not q.test_redirect and q.lead_id is not null then
       insert into dsales.dsales_interactions (lead_id, type, result, note, rep_id, outreach_id)
       values (q.lead_id, 'chat', 'ส่งข้อความผ่าน worker', left(q.message_text, 500), q.requested_by, q.id);
       update dsales.dsales_leads set status = 'following', updated_at = now() where id = q.lead_id and status = 'new';
@@ -1031,13 +1109,11 @@ begin
   elsif p_status = 'failed' then
     update dsales.dsales_outreach_queue set status = 'failed', error = left(coalesce(p_error, 'failed'), 500),
            locked_at = null, locked_by = null where id = q.id;
-  elsif p_status = 'requeue' then
+  else -- requeue
     update dsales.dsales_outreach_queue
        set status = case when q.attempts >= 3 then 'failed' else 'queued' end,
            error = left(coalesce(p_error, 'retry'), 500), locked_at = null, locked_by = null
      where id = q.id;
-  else
-    raise exception 'invalid_status';
   end if;
 end $$;
 
@@ -1045,7 +1121,7 @@ create or replace function dsales.dsales_worker_heartbeat(p_worker text, p_state
 language plpgsql security definer set search_path = dsales, public as $$
 declare me uuid := dsales.dsales_worker_uid();
 begin
-  if p_state not in ('running', 'paused', 'needs_login', 'stopped') then raise exception 'invalid_state'; end if;
+  if coalesce(p_state, '') not in ('running', 'paused', 'needs_login', 'stopped') then raise exception 'invalid_state'; end if;
   insert into dsales.dsales_worker_status as w (worker_id, user_id, heartbeat_at, jst_session_ok, state, sent_last_hour, queue_waiting, last_error, updated_at)
   values (left(p_worker, 100), me, now(), coalesce(p_session_ok, false), p_state,
           (select count(*) from dsales.dsales_outreach_queue where status = 'sent' and sent_at > now() - interval '1 hour'),
@@ -1077,12 +1153,15 @@ grant execute on function dsales.dsales_worker_claim(text), dsales.dsales_worker
 ```sql
 begin;
 do $$
-declare v_admin uuid; v_sales uuid; j jsonb; v_ok boolean;
+declare v_admin uuid; v_sales uuid; j jsonb; v_ok boolean; v_q text; v_t0 timestamptz; v_secs numeric;
 begin
   select user_id into v_admin from dsales.dsales_members where role = 'admin' and active order by created_at limit 1;
   select id into v_sales from auth.users where id not in (select user_id from dsales.dsales_members) limit 1;
   insert into dsales.dsales_members (user_id, role, display_name, active) values (v_sales, 'sales', 'S1', true);
   insert into dsales.dsales_worker_status (worker_id, state, jst_session_ok, heartbeat_at) values ('w-test', 'running', true, now() - interval '5 min');
+  -- a real customer name prefix (2 chars) from the JST rooms
+  select left(btrim(s.customer), 2) into v_q from public.iim_sessions s
+  where length(btrim(coalesce(s.customer, ''))) >= 2 order by s.last_time desc nulls last limit 1;
 
   set local role authenticated;
   perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
@@ -1097,12 +1176,27 @@ begin
   begin perform dsales.dsales_worker_settings_set(1, 0, true, null); exception when others then v_ok := sqlerrm = 'invalid_setting'; end;
   assert v_ok, 'interval below 5 s rejected';
 
+  -- find rooms (admin): at most 20 rooms with the contract keys, fast
+  v_t0 := clock_timestamp();
+  j := dsales.dsales_worker_find_rooms(v_q);
+  v_secs := extract(epoch from clock_timestamp() - v_t0);
+  perform set_config('test.find_rooms_secs', round(v_secs, 3)::text, true);
+  assert v_secs < 2, format('find_rooms too slow: %s s', v_secs);
+  assert jsonb_typeof(j) = 'array' and jsonb_array_length(j) between 1 and 20, format('find_rooms returns 1..20 rooms, got %s', jsonb_array_length(j));
+  assert (select array_agg(k order by k) from jsonb_object_keys(j -> 0) k) = array['channel', 'customer', 'last_time', 'ms_id', 'page'],
+         format('find_rooms keys, got %s', j -> 0);
+  assert dsales.dsales_worker_find_rooms(left(v_q, 1)) = '[]'::jsonb, '1-char query -> []';
+  assert dsales.dsales_worker_find_rooms(null) = '[]'::jsonb, 'null query -> []';
+
   perform set_config('request.jwt.claims', json_build_object('sub', v_sales, 'role', 'authenticated')::text, true);
   j := dsales.dsales_worker_status_get();
   assert j ? 'workers', 'sales can read worker status';
   v_ok := false;
   begin perform dsales.dsales_worker_settings_set(60, 0, false, null); exception when others then v_ok := sqlerrm = 'forbidden'; end;
   assert v_ok, 'sales cannot change worker settings';
+  v_ok := false;
+  begin perform dsales.dsales_worker_find_rooms(v_q); exception when others then v_ok := sqlerrm = 'forbidden'; end;
+  assert v_ok, 'sales cannot search rooms';
   reset role;
   raise notice 'OK 08g_worker_settings';
 end $$;
@@ -1115,6 +1209,7 @@ rollback;
 
 ```sql
 -- Worker status card and settings on the web setup page (spec §6.4). Everyone reads; admins change.
+-- dsales_worker_find_rooms (contract §1): admins search JST rooms by customer name to pick test rooms.
 
 create or replace function dsales.dsales_worker_settings_json() returns jsonb
 language sql stable security definer set search_path = dsales, public as $$
@@ -1162,8 +1257,33 @@ begin
   return dsales.dsales_worker_status_get();
 end $$;
 
-revoke all on function dsales.dsales_worker_status_get(), dsales.dsales_worker_settings_set(int, int, boolean, bigint[]) from public, anon;
-grant execute on function dsales.dsales_worker_status_get(), dsales.dsales_worker_settings_set(int, int, boolean, bigint[]) to authenticated;
+-- Admin: find JST rooms by customer name (case-insensitive; name starts with / contains the query),
+-- newest activity first, at most 20. Queries shorter than 2 characters return [].
+create or replace function dsales.dsales_worker_find_rooms(p_query text) returns jsonb
+language plpgsql stable security definer set search_path = dsales, public as $$
+declare v_q text := btrim(coalesce(p_query, '')); v_pat text;
+begin
+  perform dsales.dsales_uid();
+  if not dsales.dsales_is_admin() then raise exception 'forbidden'; end if;
+  if length(v_q) < 2 then return '[]'::jsonb; end if;
+  v_pat := replace(replace(replace(v_q, '\', '\\'), '%', '\%'), '_', '\_');
+  return coalesce((
+    select jsonb_agg(jsonb_build_object('ms_id', r.ms_id, 'customer', r.customer, 'channel', r.channel, 'page', r.page,
+                                        'last_time', r.last_time) order by r.last_time desc nulls last)
+    from (
+      select s.ms_id, s.customer, s.channel, s.page, s.last_time
+      from public.iim_sessions s
+      where lower(btrim(s.customer)) like lower(v_pat) || '%' or s.customer ilike '%' || v_pat || '%'
+      order by s.last_time desc nulls last
+      limit 20
+    ) r
+  ), '[]'::jsonb);
+end $$;
+
+revoke all on function dsales.dsales_worker_status_get(), dsales.dsales_worker_settings_set(int, int, boolean, bigint[]),
+  dsales.dsales_worker_find_rooms(text) from public, anon;
+grant execute on function dsales.dsales_worker_status_get(), dsales.dsales_worker_settings_set(int, int, boolean, bigint[]),
+  dsales.dsales_worker_find_rooms(text) to authenticated;
 ```
 
 - [ ] **Step 4: dry-run** · Expected: `OK 08g_worker_settings`

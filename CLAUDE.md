@@ -73,13 +73,14 @@ docs/                           # spec, plan, DATABASE.md
 - **ของ Direct Sale อยู่ใน schema `dsales` เท่านั้น** (ชื่อขึ้นต้น `dsales_`) **ห้ามแก้ตาราง/function/view ของ schema อื่น** (`public`, `cdp`, `auth` …) อ่านได้อย่างเดียวผ่าน function `security definer` ใน `dsales`
 - เข้าใช้ได้เฉพาะสมาชิกใน `dsales.dsales_members` ที่ `active = true` (`dsales_uid()` โยน `not_member`) และต้องมีหัวหน้า active อย่างน้อย 1 คนเสมอ (`last_admin`)
 - RPC ใหม่ทุกตัว: `security definer`, `set search_path = dsales, public`, เรียก `dsales.dsales_uid()`, `revoke … from public, anon` แล้ว `grant execute … to authenticated`
-- **กฎความปลอดภัยสำหรับงานต่อไป:** RPC ใหม่ทุกตัวที่คืนข้อมูลลูกค้าต้องเรียก `dsales.dsales_uid()` (ประตูสมาชิกเท่านั้น) และ **ห้าม grant สิทธิ์ตารางภายใน** (`dsales_customer_base`, `dsales_chat_links`, `dsales_settings`) ให้ `authenticated`/`anon` เด็ดขาด
+- **กฎความปลอดภัยสำหรับงานต่อไป:** RPC ใหม่ทุกตัวที่คืนข้อมูลลูกค้าต้องเรียก `dsales.dsales_uid()` (ประตูสมาชิกเท่านั้น; RPC ของ worker ใช้ `dsales.dsales_worker_uid()`) และ **ห้าม grant สิทธิ์ตารางภายใน** (`dsales_customer_base`, `dsales_chat_links`, `dsales_settings`, `dsales_templates`, `dsales_outreach_batches`, `dsales_outreach_queue`, `dsales_worker_status`) ให้ `authenticated`/`anon` เด็ดขาด
 - Migration เพิ่มเติมที่มีอยู่แล้ว (นอกเหนือจาก `dsales_members_only`):
   - `20261117100100_dsales_access_hardening.sql` — RLS ต้องเป็นสมาชิก active ผ่าน `dsales.dsales_is_member()`, ห้ามเขียน `dsales_members` ตรง ๆ (ต้องผ่าน RPC), RPC จัดการสมาชิกใช้ advisory lock
   - `20261117100200_dsales_revoke_truncate.sql` — ถอน TRUNCATE/TRIGGER/REFERENCES จาก `authenticated`/`anon`
   - test คู่กัน: `supabase/tests/06_members_only.sql`, `supabase/tests/06b_access_hardening.sql`
   - `20261119120000_dsales_diff_refresh.sql` (มาจาก PR #3 บน `main`) — refresh เขียนเฉพาะแถวที่เปลี่ยน + cron เปลี่ยนเป็นวันละ 3 รอบ
   - `20261119130000_dsales_set_member_tags_fast.sql` — `dsales_set_member_tags` / `dsales_set_member_active` ไม่เรียก `dsales_refresh_customer_base()` แล้ว (หนัก เกิน `statement_timeout` 8 วินาทีของ `authenticated`) แต่อัปเดต `dsales_customer_base.owner_id` ในที่เดิมจาก `owner_tag` (~0.04 วินาที) บันทึก tag/ปิด-เปิดสมาชิกมีผลกับความเป็นเจ้าของทันที ส่วนการเปลี่ยน tag ฝั่ง JST ของลูกค้ายังรอ cron รอบถัดไป; test คู่กัน: `supabase/tests/07_member_tags_fast.sql`
+  - `20261120100000`–`20261120100600` (`dsales_outreach_tables`, `dsales_templates`, `dsales_outreach_room`, `dsales_outreach_enqueue`, `dsales_outreach_batches`, `dsales_worker_rpcs`, `dsales_worker_settings`) — คิวส่งข้อความเป็นชุดผ่าน JST worker: ตาราง `dsales_templates` / `dsales_outreach_batches` / `dsales_outreach_queue` / `dsales_worker_status` (ภายใน ไม่มี grant), RPC ของเว็บ (template, preview/enqueue, ความคืบหน้า/ยกเลิก, สถานะ/ตั้งค่า worker, `dsales_worker_find_rooms` ค้นห้องทดสอบ — หัวหน้าเท่านั้น) และของ worker (`dsales_worker_claim` / `_report` / `_heartbeat` ตรวจ `worker_user_ids` ผ่าน `dsales_worker_uid()`); **โหมดทดสอบเปิดเป็นค่าเริ่ม และ = ส่งไปห้องทดสอบแทน** (claim คืน `target_ms_id` = ห้องแรกใน `outreach_test_ms_ids` + ข้อความขึ้นต้น `[ทดสอบ → …]`, รายงาน sent ไม่เขียน interaction/ไม่เปลี่ยนสถานะลีด, ไม่มีห้องทดสอบ = claim คืน null) worker ต้องส่งไปที่ `target_ms_id` เสมอ; test คู่กัน `supabase/tests/08_*`–`08g_*`; สัญญา DB/worker/เว็บ `docs/superpowers/plans/2026-11-20-outreach-contract.md`
 - cron `dsales-refresh-customer-base` รันวันละ 3 รอบ 07:05, 12:05, 16:05 น. (`5 0,5,9 * * *` UTC, เปลี่ยนใน production 2026-11-19) และเขียนเฉพาะแถวที่เปลี่ยน — DB ใช้ร่วมหลายแอป อย่าเพิ่มรอบโดยไม่จำเป็น (ดู `docs/DATABASE.md` หัวข้อ 3)
 - `iim_messages.time` เร็วกว่าจริง 7 ชม. ให้ใช้ view `dsales.dsales_chat_messages_v`
 
@@ -140,6 +141,7 @@ TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtu
 - Spec หน้าเว็บ Next.js: `docs/superpowers/specs/2026-11-17-nextjs-frontend-design.md`
 - รายการ feature ของ prototype (อ้างเลขบรรทัด `legacy/app.js`): `docs/superpowers/specs/2026-11-17-prototype-inventory.md`
 - แผน: `docs/superpowers/plans/2026-11-17-dsales-phase-0-1.md` (DB เฟส 0–1), `docs/superpowers/plans/2026-11-17-nextjs-plan-a-foundation.md` (แผน A), `docs/superpowers/plans/2026-11-18-nextjs-plan-b-leads.md` (แผน B), `docs/superpowers/plans/2026-11-19-nextjs-plan-c1-campaigns-pool.md` / `2026-11-19-nextjs-plan-c2-dashboard-setup-deploy.md` (แผน C)
+- ส่งข้อความเป็นชุดผ่าน JST worker: spec `docs/superpowers/specs/2026-11-20-jst-outreach-worker-design.md`, แผน DB `docs/superpowers/plans/2026-11-20-outreach-d1-capture-db.md`, สัญญา DB/worker/เว็บ `docs/superpowers/plans/2026-11-20-outreach-contract.md`
 - ฐานข้อมูล: `docs/DATABASE.md` (schema `dsales`, สิทธิ์สมาชิก, RPC ทั้งหมด)
 - ตัวช่วยเปิดแชต JST บนเครื่องเซลล์: `tools/jst-helper/README.md`
 

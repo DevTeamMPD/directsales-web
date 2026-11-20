@@ -98,11 +98,26 @@ erDiagram
 | `dsales_members` | user_id, role (`admin`/`sales`), display_name, active, jst_tags[], created_at | อ่าน/แก้ผ่าน RPC เท่านั้น (ถอน insert/update/delete/truncate จาก `authenticated`) |
 | `dsales_campaigns` | id, brand, name, description, start_date, end_date, claim_mode (`self`/`assign`/`auto`), max_per_rep, criteria jsonb, active, created_by | RLS: อ่าน = สมาชิก active, insert/update = หัวหน้า (หน้าแคมเปญสร้าง, หน้าตั้งค่าแก้ `claim_mode`) |
 | `dsales_leads` | id, campaign_id, source (`self`/`campaign`), brand, name, phone, phone_normalized, identity_id, address, shop, chat_name, channels jsonb, owner_id, last_seller_id, claimed_by, claimed_at, status, callback_date, interest, closed_bills[], closed_amount, closed_at, no_call, no_call_by, no_call_at, released_by[], auto_skip, created_by | RLS อ่าน: หัวหน้าทุกแถว / สมาชิก active เฉพาะที่ตัวเองดูแล; เขียนผ่าน RPC |
-| `dsales_interactions` | id, lead_id, type (`call`/`chat`), result, note, bills[], due, rep_id, created_at | RLS ตามลีด; เขียนผ่าน `dsales_log` |
+| `dsales_interactions` | id, lead_id, type (`call`/`chat`), result, note, bills[], due, rep_id, created_at, outreach_id (→ `dsales_outreach_queue`, แถวที่ worker ส่งให้) | RLS ตามลีด; เขียนผ่าน `dsales_log` / `dsales_worker_report` |
 | `dsales_customer_base` | phone_normalized (PK), identity_id, name, chat_name, last_order_date, dormant_days, order_count, ltv, segment, rfm_segment, brands[], owner_tag, owner_id, eligible, refreshed_at | **ภายใน — ไม่มี grant ให้ `authenticated`/`anon`** อ่านผ่าน `dsales_base_customers` เท่านั้น (ดูหัวข้อ "ฐานลูกค้าและ cron" ด้านล่าง) |
 | `dsales_chat_links` | ms_id, phone_normalized, method, evidence, confidence, linked_at | ภายใน — ห้าม grant |
 | `dsales_settings` | key, value jsonb (เช่น `dormant_days`), updated_at | ภายใน — ห้าม grant |
 | `dsales_chat_messages_v` (view) | ข้อความแชต JST พร้อมเวลาที่แก้ความเร็วเกิน 7 ชม. แล้ว | ใช้ภายในฟังก์ชันตรวจแชต |
+| `dsales_templates` | id, brand, name, body, active, created_by, created_at, updated_at | ภายใน — ผ่าน RPC template เท่านั้น |
+| `dsales_outreach_batches` | id, requested_by, template_id, brand, total, skipped jsonb `[{phone, reason}]`, created_at | ภายใน — ผ่าน RPC outreach เท่านั้น |
+| `dsales_outreach_queue` | id, batch_id, lead_id, phone_normalized, ms_id, page, provider, chat_name, message_text, requested_by, status (`queued`/`sending`/`sent`/`failed`/`cancelled`), attempts, error, enqueued_at, locked_at, locked_by, sent_at, jst_msg_id, test_redirect, target_ms_id | ภายใน — ผ่าน RPC outreach / worker เท่านั้น |
+| `dsales_worker_status` | worker_id (PK), user_id, heartbeat_at, jst_session_ok, state (`running`/`paused`/`needs_login`/`stopped`), sent_last_hour, queue_waiting, last_error, updated_at | ภายใน — เขียนผ่าน `dsales_worker_heartbeat`, อ่านผ่าน `dsales_worker_status_get` |
+
+### คิวส่งข้อความ (outreach)
+
+migration `20261120100000`–`20261120100600` (test `supabase/tests/08_*`–`08g_*`), spec `docs/superpowers/specs/2026-11-20-jst-outreach-worker-design.md`, สัญญา DB/worker/เว็บ `docs/superpowers/plans/2026-11-20-outreach-contract.md`:
+- เซลล์เลือกลูกค้า (สูงสุด `outreach_max_batch` = 50 เบอร์) + template → `dsales_enqueue_outreach` จองลูกค้าจากถังให้เซลล์ (กติกาเดียวกับ `dsales_claim_customer`) แล้วเขียน batch + แถวคิว worker บนเครื่อง dev (บัญชีใน `worker_user_ids`) ดึงทีละรายการด้วย `dsales_worker_claim` ส่งผ่าน JST แล้วรายงานผล `dsales_worker_report`
+- 4 ตารางใหม่เปิด RLS แต่ไม่มี policy และไม่มี grant (ตั้งใจ ปิดการเข้าถึงตรง) — advisor แจ้ง `rls_enabled_no_policy` (INFO) เป็นเรื่องปกติ
+- ห้องแชตที่ส่ง (`dsales_outreach_room`): ห้องที่ผูกกับเบอร์ (`dsales_chat_links`) บนเพจของแบรนด์ (`page_brand_map`) LINE ก่อน → marketplace → Facebook/Instagram ห้องใหม่สุดก่อน; Facebook/Instagram ที่ลูกค้าไม่ได้ทักมาใน 24 ชม. ข้าม (`window_closed`) ไม่มีห้อง = `no_chat_room`
+- template แทนค่า `{ชื่อ}`, `{ร้าน}` (ชื่อเพจ), `{สินค้าล่าสุด}`
+- worker: ส่งทีละ 1 รายการ (`sending` ค้างเกิน 10 นาทีถูกปล่อยกลับคิว), เว้นระยะ `worker_interval_seconds` (ค่าเริ่ม 60), สลับเซลล์ (คนที่ส่งล่าสุดนานที่สุดก่อน), LINE ไม่เกิน `line_monthly_cap` ต่อเดือน (0 = ไม่จำกัด), requeue ได้สูงสุด 3 ครั้งแล้ว `failed` · ส่งสำเร็จ (โหมดปกติ) = เขียน `dsales_interactions` (`type = 'chat'`, `rep_id` = เซลล์ที่ขอ, `outreach_id`) และย้ายลีด `new` → `following`
+- **โหมดทดสอบ = ส่งไปห้องทดสอบแทน (เปิดเป็นค่าเริ่ม `outreach_test_mode = true`)**: claim คืนงานตามปกติแต่ `target_ms_id` = ห้องแรกใน `outreach_test_ms_ids` และข้อความขึ้นต้น `[ทดสอบ → <ชื่อแชตหรือเบอร์>] ` (คิวบันทึก `test_redirect = true`, `target_ms_id`) รายงาน `sent` ของรายการทดสอบไม่เขียน interaction และไม่เปลี่ยนสถานะลีด · โหมดทดสอบแต่ไม่มีห้องทดสอบ = claim คืน `null` (ไม่ส่งอะไร) · โหมดปกติ `target_ms_id = ms_id` · worker ต้องส่ง `message` ไปที่ `target_ms_id` เสมอ
+- settings ใหม่ใน `dsales_settings`: `worker_user_ids` (`["<uid ของ dev@mpdgroup.co>"]`), `worker_interval_seconds` 60, `outreach_max_batch` 50, `outreach_test_mode` true, `outreach_test_ms_ids` `[]`, `line_monthly_cap` 0, `page_brand_map` (`{bebeplay: [...], hosttail: [...]}`)
 
 ### สิทธิ์เข้าใช้ (members-only)
 
@@ -144,8 +159,15 @@ migration `20261117100000_dsales_members_only.sql`, `20261117100100_dsales_acces
 | `dsales_register()` | ตรวจสิทธิ์เท่านั้น (ไม่เพิ่มสมาชิกแล้ว) | — |
 | `dsales_refresh_customer_base()`, `dsales_seed_chat_links_by_name()` | งานเบื้องหลัง (pg_cron วันละ 3 รอบ) — ไม่มี grant ให้ `authenticated` | — |
 | `dsales_lead_json`, `dsales_norm_phone`, `dsales_norm_platform`, `dsales_valid_phone`, `dsales_touch_updated_at` | helper / trigger | — |
+| `dsales_templates_list(p_brand)` / `dsales_template_save(p_id, p_brand, p_name, p_body, p_active)` | template ข้อความต่อแบรนด์ (เซลล์เห็นเฉพาะ active; หัวหน้าสร้าง/แก้ — `forbidden`, `invalid_template`, `not_found`) | หน้าตั้งค่า, popup ส่งข้อความ |
+| `dsales_outreach_preview(p_phones, p_template)` / `dsales_enqueue_outreach(p_phones, p_template)` | ดูตัวอย่างข้อความ + ห้อง + เหตุผลที่ข้าม (`customer_not_found`, `taken`, `already_queued`, `no_chat_room`, `window_closed`) / จองลูกค้าแล้วเข้าคิว (`{batch_id, queued, skipped}` เพิ่ม `no_call`, `claim_failed`) · `template_not_found`, `batch_too_large` | popup ส่งข้อความใน `/mine` `/pool` |
+| `dsales_outreach_batches_mine(p_limit, p_offset)` / `dsales_outreach_batch(p_batch)` / `dsales_outreach_cancel(p_ids)` | รายการชุดส่ง + จำนวนตามสถานะ (หัวหน้าเห็นทุกชุด) / รายละเอียดชุด (`not_found`, `forbidden`) / ยกเลิกรายการที่ยัง `queued` | หน้า `/outreach` |
+| `dsales_worker_status_get()` / `dsales_worker_settings_set(p_interval, p_line_cap, p_test_mode, p_test_ms_ids)` | สถานะ worker (online = heartbeat ไม่เกิน 3 นาที) + คิว + ค่าตั้ง / หัวหน้าตั้งค่า (`forbidden`, `invalid_setting`: interval 5–3600, cap ≥ 0) | หน้าตั้งค่า (การ์ด Worker) |
+| `dsales_worker_find_rooms(p_query)` | หัวหน้าค้นห้องใน `public.iim_sessions` ด้วยชื่อลูกค้า (ขึ้นต้น/มีคำนั้น ไม่สนตัวพิมพ์) สูงสุด 20 ห้อง ใหม่สุดก่อน → `[{ms_id, customer, channel, page, last_time}]` · คำค้นสั้นกว่า 2 ตัว = `[]` · `forbidden` (~0.1 วินาที) | หน้าตั้งค่า (เลือกห้องทดสอบ) |
+| `dsales_worker_claim(p_worker)` / `dsales_worker_report(p_id, p_status, p_error, p_jst_msg_id)` / `dsales_worker_heartbeat(p_worker, p_state, p_session_ok, p_last_error)` | **worker เท่านั้น** (ตรวจ `worker_user_ids` ด้วย `dsales_worker_uid()` → `not_worker`): ดึงงานถัดไป (`{id, ms_id, target_ms_id, test_redirect, page, provider, chat_name, message, attempts, enqueued_at, requested_by}` หรือ `null`) / รายงาน `sent`·`failed`·`requeue` (`not_found`, `invalid_state`, `invalid_status`) / heartbeat | `tools/jst-worker` (แผน D2) |
+| `dsales_outreach_room`, `dsales_outreach_plan`, `dsales_setting`, `dsales_template_json`, `dsales_worker_settings_json` | ภายใน (ไม่มี grant ให้ `authenticated`) | — |
 
-ทุก migration อยู่ใน `supabase/migrations/` (เริ่มจาก `20261117090000_baseline_public_dsales_functions.sql`) พร้อม SQL test ใน `supabase/tests/` (`01`–`07`) — ขั้นตอนเพิ่ม migration ดู `CLAUDE.md`
+ทุก migration อยู่ใน `supabase/migrations/` (เริ่มจาก `20261117090000_baseline_public_dsales_functions.sql`) พร้อม SQL test ใน `supabase/tests/` (`01`–`08g`) — ขั้นตอนเพิ่ม migration ดู `CLAUDE.md`
 
 ## 5. ข้อสังเกต / สิ่งที่ต้องแก้
 
