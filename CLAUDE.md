@@ -163,4 +163,5 @@ TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtu
 - โหมด `auto` ยังอ่านเป็น `self` และปุ่ม "จัดสรรให้เซลล์ที่ขายล่าสุด" ขึ้น "ไม่มีลีดที่ต้องจัดสรร" เสมอ (ยังไม่มีการผูกผู้ขายล่าสุดกับเซลล์)
 - ผลตรวจทักแชตไม่ถูกบันทึกลง DB (ดู `docs/DATABASE.md` ข้อ 5.5)
 - `dsales_set_member_tags` / `dsales_set_member_active` ยังไม่ถือ advisory lock ของ refresh: ถ้าหัวหน้าบันทึกตรงกับช่วง ~3 วินาทีที่ cron รัน owner_id อาจถูกเขียนทับด้วยค่าเก่าจนถึงรอบถัดไป (เติม `pg_advisory_xact_lock(hashtext('dsales_refresh_customer_base'))`) และ `set_member_tags` ยังไม่ถือ `dsales_admin_guard` lock
+- **RFM segment แบบระบบเก่า (ทำหลังจบงาน worker ทักแชต):** นิยามกลุ่ม + แคมเปญแนะนำ อยู่ใน `docs/superpowers/specs/2026-11-20-rfm-segments-backlog.md`
 - `getMyLeads(1000, 0)` โหลดลีดสูงสุด 1,000 แถว Dashboard และ /leads จะตัดเงียบเมื่อเกิน
