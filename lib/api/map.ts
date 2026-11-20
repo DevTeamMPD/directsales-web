@@ -1,6 +1,8 @@
+import { PLAT, type Brand } from '@/lib/constants';
 import { localStamp } from '@/lib/format';
 import type {
-  Campaign, CampaignRow, Channel, ChannelRowJson, Lead, LeadJson, MeRow, PoolRow, PoolRowJson, Purchase, PurchaseRowJson, Rep, TeamRow,
+  Campaign, CampaignRow, Channel, ChannelRowJson, ChatRoom, ChatRoomJson, Lead, LeadJson, MeRow, PoolRow, PoolRowJson, Purchase, PurchaseRowJson,
+  Rep, TeamRow,
 } from './types';
 
 /** dsales_lead_json → Lead (prototype mapLead L943-946) + claimedAtIso สำหรับส่งกลับ server */
@@ -63,7 +65,22 @@ export function mapPoolRow(r: PoolRowJson, meId: string): PoolRow {
     taken: r.taken ? (r.mine ? meId : 'other') : null,
     dormantDays: r.dormant_days ?? null,
     ownerTag: r.owner_tag ?? null,
+    chatRooms: (r.chat_rooms || []).map(mapChatRoom),
+    chatBrands: (r.chat_brands || []).filter(isBrand),
   };
+}
+
+const isBrand = (b: string | null | undefined): b is Brand => b === 'bebeplay' || b === 'hosttail';
+
+/** provider ของ iim_sessions (Line / LineOA / Shopee …) → key ของ PLAT (ใช้กับไอคอน); ไม่รู้จัก = ตัวพิมพ์เล็กเดิม */
+export function normProvider(p: string | null | undefined): string {
+  const key = String(p ?? '').toLowerCase().replace(/\s+/g, '');
+  return (Object.keys(PLAT) as string[]).find((k) => key.startsWith(k)) || key || 'other';
+}
+
+export function mapChatRoom(r: ChatRoomJson): ChatRoom {
+  const brand = isBrand(r.brand) ? r.brand : null;
+  return { msId: Number(r.ms_id), provider: normProvider(r.provider), page: r.page || '', brand, sendable: !!r.sendable && brand !== null };
 }
 
 /** total_count ของผลค้นหา (มีเฉพาะเมื่อหน้านั้นมีแถว) */

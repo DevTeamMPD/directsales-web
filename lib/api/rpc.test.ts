@@ -54,9 +54,21 @@ describe('rpc wrappers', () => {
   it('normalizes phone searches for mine/pool', async () => {
     rpc.mockResolvedValue({ data: [], error: null });
     await getBaseCustomers('pool', { search: '+66 81-234-5678', brand: 'bebeplay' });
-    expect(rpc).toHaveBeenCalledWith('dsales_base_customers', { p_scope: 'pool', p_search: '0812345678', p_limit: 50, p_offset: 0, p_brand: 'bebeplay' });
+    expect(rpc).toHaveBeenCalledWith('dsales_base_customers', {
+      p_scope: 'pool', p_search: '0812345678', p_limit: 50, p_offset: 0, p_brand: 'bebeplay', p_filters: {},
+    });
     await getBaseCustomers('mine', { search: '  ' });
-    expect(rpc).toHaveBeenLastCalledWith('dsales_base_customers', { p_scope: 'mine', p_search: null, p_limit: 50, p_offset: 0, p_brand: null });
+    expect(rpc).toHaveBeenLastCalledWith('dsales_base_customers', { p_scope: 'mine', p_search: null, p_limit: 50, p_offset: 0, p_brand: null, p_filters: {} });
+  });
+  it('sends the filters of mine/pool as p_filters', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    await getBaseCustomers('pool', { offset: 50, filters: { rfm: ['Loyal', ''], dormant_min: 91, dormant_max: 180, has_chat: true, sort: 'dormant_desc' } });
+    expect(rpc).toHaveBeenCalledWith('dsales_base_customers', {
+      p_scope: 'pool', p_search: null, p_limit: 50, p_offset: 50, p_brand: null,
+      p_filters: { rfm: ['Loyal', ''], dormant_min: 91, dormant_max: 180, has_chat: true, sort: 'dormant_desc' },
+    });
+    await getBaseCustomers('pool', { filters: null });
+    expect(rpc).toHaveBeenLastCalledWith('dsales_base_customers', expect.objectContaining({ p_filters: {} }));
   });
   it('throws the Thai message of the RPC error', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'customer_not_found' } });

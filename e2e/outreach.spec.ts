@@ -54,32 +54,83 @@ for (const s of SIZES) {
       await page.locator('#base-sel-page').uncheck();
       await expect(page.locator('#sel-bar')).toHaveCount(0);
 
+      // แถว 1-2 = ลูกค้า Hosttail (มีห้อง Hosttail เท่านั้น), แถว 11 = ลูกค้า Bebeplay ที่มีห้อง LINE ของ Hosttail ด้วย (fixture chat_rooms)
       await boxes.nth(0).check();
       await boxes.nth(1).check();
+      await boxes.nth(10).check();
+      await expect(page.locator('#sel-bar b')).toHaveText('เลือก 3 คน');
       await page.locator('#sel-send').click();
       const modal = page.locator('.modal');
       await expect(modal.locator('h3')).toHaveText('ส่งข้อความ');
-      await expect(page.locator('#so-brand')).toHaveValue('bebeplay');
-      await expect(page.locator('#so-template option')).toHaveText(['ทักลูกค้าเก่า 6 เดือน']);
-      // ลูกค้า 2 คนแรกของถังกลาง (fixture) เป็นลูกค้า Hosttail → template Bebeplay ไม่มีห้องแชตของแบรนด์ = ข้ามทั้งหมด
-      await expect(page.locator('#so-summary')).toHaveText('จะส่ง 0 รายการ · ข้าม 2 รายการ');
-      await expect(page.locator('[data-skip] .badge')).toHaveText(['ไม่พบห้องแชตของแบรนด์นี้', 'ไม่พบห้องแชตของแบรนด์นี้']);
-      await expect(page.locator('#so-send')).toBeDisabled();
-
-      await page.locator('#so-brand').selectOption('hosttail');
+      // แบรนด์เริ่มต้น = แบรนด์ที่คนที่เลือกมีห้องแชตมากที่สุด
+      await expect(page.locator('#so-brand')).toHaveValue('hosttail');
+      await expect(page.locator('#so-brand-hint')).toHaveText('1 คนมีห้องของ Bebeplay · 3 คนมีห้องของ Hosttail');
       await expect(page.locator('#so-template option')).toHaveText(['ทาสแมวกลับมาซื้อ']);
-      await expect(page.locator('#so-summary')).toContainText('จะส่ง');
-      const sendable = await page.locator('[data-preview]').count();
-      const skipped = await page.locator('[data-skip]').count();
-      expect(sendable + skipped).toBe(2);
-      expect(sendable).toBeGreaterThan(0);
+      await expect(page.locator('#so-summary')).toHaveText('จะส่ง 3 รายการ · ข้าม 0 รายการ');
       await expect(page.locator('[data-preview]').first()).toContainText('สวัสดีครับ');
-      await expect(page.locator('#so-send')).toHaveText(`ส่ง ${sendable} รายการ`);
+      await expect(page.locator('#so-send')).toHaveText('ส่ง 3 รายการ');
+
+      // เปลี่ยนเป็น Bebeplay: ลูกค้า Hosttail ถูกข้าม พร้อมบอกว่ามีห้องของอีกแบรนด์
+      await page.locator('#so-brand').selectOption('bebeplay');
+      await expect(page.locator('#so-template option')).toHaveText(['ทักลูกค้าเก่า 6 เดือน']);
+      await expect(page.locator('#so-summary')).toHaveText('จะส่ง 1 รายการ · ข้าม 2 รายการ');
+      await expect(page.locator('[data-skip] .badge')).toHaveText(['มีห้องแชตของ Hosttail — เปลี่ยนแบรนด์ด้านบน', 'มีห้องแชตของ Hosttail — เปลี่ยนแบรนด์ด้านบน']);
+      await expect(page.locator('#so-send')).toHaveText('ส่ง 1 รายการ');
       await settle(page);
       await expect.soft(modal).toHaveScreenshot(['app', `send-outreach-${s.tag}.png`], OWN);
       await expect(page.locator('#so-send')).toBeEnabled();
       await page.locator('#so-send').click();
       await expect(page.locator('#toast')).toHaveText(FIXTURE_NO_WRITE);
+    });
+
+    test('pool filters change the result count and the rows show the contact channels', async ({ page }) => {
+      await page.goto(`${APP}/pool`);
+      await expect(page.locator('#view tbody tr')).toHaveCount(50, { timeout: 60_000 });
+      await expect(page.locator('#base-count')).toHaveText('พบ 67 คน');
+      await expect(page.locator('#base-clear')).toBeDisabled();
+      await expect(page.locator('[data-rfm]')).toHaveText(['Loyal', 'Potential', 'Promising', 'At Risk', 'Hibernating', 'Unscored', 'ยังไม่จัดกลุ่ม']);
+      await expect(page.locator('#base-sort option')).toHaveText(['มูลค่าสูงสุด', 'หายนานสุด', 'เพิ่งหายไป', 'ซื้อล่าสุด', 'ซื้อบ่อยสุด']);
+      await expect(page.locator('#base-tag')).toBeVisible(); // Dev MPD เป็นหัวหน้า
+
+      // คอลัมน์ช่องทาง: ปุ่มโทร + ไอคอนห้องแชตทุกแถว ห้องที่ worker ส่งไม่ได้แสดงจางพร้อมเหตุผล
+      const first = page.locator('#view tbody tr').first();
+      await expect(first.locator('td').nth(2).locator('[data-call]')).toHaveCount(1);
+      await expect(first.locator('[data-room] img')).toHaveCount(3);
+      expect(JSON.parse((await first.locator('[data-room]').first().getAttribute('data-t')) ?? '{}')).toMatchObject({
+        shop: 'LOA_hosttail', platform: 'line', brand: 'hosttail', chat: 'mom_ploy150_loa',
+      });
+      await expect(page.locator('#view tbody tr').nth(2).locator('[data-sendable="0"]')).toHaveCount(2);
+      await expect(page.locator('#view tbody tr').nth(2).locator('[data-sendable="0"]').last()).toHaveAttribute('title', /เพจนอกแบรนด์/);
+      await expect(page.locator('#view tbody tr').nth(2).locator('[data-sendable="0"]').first()).toHaveAttribute('title', /เกิน 24 ชม\. ส่งผ่าน worker ไม่ได้/);
+
+      // ที่ติ๊กไว้คงอยู่หลังเปลี่ยนตัวกรอง
+      await page.locator('#view tbody input[data-sel]').first().check();
+      await page.locator('[data-rfm=Loyal]').click();
+      await expect(page.locator('[data-rfm=Loyal]')).toHaveClass(/active/);
+      await expect(page.locator('#base-count')).toHaveText('พบ 3 คน');
+      await expect(page.locator('#view tbody tr')).toHaveCount(3);
+      expect(new Set(await page.locator('#view tbody tr td:nth-child(5)').allInnerTexts())).toEqual(new Set(['Loyal']));
+      await expect(page).toHaveURL(/\/pool\?rfm=Loyal$/);
+      await expect(page.locator('#sel-bar b')).toHaveText('เลือก 1 คน');
+      await expect(page.locator('#base-clear')).toBeEnabled();
+
+      await page.locator('#base-chat').click();
+      await page.locator('#base-provider').selectOption('facebook');
+      await expect(page.locator('#base-count')).toHaveText('พบ 2 คน');
+      for (const tr of await page.locator('#view tbody tr').all()) await expect(tr.locator('[data-room] img[alt=Facebook]').first()).toBeVisible();
+
+      await page.locator('#base-clear').click();
+      await expect(page.locator('#base-count')).toHaveText('พบ 67 คน');
+      await expect(page.locator('[data-rfm=Loyal]')).not.toHaveClass(/active/);
+      await expect(page).toHaveURL(/\/pool$/);
+
+      await page.locator('#base-dormant').selectOption('366-');
+      await page.locator('#base-sort').selectOption('dormant_desc');
+      await expect(page.locator('#base-count')).toHaveText(/^พบ \d+ คน$/);
+      const days = (await page.locator('#view tbody tr td:nth-child(4) > div').allInnerTexts()).map((t) => Number(t.replace(/\D/g, '')));
+      expect(days.length).toBeGreaterThan(0);
+      expect(days.every((d) => d > 365)).toBe(true);
+      expect(days).toEqual([...days].sort((a, b) => b - a));
     });
 
     test('outreach page lists the batches and opens the batch detail', async ({ page }) => {

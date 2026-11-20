@@ -7,7 +7,9 @@ import { errorMessage } from '@/lib/api/errors';
 import { enqueueOutreach, getMyLeads, getTemplates, previewOutreach } from '@/lib/api/rpc';
 import type { EnqueueResult, PreviewRow, Template } from '@/lib/api/types';
 import { BRAND, FIXTURE_NO_WRITE, type Brand } from '@/lib/constants';
-import { activeTemplates, channelLabel, demoPreview, skipLabel, splitPreview, type SelRow } from '@/lib/domain/outreach';
+import {
+  activeTemplates, brandRoomCounts, brandRoomHint, channelLabel, demoPreview, skipLabel, skipReasonText, splitPreview, type SelRow,
+} from '@/lib/domain/outreach';
 import { useActions, useAppState, useModalSeq } from '@/lib/state/AppProvider';
 
 /** แสดงข้อความเต็มของ 5 รายการแรก ที่เหลือพับไว้ (กดเปิดดูทีละรายการ) */
@@ -16,6 +18,8 @@ const EXPANDED = 5;
 /**
  * popup ส่งข้อความ (spec ข้อ 6.2): เลือกแบรนด์ + template ที่เปิดใช้ → dsales_outreach_preview → ตัวอย่างข้อความรายคน + รายการที่ถูกข้าม
  * → "ส่ง N รายการ" (dsales_enqueue_outreach จองลูกค้าจากถังกลางในตัว) → toast + ลิงก์ไปหน้า /outreach, ล้างที่เลือก, โหลดถัง/ลีดใหม่
+ * แบรนด์เริ่มต้นมาจาก BasePage (defaultOutreachBrand: แบรนด์ที่คนที่เลือกมีห้องแชตมากที่สุด) + บรรทัดบอกจำนวนคนที่มีห้องของแต่ละแบรนด์
+ * แถวที่ถูกข้ามเพราะไม่มีห้อง/หมดช่วงของแบรนด์นี้แต่มีห้องของอีกแบรนด์ → "มีห้องแชตของ <แบรนด์> — เปลี่ยนแบรนด์ด้านบน"
  * โหมด fixture: template ตัวอย่าง + preview จากลูกค้าตัวอย่าง ปุ่มส่งแสดง toast โหมด fixture
  */
 export function SendOutreachModal({ rows, defaultBrand, onSent }: { rows: SelRow[]; defaultBrand: Brand; onSent: () => void }) {
@@ -30,6 +34,7 @@ export function SendOutreachModal({ rows, defaultBrand, onSent }: { rows: SelRow
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<EnqueueResult | null>(null);
   const phones = useMemo(() => rows.map((r) => r.phone), [rows]);
+  const roomHint = useMemo(() => brandRoomHint(brandRoomCounts(rows)), [rows]);
 
   // template ที่เปิดใช้ของแบรนด์ที่เลือก
   useEffect(() => {
@@ -84,7 +89,8 @@ export function SendOutreachModal({ rows, defaultBrand, onSent }: { rows: SelRow
     return livePreview?.key === previewKey ? livePreview.rows : null;
   }, [live, template, rows, customers, meId, livePreview, previewKey]);
   const { send, skip } = splitPreview(preview ?? []);
-  const nameOf = (phone: string) => rows.find((r) => r.phone === phone)?.name || '';
+  const rowOf = (phone: string) => rows.find((r) => r.phone === phone);
+  const nameOf = (phone: string) => rowOf(phone)?.name || '';
 
   async function onSend() {
     if (!template || !send.length) return;
@@ -163,6 +169,7 @@ export function SendOutreachModal({ rows, defaultBrand, onSent }: { rows: SelRow
             </select>
           </div>
         </div>
+        <div className="sub" id="so-brand-hint">{roomHint}</div>
         {err ? <div className="login-err">{err}</div> : null}
         {templates?.length === 0 ? (
           <div className="empty" style={{ padding: 24 }}>ยังไม่มี template ที่เปิดใช้ของ {BRAND[brand]} (หัวหน้าสร้างได้ที่เมนู ตั้งค่า)</div>
@@ -188,9 +195,9 @@ export function SendOutreachModal({ rows, defaultBrand, onSent }: { rows: SelRow
               <div id="so-skip-list">
                 <div className="sub"><b>ข้าม (ไม่ส่ง)</b></div>
                 {skip.map((r) => (
-                  <div key={r.phone} className="list-row" data-skip={r.phone}>
-                    <div><b>{r.name || nameOf(r.phone) || r.phone}</b> <span className="sub mono">{r.phone}</span></div>
-                    <span className="badge s-lost plain">{skipLabel(r.skip)}</span>
+                  <div key={r.phone} className="list-row" data-skip={r.phone} style={{ flexWrap: 'wrap', rowGap: 4 }}>
+                    <div style={{ minWidth: 150 }}><b>{r.name || nameOf(r.phone) || r.phone}</b> <span className="sub mono">{r.phone}</span></div>
+                    <span className="badge s-lost plain">{skipReasonText(r.skip, rowOf(r.phone), brand)}</span>
                   </div>
                 ))}
               </div>

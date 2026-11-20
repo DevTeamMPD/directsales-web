@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildReps, mapCampaign, mapChannel, mapLead, mapPoolRow, mapPurchase, rowsTotal, upsertLead } from './map';
+import { buildReps, mapCampaign, mapChannel, mapChatRoom, mapLead, mapPoolRow, mapPurchase, normProvider, rowsTotal, upsertLead } from './map';
 import { leadJson } from './test-helpers';
 import type { CampaignRow, MeRow, PoolRowJson, TeamRow } from './types';
 
@@ -86,6 +86,28 @@ describe('mapPoolRow', () => {
     expect(mapPoolRow(pr({ identity_id: null, segment: null, ltv: null, order_count: null, brands: null }), 'u1')).toMatchObject({
       id: '0812345678', segment: '', ltv: null, orders: null, brands: [], dormantDays: null, ownerTag: null,
     });
+  });
+  it('maps chat_rooms / chat_brands of dsales_base_customers (missing = [])', () => {
+    const r = mapPoolRow(pr({
+      chat_rooms: [
+        { ms_id: 101, provider: 'line', page: 'bebeplayspace', brand: 'bebeplay', sendable: true },
+        { ms_id: 102, provider: 'Facebook', page: 'Hosttail', brand: 'hosttail', sendable: false },
+        { ms_id: 103, provider: 'facebook', page: 'MPD Outlet', brand: null, sendable: false },
+      ],
+      chat_brands: ['bebeplay', 'other'],
+    }), 'u1');
+    expect(r.chatRooms).toEqual([
+      { msId: 101, provider: 'line', page: 'bebeplayspace', brand: 'bebeplay', sendable: true },
+      { msId: 102, provider: 'facebook', page: 'Hosttail', brand: 'hosttail', sendable: false },
+      { msId: 103, provider: 'facebook', page: 'MPD Outlet', brand: null, sendable: false },
+    ]);
+    expect(r.chatBrands).toEqual(['bebeplay']);
+    expect(mapPoolRow(pr(), 'u1')).toMatchObject({ chatRooms: [], chatBrands: [] });
+    expect(mapPoolRow(pr({ chat_rooms: null, chat_brands: null }), 'u1')).toMatchObject({ chatRooms: [], chatBrands: [] });
+  });
+  it('normalizes providers and never marks a room outside the brands as sendable', () => {
+    expect([normProvider('Line'), normProvider('LineOA'), normProvider('TikTok'), normProvider('Zalo'), normProvider(null)]).toEqual(['line', 'line', 'tiktok', 'zalo', 'other']);
+    expect(mapChatRoom({ ms_id: 5, provider: 'shopee', page: null, brand: 'x', sendable: true })).toEqual({ msId: 5, provider: 'shopee', page: '', brand: null, sendable: false });
   });
   it('rowsTotal reads total_count from the first row', () => {
     expect(rowsTotal([pr(), pr()])).toBe(120);

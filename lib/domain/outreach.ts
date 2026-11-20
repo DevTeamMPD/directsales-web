@@ -1,8 +1,8 @@
 import type {
-  BatchItem, Brand, DemoCustomer, EnqueueSkipReason, OutreachCounts, OutreachStatus, PreviewRow, Template, WorkerRoom, WorkerRow, WorkerState,
+  BatchItem, Brand, ChatRoom, DemoCustomer, EnqueueSkipReason, OutreachCounts, OutreachStatus, PreviewRow, Template, WorkerRoom, WorkerRow, WorkerState,
   WorkerStatus,
 } from '@/lib/api/types';
-import { PLAT } from '@/lib/constants';
+import { BRAND, PLAT } from '@/lib/constants';
 import { fmtDT, localStamp } from '@/lib/format';
 
 // ส่งข้อความผ่าน JST worker (spec 2026-11-20-jst-outreach-worker-design.md ข้อ 6) — ฟังก์ชันล้วน
@@ -21,10 +21,16 @@ export const maxBatch = (s: { max_batch?: number | null } | null | undefined): n
 };
 
 /* ---------- เลือกลูกค้าใน /mine /pool (จำข้ามหน้า/คำค้น key = เบอร์) ---------- */
-export interface SelRow { phone: string; name: string; brands: string[]; chat: string; taken: string | null; mine: boolean }
+/** ภาพของแถวตอนติ๊กเลือก (คงไว้ข้ามหน้า/ตัวกรอง) — chatBrands = แบรนด์ที่มีห้องแชตส่งได้, chatRooms ใช้กับ preview ของโหมด fixture */
+export interface SelRow {
+  phone: string; name: string; brands: string[]; chat: string; taken: string | null; mine: boolean; chatBrands: string[]; chatRooms?: ChatRoom[];
+}
 export type Selection = ReadonlyMap<string, SelRow>;
 
-export const toSelRow = (r: SelRow): SelRow => ({ phone: r.phone, name: r.name, brands: r.brands, chat: r.chat, taken: r.taken, mine: r.mine });
+export const toSelRow = (r: SelRow): SelRow => ({
+  phone: r.phone, name: r.name, brands: r.brands, chat: r.chat, taken: r.taken, mine: r.mine, chatBrands: [...(r.chatBrands ?? [])],
+  ...(r.chatRooms ? { chatRooms: r.chatRooms } : {}),
+});
 
 export function toggleSelect(sel: Selection, row: SelRow): Map<string, SelRow> {
   const next = new Map(sel);
@@ -55,6 +61,39 @@ export function selectionBar(count: number, max: number): { text: string; canSen
     canSend: count > 0 && count <= max,
     over: count > max ? `เลือกได้สูงสุด ${max} คนต่อชุด` : null,
   };
+}
+
+/* ---------- แบรนด์ของชุดที่ส่ง (ลูกค้าที่มีห้องแชตของแบรนด์ไหน) ---------- */
+const BRANDS = Object.keys(BRAND) as Brand[];
+
+/** จำนวนคนที่เลือกที่มีห้องแชตส่งได้ของแต่ละแบรนด์ */
+export function brandRoomCounts(rows: ReadonlyArray<Pick<SelRow, 'chatBrands'>>): Record<Brand, number> {
+  const out = Object.fromEntries(BRANDS.map((b) => [b, 0])) as Record<Brand, number>;
+  for (const r of rows) for (const b of BRANDS) if (r.chatBrands?.includes(b)) out[b] += 1;
+  return out;
+}
+
+/** แบรนด์เริ่มต้นของ popup ส่งข้อความ: แบรนด์ที่มีห้องในคนที่เลือกมากที่สุด → เท่ากัน = แบรนด์ที่กรองในหน้า → bebeplay */
+export function defaultOutreachBrand(rows: ReadonlyArray<Pick<SelRow, 'chatBrands'>>, pageBrand: '' | Brand | null | undefined): Brand {
+  const c = brandRoomCounts(rows);
+  const top = Math.max(...BRANDS.map((b) => c[b]));
+  const best = BRANDS.filter((b) => c[b] === top);
+  if (best.length === 1) return best[0];
+  if (pageBrand && best.includes(pageBrand)) return pageBrand;
+  return best.includes('bebeplay') ? 'bebeplay' : best[0];
+}
+
+/** "X คนมีห้องของ Bebeplay · Y คนมีห้องของ Hosttail" */
+export const brandRoomHint = (c: Record<Brand, number>): string =>
+  BRANDS.map((b) => `${c[b].toLocaleString('th-TH')} คนมีห้องของ ${BRAND[b]}`).join(' · ');
+
+/** เหตุผลที่ข้าม: ไม่มีห้อง/หมดช่วงของแบรนด์นี้ แต่มีห้องส่งได้ของอีกแบรนด์ → บอกให้เปลี่ยนแบรนด์ */
+export function skipReasonText(skip: string | null | undefined, row: Pick<SelRow, 'chatBrands'> | undefined, brand: Brand): string {
+  if ((skip === 'no_chat_room' || skip === 'window_closed') && row) {
+    const other = BRANDS.find((b) => b !== brand && row.chatBrands?.includes(b));
+    if (other) return `มีห้องแชตของ ${BRAND[other]} — เปลี่ยนแบรนด์ด้านบน`;
+  }
+  return skipLabel(skip);
 }
 
 /* ---------- ข้อความไทย ---------- */
@@ -220,7 +259,9 @@ export function upsertTemplate(ts: ReadonlyArray<Template>, t: Template): Templa
 const SHOP_PLAT: Readonly<Record<string, string>> = { SH: 'shopee', LOA: 'line', LA: 'lazada', TT: 'tiktok', FB: 'facebook', IG: 'instagram' };
 const shopPlatform = (shop: string | null | undefined): string => SHOP_PLAT[String(shop || '').split('_')[0].toUpperCase()] || 'other';
 const ROOM_ORDER: Readonly<Record<string, number>> = { line: 0, shopee: 1, lazada: 1, facebook: 2, instagram: 2 };
-const PROVIDER: Readonly<Record<string, string>> = { line: 'Line', shopee: 'Shopee', lazada: 'Lazada', facebook: 'Facebook', instagram: 'Instagram' };
+const PROVIDER: Readonly<Record<string, string>> = {
+  line: 'Line', shopee: 'Shopee', lazada: 'Lazada', facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok',
+};
 
 export function demoPreview(rows: ReadonlyArray<SelRow>, t: Pick<Template, 'body' | 'brand'>, customers: ReadonlyArray<DemoCustomer>, meId: string): PreviewRow[] {
   return rows.map((r): PreviewRow => {
@@ -228,6 +269,18 @@ export function demoPreview(rows: ReadonlyArray<SelRow>, t: Pick<Template, 'body
     const c = customers.find((x) => x.phone === r.phone);
     if (!c) return { ...base, skip: 'customer_not_found' };
     if (r.taken && r.taken !== meId) return { ...base, skip: 'taken' };
+    const product = c.purchases[0]?.product ?? '';
+    if (r.chatRooms) {
+      // ห้องของแถว (chat_rooms ของ dsales_base_customers): ห้องที่ส่งได้ของแบรนด์นี้ก่อน
+      const own = r.chatRooms.filter((x) => x.brand === t.brand);
+      const ok = own.find((x) => x.sendable);
+      if (!ok) return { ...base, skip: own.length ? 'window_closed' : 'no_chat_room' };
+      const msg = renderTemplate(t.body, { name: c.name, product, shop: ok.page });
+      return {
+        ...base, ms_id: ok.msId, page: ok.page, provider: PROVIDER[ok.provider] ?? ok.provider, chat_name: r.chat || c.chatName || null,
+        message: msg.text, skip: null,
+      };
+    }
     const rooms = (c.channels.length ? c.channels : [{ shop: c.shop, chat: c.chatName }])
       .map((ch) => ({ shop: ch.shop || '', chat: ch.chat || ch.chat_name || '', plat: ch.platform || shopPlatform(ch.shop) }))
       .filter((x) => x.plat in ROOM_ORDER && x.chat && (!x.shop || x.shop.toLowerCase().endsWith(t.brand)))
@@ -236,7 +289,6 @@ export function demoPreview(rows: ReadonlyArray<SelRow>, t: Pick<Template, 'body
     const room = rooms[0];
     // ลูกค้าเก่าส่วนมากเงียบเกิน 24 ชม. → ห้อง Facebook/Instagram ปิดช่วงส่ง (ข้อ 4.4)
     if (ROOM_ORDER[room.plat] === 2) return { ...base, skip: 'window_closed' };
-    const product = c.purchases[0]?.product ?? '';
     const msg = renderTemplate(t.body, { name: c.name, product, shop: room.shop });
     return { ...base, ms_id: null, page: room.shop, provider: PROVIDER[room.plat], chat_name: room.chat, message: msg.text, skip: null };
   });

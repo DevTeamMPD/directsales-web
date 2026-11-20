@@ -613,9 +613,9 @@ for (const s of SIZES) {
         await page.goto(`${APP}/${path}`);
         await expect(page.locator('#view tbody tr')).toHaveCount(rows, { timeout: 60_000 });
         await expect(page.locator('#page-title')).toHaveText(path === 'mine' ? 'ลูกค้าของฉัน' : 'ถังกลาง');
-        // คอลัมน์แรก = ช่องติ๊กเลือกลูกค้าเพื่อส่งข้อความ (outreach)
-        await expect(page.locator('#view thead th')).toHaveText(['', 'ชื่อ / เบอร์', 'ไม่ซื้อมา / tag', 'กลุ่มลูกค้า', 'ยอดซื้อสะสม', 'ออเดอร์', 'ซื้อล่าสุด', 'แบรนด์', '']);
-        await expect(page.locator('#view tbody tr').first().locator('td').nth(2)).toContainText(/^ไม่ซื้อมา [\d,]+ วัน/);
+        // คอลัมน์แรก = ช่องติ๊กเลือกลูกค้าเพื่อส่งข้อความ (outreach), คอลัมน์ที่ 3 = ปุ่มโทร + ไอคอนห้องแชต (ตั้งใจต่างจากเดิม)
+        await expect(page.locator('#view thead th')).toHaveText(['', 'ชื่อ / เบอร์', 'ช่องทาง', 'ไม่ซื้อมา / tag', 'กลุ่มลูกค้า', 'ยอดซื้อสะสม', 'ออเดอร์', 'ซื้อล่าสุด', 'แบรนด์', '']);
+        await expect(page.locator('#view tbody tr').first().locator('td').nth(3)).toContainText(/^ไม่ซื้อมา [\d,]+ วัน/);
         await expect(page.locator('#view tbody tr').first().locator('td:last-child button')).toHaveText(first);
         await expect(page.locator('#base-brand option')).toHaveText(['ทุกแบรนด์', 'Bebeplay', 'Hosttail']);
         if (INJECT) await page.addStyleTag({ content: INJECT });
@@ -623,8 +623,8 @@ for (const s of SIZES) {
         await expect.soft(page.locator('#view')).toHaveScreenshot(['app', `${path}-${s.tag}.png`], { maxDiffPixels: 0, threshold: 0.1 });
       }
       await page.locator('#base-brand').selectOption('hosttail');
-      await expect(page.locator('#view tbody tr td:nth-child(8)').first()).toHaveText('Hosttail');
-      expect(new Set(await page.locator('#view tbody tr td:nth-child(8)').allInnerTexts())).toEqual(new Set(['Hosttail']));
+      await expect(page.locator('#view tbody tr td:nth-child(9)').first()).toHaveText('Hosttail');
+      expect(new Set(await page.locator('#view tbody tr td:nth-child(9)').allInnerTexts())).toEqual(new Set(['Hosttail']));
     });
   });
 }

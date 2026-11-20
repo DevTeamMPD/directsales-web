@@ -4,7 +4,7 @@ import { db } from '@/lib/supabase/client';
 import { RpcError } from './errors';
 import { rowsTotal } from './map';
 import type {
-  BatchDetail, BatchRow, CampaignRow, ChannelRowJson, ChatSessionJson, ContactType, EnqueueResult, JstTagRow, LeadJson, LeadStatus, MeRow,
+  BaseFilterJson, BatchDetail, BatchRow, CampaignRow, ChannelRowJson, ChatSessionJson, ContactType, EnqueueResult, JstTagRow, LeadJson, LeadStatus, MeRow,
   MemberJson, MemberTagsRow, NewCampaign, PoolRowJson, PreviewRow, PurchaseRowJson, TeamRow, Template, TemplateInput, WorkerRoom,
   WorkerSettingsInput, WorkerStatus,
 } from './types';
@@ -62,9 +62,10 @@ export const getCustomerPool = (q: PoolQuery) =>
     ...(q.from || q.to ? { p_from: q.from || null, p_to: q.to || null } : {}),
   });
 export type BaseScope = 'mine' | 'pool' | 'team';
-export const getBaseCustomers = (scope: BaseScope, q: Omit<PoolQuery, 'from' | 'to'>) =>
+export const getBaseCustomers = (scope: BaseScope, q: Omit<PoolQuery, 'from' | 'to'> & { filters?: BaseFilterJson | null }) =>
   call<PoolRowJson[]>('dsales_base_customers', {
     p_scope: scope, p_search: normalizeSearchPhone(q.search ?? '') || null, p_limit: q.limit ?? PAGE, p_offset: q.offset ?? 0, p_brand: q.brand || null,
+    p_filters: q.filters ?? {},
   });
 export const getCustomerPurchases = (phone: string) => call<PurchaseRowJson[]>('dsales_customer_purchases', { p_phone: phone });
 export const getCustomerChannels = (phone: string) => call<ChannelRowJson[]>('dsales_customer_channels', { p_phone: phone });

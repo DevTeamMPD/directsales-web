@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { DemoCustomer, WorkerStatus } from '@/lib/api/types';
 import {
-  batchProgress, channelLabel, countBadges, DEFAULT_MAX_BATCH, demoPreview, hasPending, isWorkerOnline, itemErrorText, itemsPending, maxBatch,
+  batchProgress, brandRoomCounts, brandRoomHint, channelLabel, countBadges, DEFAULT_MAX_BATCH, defaultOutreachBrand, demoPreview, hasPending, isWorkerOnline, itemErrorText, itemsPending, maxBatch,
   pageCheckState, renderTemplate, roomLabel, selectionBar, setPageSelected, shouldPoll, skipLabel, splitPreview, statusBadge, statusLabel,
-  TEST_MODE_TEXT, toggleRoom, toggleSelect, upsertTemplate, validateSettings, validateTemplate, workerBanners, workerStateLabel, type SelRow,
+  skipReasonText, TEST_MODE_TEXT, toggleRoom, toggleSelect, toSelRow, upsertTemplate, validateSettings, validateTemplate, workerBanners, workerStateLabel, type SelRow,
 } from './outreach';
 
-const row = (phone: string, over: Partial<SelRow> = {}): SelRow => ({ phone, name: `ลูกค้า ${phone}`, brands: ['bebeplay'], chat: 'c', taken: null, mine: false, ...over });
+const row = (phone: string, over: Partial<SelRow> = {}): SelRow => ({ phone, name: `ลูกค้า ${phone}`, brands: ['bebeplay'], chat: 'c', taken: null, mine: false, chatBrands: [], ...over });
 
 describe('selection', () => {
   it('toggles one row and keeps rows of other pages when the header box toggles the visible page', () => {
@@ -150,5 +150,54 @@ describe('demoPreview (fixture mode)', () => {
     const { send, skip } = splitPreview(rows);
     expect(send).toHaveLength(1);
     expect(skip).toHaveLength(4);
+  });
+});
+
+describe('brand of the batch (chatBrands of the selected rows)', () => {
+  const sel = (...brands: string[][]) => brands.map((b, i) => row(String(i), { chatBrands: b }));
+  it('counts the rows with a sendable room of each brand', () => {
+    const c = brandRoomCounts(sel(['bebeplay'], ['hosttail'], ['bebeplay', 'hosttail'], []));
+    expect(c).toEqual({ bebeplay: 2, hosttail: 2 });
+    expect(brandRoomHint(c)).toBe('2 คนมีห้องของ Bebeplay · 2 คนมีห้องของ Hosttail');
+  });
+  it('defaults to the brand most rows can be messaged on, tie → page brand → bebeplay', () => {
+    expect(defaultOutreachBrand(sel(['hosttail'], ['hosttail'], ['bebeplay']), 'bebeplay')).toBe('hosttail');
+    expect(defaultOutreachBrand(sel(['hosttail'], ['bebeplay']), 'hosttail')).toBe('hosttail');
+    expect(defaultOutreachBrand(sel(['hosttail'], ['bebeplay']), '')).toBe('bebeplay');
+    expect(defaultOutreachBrand(sel([], []), 'hosttail')).toBe('hosttail');
+    expect(defaultOutreachBrand([], null)).toBe('bebeplay');
+  });
+  it('tells the rep to switch brand when the row has a room of the other brand', () => {
+    const r = row('1', { chatBrands: ['hosttail'] });
+    expect(skipReasonText('no_chat_room', r, 'bebeplay')).toBe('มีห้องแชตของ Hosttail — เปลี่ยนแบรนด์ด้านบน');
+    expect(skipReasonText('window_closed', r, 'bebeplay')).toBe('มีห้องแชตของ Hosttail — เปลี่ยนแบรนด์ด้านบน');
+    expect(skipReasonText('no_chat_room', r, 'hosttail')).toBe('ไม่พบห้องแชตของแบรนด์นี้');
+    expect(skipReasonText('taken', r, 'bebeplay')).toBe('เป็นลูกค้าของเซลล์คนอื่น');
+    expect(skipReasonText('no_chat_room', undefined, 'bebeplay')).toBe('ไม่พบห้องแชตของแบรนด์นี้');
+  });
+  it('the selection keeps a snapshot of chatBrands (and the rooms for the fixture preview)', () => {
+    const room = { msId: 7, provider: 'line', page: 'p', brand: 'bebeplay' as const, sendable: true };
+    const s = toggleSelect(new Map(), { ...row('1', { chatBrands: ['bebeplay'], chatRooms: [room] }), extra: 1 } as SelRow);
+    expect(s.get('1')).toEqual({ ...row('1'), chatBrands: ['bebeplay'], chatRooms: [room] });
+    expect(toSelRow(row('2'))).not.toHaveProperty('chatRooms');
+  });
+});
+
+describe('demoPreview with the chat rooms of the row', () => {
+  const cust: DemoCustomer = {
+    id: 'c', name: 'คุณเอ', phone: '05', address: '', brand: 'bebeplay', shop: 'SH_bebeplay', chatName: 'a_chat', channels: [],
+    purchases: [{ date: '2026-10-01', bill: '1', sku: 's', product: 'เตียงเด็ก', amount: 1, seller: null }],
+  };
+  const t = { body: '{ชื่อ} {ร้าน}', brand: 'bebeplay' as const };
+  it('sends to the first sendable room of the brand, else window_closed / no_chat_room', () => {
+    const line = { msId: 11, provider: 'line', page: 'LOA_bebeplay', brand: 'bebeplay' as const, sendable: true };
+    const fb = { msId: 12, provider: 'facebook', page: 'FB_bebeplay', brand: 'bebeplay' as const, sendable: false };
+    const host = { msId: 13, provider: 'shopee', page: 'SH_hosttail', brand: 'hosttail' as const, sendable: true };
+    const [a, b, c] = demoPreview(
+      [row('05', { chat: 'a_chat', chatRooms: [line, fb] }), row('05', { chatRooms: [fb, host] }), row('05', { chatRooms: [host] })], t, [cust], 'me',
+    );
+    expect(a).toMatchObject({ skip: null, ms_id: 11, page: 'LOA_bebeplay', provider: 'Line', chat_name: 'a_chat', message: 'คุณเอ LOA_bebeplay' });
+    expect(b.skip).toBe('window_closed');
+    expect(c.skip).toBe('no_chat_room');
   });
 });

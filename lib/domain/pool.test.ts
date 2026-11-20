@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Lead, PoolRow } from '@/lib/api/types';
 import { fixturePayload } from '@/lib/fixtures/load';
+import { EMPTY_FILTERS } from './baseFilters';
 import type { Period } from '@/lib/state/reducer';
 import {
   baseAction, canNext, clampPage, claimBrand, demoBase, demoGrand, demoPool, dormantText, keepTotal, pageRange, poolAction, poolCampNames,
@@ -16,7 +17,7 @@ const pool = (over: Partial<Parameters<typeof demoPool>[2]> = {}) =>
   demoPool(F.customers, F.leads, { brand: 'bebeplay', q: '', page: 0, period: NONE, viewer: admin, ...over });
 const row = (over: Partial<PoolRow>): PoolRow => ({
   id: 'i1', name: 'ก', phone: '0812345678', segment: '', ltv: 0, orders: 0, last: null, brands: ['bebeplay'], chat: '', leadId: null,
-  mine: false, noCall: false, takenName: '', taken: null, dormantDays: null, ownerTag: null, ...over,
+  mine: false, noCall: false, takenName: '', taken: null, dormantDays: null, ownerTag: null, chatRooms: [], chatBrands: [], ...over,
 });
 const lead = (over: Partial<Lead>): Lead => ({ ...F.leads[0], ...over });
 
@@ -136,5 +137,21 @@ describe('/mine and /pool (dsales_base_customers, spec ข้อ 3)', () => {
     expect(mine.total).toBeGreaterThan(0);
     expect(free.rows[0].dormantDays).toBeGreaterThan(0);
     expect(demoBase(F.customers, F.leads, 'pool', { ...o, brand: 'hosttail' }).rows.every((r) => r.brands[0] === 'hosttail')).toBe(true);
+  });
+  it('demoBase carries the fixture chat rooms, RFM and tags and honours the filters', () => {
+    const o = { brand: null, q: '', page: 0, today: F.today, meId: 'r4' };
+    const all = demoBase(F.customers, F.leads, 'pool', o);
+    expect(all.rows.some((r) => r.chatRooms.length > 1)).toBe(true);
+    expect(all.rows.every((r) => r.chatBrands.every((b) => r.chatRooms.some((x) => x.brand === b && x.sendable)))).toBe(true);
+    const loyal = demoBase(F.customers, F.leads, 'pool', { ...o, filters: { ...EMPTY_FILTERS, rfm: ['Loyal'] } });
+    expect(loyal.total).toBeGreaterThan(0);
+    expect(loyal.total).toBeLessThan(all.total);
+    expect(loyal.rows.every((r) => r.segment === 'Loyal')).toBe(true);
+    const fb = demoBase(F.customers, F.leads, 'pool', { ...o, filters: { ...EMPTY_FILTERS, provider: 'facebook' } });
+    expect(fb.rows.every((r) => r.chatRooms.some((x) => x.provider === 'facebook'))).toBe(true);
+    const chat = demoBase(F.customers, F.leads, 'pool', { ...o, brand: 'hosttail', filters: { ...EMPTY_FILTERS, hasChat: true } });
+    expect(chat.rows.every((r) => r.chatBrands.includes('hosttail'))).toBe(true);
+    const old = demoBase(F.customers, F.leads, 'pool', { ...o, filters: { ...EMPTY_FILTERS, sort: 'dormant_desc' } });
+    expect(old.rows[0].dormantDays).toBe(Math.max(...all.rows.map((r) => r.dormantDays ?? 0)));
   });
 });

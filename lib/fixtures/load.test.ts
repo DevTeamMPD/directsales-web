@@ -18,6 +18,18 @@ describe('fixturePayload', () => {
     expect(p.customers[0]).toMatchObject({ id: 'C5000', name: 'ธนากร รุ่งเรือง', phone: '0864355692', brand: 'bebeplay' });
   });
 
+  it('adds chat rooms, RFM segments and owner tags for /mine /pool (deterministic)', () => {
+    const c = fixturePayload().customers;
+    expect(c[0].chatRooms).toEqual([{ msId: 800000, provider: 'line', page: 'LOA_bebeplay', brand: 'bebeplay', sendable: true }]);
+    // ลูกค้าคนที่ 2 มีห้อง LINE ของอีกแบรนด์ด้วย
+    expect(c[1].chatRooms?.map((r) => r.page)).toEqual(['LOA_hosttail', 'SH_bebeplay']);
+    expect(c.some((x) => x.chatRooms?.some((r) => r.brand === null && !r.sendable))).toBe(true);
+    expect(c.some((x) => x.chatRooms?.some((r) => r.provider === 'facebook' && r.brand && !r.sendable))).toBe(true);
+    expect(c.filter((x) => x.rfm).length).toBe(30);
+    expect(new Set(c.map((x) => x.ownerTag).filter(Boolean)).size).toBe(5);
+    expect(fixturePayload().customers).toEqual(c);
+  });
+
   it('carries sample outreach templates, batches and worker status', () => {
     const o = fixturePayload().outreachDemo;
     expect(o?.templates.filter((t) => t.active).map((t) => t.brand)).toEqual(['bebeplay', 'hosttail']);

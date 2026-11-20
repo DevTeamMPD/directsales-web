@@ -58,17 +58,32 @@ export interface TeamRow { user_id: string; display_name: string | null; role: s
 export interface Rep { id: string; name: string; initials: string; role: Role; email?: string; active?: boolean }
 export interface MemberJson { user_id: string; email: string; display_name: string; role: Role; active: boolean }
 
-/** แถวของ dsales_customer_pool_v3/_v4 และ dsales_base_customers (2 คอลัมน์ท้ายมีเฉพาะ base_customers) */
+/**
+ * ห้องแชตที่ผูกกับลูกค้า (dsales_base_customers.chat_rooms เรียงห้องที่ส่งได้ก่อน)
+ * brand null = เพจนอก 2 แบรนด์; sendable false = brand null หรือ Facebook/Instagram ที่ลูกค้าไม่ได้ทักมาใน 24 ชม.
+ */
+export interface ChatRoomJson { ms_id: number; provider: string | null; page: string | null; brand: string | null; sendable: boolean }
+export interface ChatRoom { msId: number; provider: string; page: string; brand: Brand | null; sendable: boolean }
+
+/** p_filters ของ dsales_base_customers (สร้างจาก UI ด้วย lib/domain/baseFilters.ts buildFilterJson) — ไม่มีตัวกรอง = {} */
+export type BaseFilterJson = Partial<{
+  rfm: string[]; dormant_min: number; dormant_max: number; ltv_min: number; orders_min: number; tag: string; has_chat: boolean; provider: string;
+  sort: 'ltv' | 'dormant_asc' | 'dormant_desc' | 'last_desc' | 'orders_desc';
+}>;
+
+/** แถวของ dsales_customer_pool_v3/_v4 และ dsales_base_customers (คอลัมน์ dormant_days ถึง chat_brands มีเฉพาะ base_customers) */
 export interface PoolRowJson {
   identity_id: string | null; name: string; phone: string; chat_name: string | null; segment: string | null; rfm_segment: string | null;
   ltv: number | string | null; order_count: number | null; last_order_date: string | null; brands: string[] | null;
   total_count: number | string; lead_id?: string | null; taken?: boolean; mine?: boolean; no_call?: boolean; reserved_by?: string | null;
-  dormant_days?: number | null; owner_tag?: string | null;
+  dormant_days?: number | null; owner_tag?: string | null; chat_rooms?: ChatRoomJson[] | null; chat_brands?: string[] | null;
 }
 export interface PoolRow {
   id: string; name: string; phone: string; segment: string; ltv: number | null; orders: number | null; last: string | null; brands: string[];
   chat: string; leadId: string | null; mine: boolean; noCall: boolean; takenName: string; taken: string | null;
   dormantDays: number | null; ownerTag: string | null;
+  /** ห้องแชต (ส่งได้ก่อน) และแบรนด์ที่มีห้องส่งได้อย่างน้อย 1 ห้อง — ถังลูกค้าของหน้าแคมเปญ = [] */
+  chatRooms: ChatRoom[]; chatBrands: Brand[];
   /** โหมด fixture (prototype โหมดตัวอย่าง L640): เซลล์คนนี้เคยคัดออก / ลีดที่จองไว้ยกเลิกได้ */
   releasedByMe?: boolean; mineReserved?: boolean;
 }
@@ -76,6 +91,8 @@ export interface PoolRow {
 /** ลูกค้าในถังของโหมดตัวอย่าง (window.DS_DATA.customers) — ล็อกอินจริงเป็น [] เสมอ (prototype loadLive L980) */
 export interface DemoCustomer {
   id: string; name: string; phone: string; address: string; brand: Brand; shop: string; chatName: string; channels: Channel[]; purchases: Purchase[];
+  /** โหมด fixture ของ /mine /pool (withBaseExtras ของ fixture): ห้องแชต, กลุ่ม RFM, tag เจ้าของใน JST */
+  chatRooms?: ChatRoom[]; rfm?: string | null; ownerTag?: string | null;
 }
 
 export interface PurchaseRowJson {
