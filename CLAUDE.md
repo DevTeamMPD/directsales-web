@@ -6,7 +6,8 @@
 
 เว็บแอป Direct Sale ของ MPD Group (แบรนด์ Bebeplay / Hosttail) ให้ทีมเซลล์โทร/แชตหาลูกค้าเก่า จองลูกค้าจากถัง ติดตามแคมเปญ และให้หัวหน้าดูภาพรวมทีม
 - กำลังย้ายจาก prototype (HTML/JS ล้วน) เป็น Next.js ตามแผน A (ฐานราก) → B (หน้าลีด `/leads` + popup ลีด) → C (แคมเปญ + ถังลูกค้า, ลูกค้าของฉัน/ถังกลาง, Dashboard, ตั้งค่า, deploy)
-- **`legacy/` คือต้นแบบหน้าตาและการทำงาน (UX reference)** หน้า Next.js ต้องเหมือน prototype ทุกจุดและใช้ class name เดิมจาก `styles/prototype.css` ห้ามออกแบบใหม่เอง สงสัยให้เปิด `legacy/index.html` (กด "ดูตัวอย่างโดยไม่ล็อกอิน") หรืออ่าน `legacy/app.js` ตามเลขบรรทัดใน inventory
+- **หน้าตา (look & feel) = ดีไซน์ "Direct Sale CRM"** (Design canvas https://claude.ai/artifact/N7DcekkiVt4LcQSNYYLKWz ผู้ใช้เลือกเมื่อ 2026-11-20) ใช้เฉพาะสี ฟอนต์ ระยะ มุมโค้ง และสไตล์ของชิป/ปุ่ม/การ์ด ไม่ได้เปลี่ยนโครงหน้าหรือการทำงาน — ฟีเจอร์ในดีไซน์ที่ไม่มีข้อมูลรองรับหรือไม่เหมาะกับทีม (หน้าแชท, kanban/pipeline) ตัดออกแล้ว ห้ามเพิ่มกลับโดยไม่ถาม
+- **`legacy/` เหลือไว้อ้างอิงการทำงานและข้อความเท่านั้น (ไม่ใช่หน้าตา)** e2e ยังเทียบข้อความ/ช่องกรอก/ปุ่มกับ prototype สงสัยการทำงานให้เปิด `legacy/index.html` (กด "ดูตัวอย่างโดยไม่ล็อกอิน") หรืออ่าน `legacy/app.js` ตามเลขบรรทัดใน inventory
 - ห้ามแก้ไฟล์ใน `legacy/` จะลบทิ้งหลัง deploy Next.js และผู้ใช้ตรวจ production ครบ (แผน C)
 
 ## Tech Stack
@@ -15,10 +16,10 @@
 |---|---|
 | Framework | Next.js 15 (App Router) + React 19 |
 | Language | TypeScript (strict) |
-| UI | `styles/prototype.css` (สำเนา stylesheet ของ prototype) + Tailwind CSS 3 แบบปิด preflight (ใช้ให้น้อยที่สุด) |
+| UI | `styles/tokens.css` (สี/มุมโค้ง/เงา light + dark) + `styles/app.css` (class เดิมของ prototype ปรับเป็นดีไซน์ใหม่) + Tailwind CSS 3 แบบปิด preflight (ใช้ให้น้อยที่สุด) |
 | ฟอนต์ | IBM Plex Sans Thai / IBM Plex Mono ผ่าน `next/font/google` |
 | Database / Auth | Supabase (PostgreSQL 15) ผ่าน `@supabase/ssr` (session ใน cookie) |
-| Test | Vitest (unit) + Playwright (เทียบภาพกับ prototype) |
+| Test | Vitest (unit) + Playwright (ภาพเทียบ baseline ของตัวเอง + เนื้อหาเทียบ prototype) |
 | Hosting | Vercel |
 | DB Access (Claude) | Supabase MCP |
 
@@ -50,12 +51,12 @@ lib/
   jst.ts                        # ช่องทางแชต, jstOpen, ตรวจทักแชท (chatCheckFor / verifyMine)
   fixtures/                     # โหมด fixture (next dev เท่านั้น)
   format.ts constants.ts phone.ts icons.ts routes.ts nav.ts
-styles/prototype.css
-legacy/                         # prototype เดิม (UX reference)
+styles/tokens.css styles/app.css # design tokens + stylesheet ทั้งแอป
+legacy/                         # prototype เดิม (อ้างอิงการทำงาน/ข้อความ)
 supabase/migrations/            # migration ของ schema dsales
 supabase/tests/                 # SQL test (begin … rollback)
 tools/                          # port-legacy.mjs, check-no-fixtures.mjs, jst-helper/, db/
-e2e/                            # Playwright visual parity
+e2e/                            # Playwright: visual (baseline ใน e2e/__screenshots__/), mobile-fit (390px), outreach
 docs/                           # spec, plan, DATABASE.md
 ```
 
@@ -116,14 +117,14 @@ npm run typecheck        # tsc --noEmit
 npm run lint             # next lint
 npm test                 # Vitest
 npm run check:fixtures   # หลัง build: ตรวจว่าไม่มีข้อมูล fixture ใน .next
-npm run test:e2e         # Playwright เทียบภาพกับ legacy/ (เปิดพอร์ต 4100 และ 3100 เอง ต้องต่ออินเทอร์เน็ต)
+npm run test:e2e         # Playwright (เปิดพอร์ต 4100 = legacy/ และ 3100 = next dev โหมด fixture เอง ต้องต่ออินเทอร์เน็ต)
 node tools/port-legacy.mjs icons                     # สร้าง lib/icons.ts ใหม่
 TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtures/data.ts ใหม่
 ```
 
-- e2e เทียบภาพกับ prototype ครอบคลุม `/leads`, หน้าแคมเปญ + ถังลูกค้า, Dashboard, ตั้งค่า และ popup A–F (29 tests); ค่า limit วัดจริงด้วย `PARITY_MEASURE=1` (รัน 3 ครั้ง ×1.25) — ถ้าเกินให้วัดใหม่ ห้ามเพิ่ม limit เอง; สีตรวจด้วย computed-style
-- `/mine` `/pool` และหน้าตั้งค่าทั้งหน้าเทียบกับภาพของตัวเองที่ commit ไว้ใน `e2e/.legacy-shots/app/` (ตั้งใจเปลี่ยนหน้าตา → `npx playwright test -g "<ชื่อ test>" --update-snapshots=changed` แล้วตรวจภาพด้วยตาก่อน commit)
-- teeth check (`PARITY_INJECT_CSS`): ต้องเลือก CSS ที่เปลี่ยนภาพเกินค่า limit ของ test นั้น — `.tag { … }` ไม่มีผลกับ `/mine` `/pool` ที่มือถือ (คอลัมน์แบรนด์ถูกซ่อน) และ `.kpi-value { letter-spacing: … }` เล็กเกินกว่า limit ของ dashboard (ใช้ `.kpi-value { font-size: 26px; }` แทน)
+- e2e ครอบคลุม `/leads`, หน้าแคมเปญ + ถังลูกค้า, `/mine` `/pool` `/outreach`, Dashboard, ตั้งค่า และ popup A–F ที่ 390×844 และ 1440×900: **ภาพ**เทียบกับ baseline ของตัวเองที่ commit ไว้ใน `e2e/__screenshots__/` (ตั้งใจเปลี่ยนหน้าตา → `npx playwright test --update-snapshots=changed` แล้วตรวจภาพด้วยตาก่อน commit) ส่วน**ข้อความ/ช่องกรอก/ปุ่ม/focus**ยังเทียบกับ `legacy/` ตรงตัว
+- `e2e/mobile-fit.spec.ts`: ทุกหน้าที่ 390px ต้องไม่เลื่อนแนวนอน, topbar อยู่แถวเดียว, ชิปสถานะอยู่แถวเดียว (เลื่อนข้าง) และปุ่ม/ช่องกรอกสูง ≥ 44px — เมนู/ปุ่มบนมือถือต้องสั้น (ปุ่ม topbar ที่ข้อความยาวใช้ `.lbl-long` + `.lbl-short`)
+- teeth check (`PARITY_INJECT_CSS`): ฉีด CSS เข้าฝั่ง Next แล้ว test ภาพต้องล้ม (เช่น `.kpi-value { font-size: 26px; }`)
 - **หลัง `npm run test:e2e` ให้รัน `npm run build` ใหม่ก่อน `npm run check:fixtures` เสมอ** (e2e เขียนทับ `.next` ด้วยผลลัพธ์ของ dev)
 
 ## โหมด fixture
@@ -147,14 +148,14 @@ TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtu
 
 ## Coding Conventions
 
-1. **ข้อความบนหน้าจอเป็นภาษาไทย** ตรงตัวอักษรกับ prototype (ดู inventory) error จาก RPC แปลงผ่าน `toThaiError` เท่านั้น
+1. **ข้อความบนหน้าจอเป็นภาษาไทย** ข้อความเดิมคงตัวอักษรตาม prototype (ดู inventory) ข้อความใหม่ตามดีไซน์ error จาก RPC แปลงผ่าน `toThaiError` เท่านั้น
 2. **เวลา Asia/Bangkok:** "วันนี้"/เวลาทุกจุดใช้ `lib/format.ts` (`todayBangkok`, `nowStamp`, `localStamp`) ห้ามพึ่งเขตเวลาของเครื่อง วันที่เทียบเป็นข้อความ `YYYY-MM-DD`
-3. **หน้าตา = prototype:** ใช้ class เดิมจาก `styles/prototype.css` ไม่แก้ไฟล์นั้น (ยกเว้นตัวแปรฟอนต์) ไม่ใช้ shadcn/ui และใช้ Tailwind utility ให้น้อยที่สุด (ไม่มี preflight/base)
+3. **หน้าตา = ดีไซน์ "Direct Sale CRM":** สี/มุมโค้ง/เงาใช้ตัวแปรจาก `styles/tokens.css` เท่านั้น ห้าม hard-code สีใน component หรือ `styles/app.css` (ยกเว้น `#fff` บนพื้นสีทึบ) และต้องมีค่า dark mode ทุกตัวแปร · class อยู่ใน `styles/app.css` · บนมือถือ (≤ 760px) จุดแตะ ≥ 44px (`--tap`), ช่องกรอก 16px, popup เปิดเป็น bottom sheet · ไม่ใช้ shadcn/ui และใช้ Tailwind utility ให้น้อยที่สุด (ไม่มี preflight/base)
 4. **TypeScript strict** ห้าม `any`; logic ที่ทดสอบได้อยู่ใน `lib/` เป็นฟังก์ชันล้วนพร้อม `*.test.ts` (เขียน test ก่อน)
 5. **Client Component** เฉพาะส่วนที่มี state/effect; state กลางอยู่ใน `AppProvider` (`useApp()`)
 6. **Commit:** ข้อความอังกฤษแบบ conventional (`feat(web): …`, `feat(db): …`) จบด้วยบรรทัดว่าง + `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` ผู้เขียน git = DevTeamMPD ห้าม push/merge หรือเปลี่ยนการตั้งค่า Vercel โดยไม่ถามผู้ใช้
 7. **Deploy:** Vercel production = branch `main` ของ GitHub (ไม่ใช่ `claude/serene-meitner-cprt82`) branch อื่นได้แค่ Preview deployment · `vercel.json` กำหนด `framework: nextjs` ต่อ deployment เอง (ไม่ต้องเปลี่ยน Framework Preset ของโปรเจกต์) · ขึ้น production = merge PR #2 (`claude/serene-meitner-cprt82` → `main`) — ถามผู้ใช้ก่อนทุกครั้งทั้ง push และ merge
-8. **Tailwind:** ห้ามใช้ utility ที่ชื่อชนกับ class ของ prototype (มีใน `blocklist` ของ `tailwind.config.ts` เช่น `outline`) เจอชื่อชนเพิ่มให้เพิ่มใน blocklist
+8. **Tailwind:** ห้ามใช้ utility ที่ชื่อชนกับ class ใน `styles/app.css` (มีใน `blocklist` ของ `tailwind.config.ts` เช่น `outline`) เจอชื่อชนเพิ่มให้เพิ่มใน blocklist
 9. อย่ารัน `npm run test:e2e` ขณะเปิด `npm start` อยู่ (ใช้ `.next` ร่วมกัน)
 
 ## งานค้าง (หลังแผน C)

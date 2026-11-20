@@ -69,8 +69,12 @@ export function CampaignPage({ brand }: { brand: Brand }) {
     <>
       {isAdmin ? (
         <TopbarActions>
-          <button className="btn" id="auto-run" onClick={() => toast('ไม่มีลีดที่ต้องจัดสรร')}>จัดสรรให้เซลล์ที่ขายล่าสุด</button>
-          <button className="btn primary" id="new-camp" onClick={() => openModal(<CampaignFormModal brand={brand} />)}>+ สร้างแคมเปญ</button>
+          <button className="btn" id="auto-run" onClick={() => toast('ไม่มีลีดที่ต้องจัดสรร')}>
+            <span className="lbl-long">จัดสรรให้เซลล์ที่ขายล่าสุด</span><span className="lbl-short">จัดสรร</span>
+          </button>
+          <button className="btn primary" id="new-camp" onClick={() => openModal(<CampaignFormModal brand={brand} />)}>
+            <span className="lbl-long">+ สร้างแคมเปญ</span><span className="lbl-short">+ แคมเปญ</span>
+          </button>
         </TopbarActions>
       ) : null}
       <CampaignCards

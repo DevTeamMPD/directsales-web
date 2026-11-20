@@ -2,8 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
-  // baseline = ภาพจาก prototype ที่ test ถ่ายเองทุกครั้ง (ไม่ commit)
-  snapshotPathTemplate: '{testDir}/.legacy-shots/{arg}{ext}',
+  // baseline = ภาพของเว็บนี้เองที่ commit ไว้ (ตั้งใจเปลี่ยนหน้าตา → --update-snapshots=changed แล้วตรวจภาพด้วยตา)
+  snapshotPathTemplate: '{testDir}/__screenshots__/{arg}{ext}',
   timeout: 120_000,
   workers: 1,
   reporter: [['list'], ['html', { open: 'never' }]],

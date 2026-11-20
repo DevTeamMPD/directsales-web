@@ -112,7 +112,7 @@ export const skipLabel = (reason: string | null | undefined): string =>
 export const STATUS_TEXT: Readonly<Record<OutreachStatus, string>> = {
   queued: 'รอส่ง', sending: 'กำลังส่ง', sent: 'ส่งแล้ว', failed: 'ไม่สำเร็จ', cancelled: 'ยกเลิกแล้ว',
 };
-/** class ของ .badge ใน prototype.css */
+/** class ของ .badge ใน styles/app.css */
 export const STATUS_BADGE: Readonly<Record<OutreachStatus, string>> = {
   queued: 's-callback', sending: 's-following', sent: 's-won', failed: 's-lost', cancelled: 's-new',
 };
