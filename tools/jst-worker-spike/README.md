@@ -12,7 +12,7 @@ npm install
 npx playwright install chromium
 copy config.example.json config.json
 ```
-(ถ้าไม่อยากดาวน์โหลด Chromium ตั้ง `"channel": "chrome"` ใน `config.json` เพื่อใช้ Chrome ที่ติดตั้งอยู่)
+ค่าเริ่ม `"channel": "chrome"` = ใช้ Google Chrome ที่ติดตั้งในเครื่อง (ทดสอบ 2026-11-20: Chromium ของ Playwright แบบมีหน้าต่างถูก Windows บล็อก `spawn UNKNOWN` ส่วน Chrome ปกติใช้ได้ทั้งมีหน้าต่างและ headless) · ถ้าเครื่องไม่มี Chrome ตั้ง `"channel": ""` แล้วรัน `npx playwright install chromium`
 
 ## คำสั่ง
 | คำสั่ง | ทำอะไร |

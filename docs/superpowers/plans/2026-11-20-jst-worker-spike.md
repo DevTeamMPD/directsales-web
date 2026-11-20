@@ -28,6 +28,11 @@
 - [ ] บัญชี JST "User Dev" (ผู้ใช้ล็อกอินเอง — Claude ไม่พิมพ์รหัสผ่าน)
 - [ ] ห้องแชตทดสอบของพนักงาน อย่างน้อย LINE 1 ห้อง (เช่น LINE ส่วนตัวที่แอด OA Bebeplayofficial แล้วทักมา 1 ครั้ง) ถ้าได้ Shopee / Facebook อย่างละ 1 ยิ่งดี — จด `ms_id` ของแต่ละห้อง (เปิดห้องใน JST แล้วดู `data-ms-id` หรือรัน `open-chat.mjs` ซึ่งพิมพ์ ms_id ให้)
 
+## ทดสอบบนเครื่อง dev แล้ว (2026-11-20)
+- `login.mjs` (Chrome ที่ติดตั้งในเครื่อง, `channel: "chrome"`): ผู้ใช้ล็อกอิน User Dev เอง ไม่มี OTP/captcha → `logged_in: true`, 31 ห้อง
+- `check.mjs` แบบ headless ใช้ session ซ้ำได้ (2.3 วินาที)
+- Chromium ของ Playwright แบบมีหน้าต่างเปิดไม่ได้บนเครื่องนี้ (`spawn UNKNOWN`) จึงตั้ง `channel: "chrome"` เป็นค่าเริ่ม
+
 ## ขั้นตอนวันเข้าออฟฟิศ (ประมาณ 1–2 ชม. + ปล่อย probe ทิ้งไว้)
 
 - [ ] **Step 1: ติดตั้ง** — คัดลอกโฟลเดอร์ `tools/jst-worker-spike` ไปไว้ที่เครื่อง worker เช่น `C:\jst-worker-spike`
