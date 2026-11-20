@@ -262,7 +262,12 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
 
   /* ---------- ผูกห้องด้วยรหัสผู้ซื้อ ---------- */
 
-  /** ค้น 1 รหัส → 'linked' | 'idle' · Supabase ล่ม → โยน QueueUnavailable */
+  function pauseLink(msg, e) {
+    s.linkPausedUntil = clock.now() + cfg.linkPauseMinutes * 60_000;
+    log('warn', `${msg} — pausing link sync`, { error: clip(e?.message || e), minutes: cfg.linkPauseMinutes });
+  }
+
+  /** ค้น 1 รหัส → 'linked' | 'idle' · error ใด ๆ ของการค้น/บันทึก = พักการค้น (การส่งงานไม่ถูกกระทบ) */
   async function linkOne() {
     if (!canLink() || s.state !== STATES.running || clock.now() < s.linkPausedUntil) return 'idle';
     if (!s.linkTargets.length) {
@@ -270,7 +275,9 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
       try {
         list = await queue.linkTargets(cfg.workerId, cfg.linkBatch);
       } catch (e) {
-        throw new QueueUnavailable(e);
+        // claim เพิ่งสำเร็จ → Supabase ใช้ได้ · error นี้เป็นของ link sync (เช่นยังไม่ได้ลง migration) — พักเฉพาะการค้น ไม่บล็อกการส่ง
+        pauseLink('link targets failed', e);
+        return 'idle';
       }
       s.linkTargets = (list || []).filter((t) => t && typeof t.buyer_id === 'string' && t.buyer_id.trim() !== '');
       if (!s.linkTargets.length) {
@@ -308,8 +315,7 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
         s.linkTargets.unshift(target);
       } else {
         s.linkTargets.unshift(target);
-        s.linkPausedUntil = clock.now() + cfg.linkPauseMinutes * 60_000;
-        log('warn', 'link search failed — pausing link sync', { error: clip(e?.message || e), minutes: cfg.linkPauseMinutes });
+        pauseLink('link search failed', e);
       }
       return 'idle';
     }
@@ -317,7 +323,9 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
     try {
       n = await queue.linkSave(cfg.workerId, target.buyer_id, rooms, null);
     } catch (e) {
-      throw new QueueUnavailable(e);
+      s.linkTargets.unshift(target);
+      pauseLink('link save failed', e);
+      return 'idle';
     }
     s.linkLookups++;
     s.linksWritten += n;

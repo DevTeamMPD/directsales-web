@@ -542,12 +542,32 @@ test('link: unexpected JST shape → link sync off for this run, sender keeps ru
   assert.equal(await worker.processOne(), 'sent');
 });
 
-test('link: Supabase down while saving → QueueUnavailable (worker backs off)', async () => {
-  const ctx = withLink(setup());
-  ctx.queue.linkSave = async () => {
-    throw new Error('503');
+test('link: link RPC errors (e.g. migration not applied) pause link sync only — sends keep flowing', async () => {
+  const ctx = withLink(setup({ config: { linkPauseMinutes: 5 } }));
+  const { worker, queue, clock } = ctx;
+  queue.linkTargets = async () => {
+    throw new Error('dsales_worker_link_targets: function does not exist');
   };
-  await assert.rejects(ctx.worker.processOne(), QueueUnavailable);
+  assert.equal(await worker.processOne(), 'idle');
+  assert.equal(worker.status.state, 'running');
+  queue.jobs.push(job());
+  assert.equal(await worker.processOne(), 'sent');
+  // save fails → target kept, paused, retried after the pause
+  const ctx2 = withLink(setup({ config: { linkPauseMinutes: 5 } }));
+  let fail = true;
+  const orig = ctx2.queue.linkSave;
+  ctx2.queue.linkSave = async (...a) => {
+    if (fail) throw new Error('503');
+    return orig(...a);
+  };
+  assert.equal(await ctx2.worker.processOne(), 'idle');
+  assert.equal(await ctx2.worker.processOne(), 'idle');
+  assert.deepEqual(ctx2.jst.searched, ['U1']);
+  fail = false;
+  ctx2.clock.t += 6 * 60_000;
+  assert.equal(await ctx2.worker.processOne(), 'linked');
+  assert.deepEqual(ctx2.jst.searched, ['U1', 'U1']);
+  assert.equal(ctx2.queue.saves[0].id, 'U1');
 });
 
 test('run: after a lookup the worker waits linkIntervalMs, not pollSeconds', async () => {
