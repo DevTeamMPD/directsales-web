@@ -71,7 +71,7 @@ export interface RoomsForPhoneRow { phone: string; rooms: ChatRoomJson[] | null 
 
 /** p_filters ของ dsales_base_customers (สร้างจาก UI ด้วย lib/domain/baseFilters.ts buildFilterJson) — ไม่มีตัวกรอง = {} */
 export type BaseFilterJson = Partial<{
-  rfm: string[]; dormant_min: number; dormant_max: number; ltv_min: number; orders_min: number; tag: string; has_chat: boolean; provider: string;
+  rfm: string[]; dormant_min: number; dormant_max: number; ltv_min: number; ltv_max: number; orders_min: number; tag: string; has_chat: boolean; provider: string;
   sort: 'ltv' | 'dormant_asc' | 'dormant_desc' | 'last_desc' | 'orders_desc';
 }>;
 

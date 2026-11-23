@@ -15,7 +15,9 @@ const row = (over: Partial<PoolRow> = {}): PoolRow => ({
 describe('labels and presets', () => {
   it('lists the Thai presets of the filter row', () => {
     expect(DORMANT_PRESETS.map((p) => [p.min, p.max])).toEqual([[30, 60], [61, 90], [91, 180], [181, 365], [366, null]]);
-    expect(LTV_PRESETS.map((p) => p.label)).toEqual(['ยอดซื้อสะสม ≥ 1,000', 'ยอดซื้อสะสม ≥ 5,000', 'ยอดซื้อสะสม ≥ 10,000', 'ยอดซื้อสะสม ≥ 50,000']);
+    expect(LTV_PRESETS.map((p) => p.label)).toEqual([
+      'ยอดซื้อสะสมต่ำกว่า 1,000', 'ยอดซื้อสะสม 1,000–4,999', 'ยอดซื้อสะสม 5,000–9,999', 'ยอดซื้อสะสม 10,000–49,999', 'ยอดซื้อสะสมตั้งแต่ 50,000',
+    ]);
     expect(ORDERS_PRESETS.map((p) => p.min)).toEqual([2, 3, 5]);
     expect(PROVIDER_OPTIONS.map((p) => p.value)).toEqual(['line', 'shopee', 'lazada', 'facebook', 'instagram', 'tiktok']);
     expect(PROVIDER_OPTIONS[0].label).toBe('ช่องทาง LINE');
@@ -31,13 +33,16 @@ describe('buildFilterJson', () => {
   });
   it('maps every UI field to the p_filters keys', () => {
     expect(buildFilterJson(F({
-      rfm: ['Loyal', ''], dormant: '61-90', ltv: '5000', orders: '3', provider: 'shopee', tag: ' Admin_Pop ', hasChat: true, sort: 'dormant_desc',
+      rfm: ['Loyal', ''], dormant: '61-90', ltv: '5000-9999', orders: '3', provider: 'shopee', tag: ' Admin_Pop ', hasChat: true, sort: 'dormant_desc',
     }))).toEqual({
-      rfm: ['Loyal', ''], dormant_min: 61, dormant_max: 90, ltv_min: 5000, orders_min: 3, provider: 'shopee', tag: 'Admin_Pop', has_chat: true, sort: 'dormant_desc',
+      rfm: ['Loyal', ''], dormant_min: 61, dormant_max: 90, ltv_min: 5000, ltv_max: 10000, orders_min: 3, provider: 'shopee', tag: 'Admin_Pop', has_chat: true, sort: 'dormant_desc',
     });
   });
   it('sends only dormant_min for the open-ended preset and drops unknown keys', () => {
     expect(buildFilterJson(F({ dormant: '366-' }))).toEqual({ dormant_min: 366 });
+    expect(buildFilterJson(F({ ltv: '50000-' }))).toEqual({ ltv_min: 50000 });
+    expect(buildFilterJson(F({ ltv: '0-999' }))).toEqual({ ltv_min: 0, ltv_max: 1000 });
+    expect(buildFilterJson(F({ ltv: '5000' }))).toEqual({}); // ค่าเดิมก่อนเปลี่ยนเป็นช่วง (URL เก่า) = ไม่กรอง
     expect(buildFilterJson(F({ dormant: 'x', ltv: '7', orders: '9', provider: 'web' }))).toEqual({});
     expect(hasFilters(F({ sort: 'orders_desc' }))).toBe(true);
   });
@@ -77,7 +82,11 @@ describe('matchesFilters (fixture mode)', () => {
     expect(matchesFilters(row(), F({ dormant: '91-180' }), null)).toBe(true);
     expect(matchesFilters(row(), F({ dormant: '30-60' }), null)).toBe(false);
     expect(matchesFilters(row({ dormantDays: null }), F({ dormant: '366-' }), null)).toBe(false);
-    expect(matchesFilters(row(), F({ ltv: '5000' }), null)).toBe(false);
+    expect(matchesFilters(row(), F({ ltv: '5000-9999' }), null)).toBe(false);
+    expect(matchesFilters(row(), F({ ltv: '1000-4999' }), null)).toBe(true);
+    expect(matchesFilters(row({ ltv: 5000 }), F({ ltv: '1000-4999' }), null)).toBe(false); // ขอบบนไม่รวม
+    expect(matchesFilters(row({ ltv: 5000 }), F({ ltv: '5000-9999' }), null)).toBe(true);
+    expect(matchesFilters(row(), F({ ltv: '0-999' }), null)).toBe(false);
     expect(matchesFilters(row(), F({ orders: '2' }), null)).toBe(true);
   });
   it('filters by tag (case-insensitive, none = no tag)', () => {

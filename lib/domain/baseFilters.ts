@@ -32,9 +32,14 @@ export const DORMANT_PRESETS: ReadonlyArray<RangePreset> = [
   { key: '181-365', label: 'ไม่ได้ซื้อมา 181–365 วัน', min: 181, max: 365 },
   { key: '366-', label: 'ไม่ได้ซื้อมาเกิน 365 วัน', min: 366, max: null },
 ];
-export const LTV_PRESETS: ReadonlyArray<RangePreset> = [1000, 5000, 10000, 50000].map((n) => ({
-  key: String(n), label: `ยอดซื้อสะสม ≥ ${n.toLocaleString('en-US')}`, min: n, max: null,
-}));
+/** ยอดซื้อสะสมเป็นช่วง (ขอบบนไม่รวม: ltv_max = 5000 หมายถึง < 5,000) — เดิมเป็น "≥ N" ซึ่งรวมลูกค้าหลักหมื่นเข้ามาด้วย */
+export const LTV_PRESETS: ReadonlyArray<RangePreset> = [
+  { key: '0-999', label: 'ยอดซื้อสะสมต่ำกว่า 1,000', min: 0, max: 1000 },
+  { key: '1000-4999', label: 'ยอดซื้อสะสม 1,000–4,999', min: 1000, max: 5000 },
+  { key: '5000-9999', label: 'ยอดซื้อสะสม 5,000–9,999', min: 5000, max: 10000 },
+  { key: '10000-49999', label: 'ยอดซื้อสะสม 10,000–49,999', min: 10000, max: 50000 },
+  { key: '50000-', label: 'ยอดซื้อสะสมตั้งแต่ 50,000', min: 50000, max: null },
+];
 export const ORDERS_PRESETS: ReadonlyArray<RangePreset> = [2, 3, 5].map((n) => ({ key: String(n), label: `ออเดอร์ ≥ ${n}`, min: n, max: null }));
 
 export const PROVIDERS = ['line', 'shopee', 'lazada', 'facebook', 'instagram', 'tiktok'] as const;
@@ -68,7 +73,10 @@ export function buildFilterJson(f: BaseFilters): BaseFilterJson {
     if (d.max != null) out.dormant_max = d.max;
   }
   const l = preset(LTV_PRESETS, f.ltv);
-  if (l) out.ltv_min = l.min;
+  if (l) {
+    out.ltv_min = l.min;
+    if (l.max != null) out.ltv_max = l.max;
+  }
   const o = preset(ORDERS_PRESETS, f.orders);
   if (o) out.orders_min = o.min;
   if (f.tag.trim()) out.tag = f.tag.trim();
@@ -141,6 +149,7 @@ export function matchesFilters(r: PoolRow, f: BaseFilters, brand: Brand | null):
   if (j.dormant_min != null && (r.dormantDays == null || r.dormantDays < j.dormant_min)) return false;
   if (j.dormant_max != null && (r.dormantDays == null || r.dormantDays > j.dormant_max)) return false;
   if (j.ltv_min != null && (r.ltv ?? 0) < j.ltv_min) return false;
+  if (j.ltv_max != null && (r.ltv ?? 0) >= j.ltv_max) return false;
   if (j.orders_min != null && (r.orders ?? 0) < j.orders_min) return false;
   if (j.tag) {
     const tag = (r.ownerTag ?? '').toLowerCase();
