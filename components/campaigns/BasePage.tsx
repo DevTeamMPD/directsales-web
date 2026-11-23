@@ -24,7 +24,7 @@ import { BrandTags } from './BrandTags';
 import { ChannelCell } from './ChannelCell';
 import { POOL_DEBOUNCE_MS } from './PoolPanel';
 import { RowButton } from './RowButton';
-import { useCustomerClaim } from './useCustomerClaim';
+import { useBulkFollow, useCustomerClaim } from './useCustomerClaim';
 
 /** ตัวกรองของหน้า /mine, /pool (คงค่าระหว่างอยู่ในหน้าเดียวกัน; แบรนด์ + ตัวกรองเก็บใน URL ด้วย) */
 interface BaseFilter { brand: '' | Brand; q: string; page: number; filters: BaseFilters }
@@ -55,6 +55,7 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
   const act = useLeadActions();
   const openJst = useJst();
   const claimRow = useCustomerClaim();
+  const bulkFollow = useBulkFollow();
   const [f, setF] = useState<BaseFilter>(initialFilter);
   const [qKey, setQKey] = useState('');
   const [data, setData] = useState<{ rows: PoolRow[]; total: number | null; err: string }>({ rows: [], total: null, err: '' });
@@ -303,6 +304,14 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
             {bar.over ? <span className="sub" style={{ color: 'var(--bad)' }}>{bar.over}</span> : <span className="sub">สูงสุด {max} คนต่อชุด</span>}
             <span style={{ flex: 1 }} />
             <button className="btn" id="sel-clear" onClick={() => setSel(new Map())}>ล้าง</button>
+            {scope === 'mine' ? (
+              <button
+                className="btn" id="sel-follow" disabled={!bar.canSend} title="ส่งลูกค้าที่เลือกเข้าหน้า Direct Sale เพื่อติดตามใกล้ชิด"
+                onClick={() => void bulkFollow([...sel.values()], f.brand, () => setSel(new Map()))}
+              >
+                เข้า Direct Sale
+              </button>
+            ) : null}
             <button className="btn primary" id="sel-send" disabled={!bar.canSend} onClick={openSend}>{bar.text} · ส่งข้อความ</button>
           </div>
         </div>

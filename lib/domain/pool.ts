@@ -118,6 +118,33 @@ export function claimBrand(selected: string | null | undefined, brands: Readonly
 }
 export const NO_BRAND_TEXT = 'เลือกแบรนด์ที่ช่องด้านบนก่อนจอง';
 
+/* ---------- /mine: ติ๊กหลายคนแล้วส่งเข้า Direct Sale (dsales_claim_customer ทีละคน) ---------- */
+export interface BulkFollowTodo { phone: string; name: string; brand: Brand }
+/** แบรนด์ = แบรนด์ที่กรองในหน้า → แบรนด์แรกของลูกค้า; ไม่มีแบรนด์ / ไม่ใช่ของฉันแล้ว = ข้าม */
+export function bulkFollowPlan(
+  rows: ReadonlyArray<{ phone: string; name: string; brands: ReadonlyArray<string>; mine: boolean }>, pageBrand: string | null | undefined,
+): { todo: BulkFollowTodo[]; skipped: { phone: string; reason: string }[] } {
+  const todo: BulkFollowTodo[] = [];
+  const skipped: { phone: string; reason: string }[] = [];
+  for (const r of rows) {
+    const brand = claimBrand(pageBrand, r.brands);
+    if (!r.mine) skipped.push({ phone: r.phone, reason: 'ไม่ใช่ลูกค้าของคุณแล้ว' });
+    else if (!brand) skipped.push({ phone: r.phone, reason: NO_BRAND_TEXT });
+    else todo.push({ phone: r.phone, name: r.name, brand });
+  }
+  return { todo, skipped };
+}
+
+/** toast เดียวหลังส่งครบ: จำนวนที่เข้า + ที่ข้ามแยกตามเหตุผล */
+export function bulkFollowSummary(done: number, skipReasons: ReadonlyArray<string>): string {
+  const head = done ? `ส่งเข้า Direct Sale แล้ว ${done.toLocaleString('th-TH')} คน` : 'ไม่ได้ส่งเข้า Direct Sale';
+  if (!skipReasons.length) return head;
+  const counts = new Map<string, number>();
+  for (const r of skipReasons) counts.set(r, (counts.get(r) ?? 0) + 1);
+  const why = [...counts].map(([r, n]) => `${r} ${n.toLocaleString('th-TH')}`).join(', ');
+  return `${head} · ข้าม ${skipReasons.length.toLocaleString('th-TH')} คน (${why})`;
+}
+
 /**
  * ปุ่มของ /mine, /pool (spec ข้อ 3): ห้ามโทร → disabled; ของฉันที่มีลีดแล้ว → ยกเลิกจอง/จองแล้ว; ของฉันตาม tag ที่ยังไม่มีลีด → เริ่มติดตาม;
  * เป็นของเซลล์คนอื่น (ลีดหรือ tag) → disabled "เป็นลูกค้าของ <ชื่อ/tag>"; ว่าง → จอง

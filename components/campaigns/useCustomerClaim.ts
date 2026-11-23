@@ -2,10 +2,13 @@
 
 import { useCallback } from 'react';
 import { useJst } from '@/components/leads/useJst';
+import { errorMessage } from '@/lib/api/errors';
 import { mapChannel } from '@/lib/api/map';
 import { claimCustomer, getCustomerChannels } from '@/lib/api/rpc';
 import type { Channel, PoolRow } from '@/lib/api/types';
 import { FIXTURE_NO_WRITE, type Brand } from '@/lib/constants';
+import type { SelRow } from '@/lib/domain/outreach';
+import { bulkFollowPlan, bulkFollowSummary } from '@/lib/domain/pool';
 import { channelsOf, jstTarget } from '@/lib/jst';
 import { useActions, useAppState } from '@/lib/state/AppProvider';
 
@@ -48,5 +51,39 @@ export function useCustomerClaim(): (r: PoolRow, brand: Brand, seq?: number, msg
       });
     },
     [live, once, upsertLead, patchLead, dispatch, toast, toastError, closeModal, openJst],
+  );
+}
+
+/**
+ * /mine: ส่งลูกค้าที่ติ๊กไว้เข้า Direct Sale (dsales_claim_customer ทีละคน — ลีดเดิมของฉันก็ผ่าน) ไม่เปิดแชต JST อัตโนมัติ
+ * toast สรุปครั้งเดียว · กันกดซ้ำทั้งชุด · onDone เรียกเมื่อจบ (ล้างที่เลือก)
+ */
+export function useBulkFollow(): (rows: ReadonlyArray<SelRow>, pageBrand: string, onDone: () => void) => Promise<void> {
+  const { live } = useAppState();
+  const { once, upsertLead, dispatch, toast } = useActions();
+  return useCallback(
+    async (rows, pageBrand, onDone) => {
+      if (!live) {
+        toast(FIXTURE_NO_WRITE);
+        return;
+      }
+      await once('bulk-follow', async () => {
+        const { todo, skipped } = bulkFollowPlan(rows, pageBrand);
+        const reasons = skipped.map((s) => s.reason);
+        let done = 0;
+        for (const t of todo) {
+          try {
+            upsertLead(await claimCustomer(t.phone, t.brand));
+            done++;
+          } catch (e) {
+            reasons.push(errorMessage(e));
+          }
+        }
+        dispatch({ type: 'invalidatePool' });
+        toast(bulkFollowSummary(done, reasons));
+        onDone();
+      });
+    },
+    [live, once, upsertLead, dispatch, toast],
   );
 }
