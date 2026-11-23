@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { LeadTable } from '@/components/leads/LeadTable';
 import { LeadToolbar } from '@/components/leads/LeadToolbar';
 import { PeriodCard } from '@/components/leads/PeriodCard';
@@ -20,13 +21,27 @@ import { PoolPanel } from './PoolPanel';
  * ปุ่ม "จัดสรรให้เซลล์ที่ขายล่าสุด" ทำแบบ prototype ตอนล็อกอินจริง (applyAuto คืน 0 เสมอ → toast "ไม่มีลีดที่ต้องจัดสรร")
  */
 export function CampaignPage({ brand }: { brand: Brand }) {
-  const { campaigns, leads, customers, meId, isAdmin, live, ui, today, pool } = useAppState();
-  const { setUi, setPool, openModal, toast } = useActions();
+  const { campaigns, leads, customers, meId, isAdmin, live, ui, today, pool, brand: scope } = useAppState();
+  const { setUi, setPool, openModal, toast, setBrand } = useActions();
+  const router = useRouter();
   const viewer = useMemo(() => ({ meId, isAdmin }), [meId, isAdmin]);
   const cs = useMemo(() => campaigns.filter((c) => c.brand === brand), [campaigns, brand]);
   const sel = normalizeSelCamp(ui.selCamp, campaigns, brand);
   const isAll = sel === SEL_ALL;
   const isCamps = sel === SEL_CAMPS;
+
+  // แบรนด์ใหญ่: เปิดหน้า (ลิงก์ตรง/เมนู/ปุ่ม "เพิ่มจากถัง") = URL เป็นตัวตัดสิน แบรนด์ใหญ่สลับตาม (หัวหน้าที่เลือก "ทั้งหมด" คงเดิม)
+  // หลังจากนั้นสลับแบรนด์ใน topbar = ไปหน้าแคมเปญของแบรนด์นั้น (เมนูแคมเปญของแบรนด์เดิมถูกซ่อนแล้ว)
+  const [syncedFor, setSyncedFor] = useState<Brand | null>(null);
+  useEffect(() => {
+    const other = scope !== 'all' && scope !== brand;
+    if (syncedFor !== brand) {
+      setSyncedFor(brand);
+      if (other) setBrand(brand);
+    } else if (other) {
+      router.replace(`/campaigns/${scope}`);
+    }
+  }, [brand, scope, syncedFor, setBrand, router]);
 
   // หน้านี้ไม่มี select แคมเปญใน toolbar: ล้างตัวกรองแคมเปญที่ค้างมาจาก /leads ไม่ให้ซ่อนลีดเงียบ ๆ (ตัวกรองอื่นคงไว้)
   useEffect(() => {
