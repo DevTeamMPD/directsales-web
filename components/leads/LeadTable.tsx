@@ -7,6 +7,7 @@ import { CallButton, ContactBar, type OpenJst } from '@/components/leads/Contact
 import { SendOutreachModal } from '@/components/modals/SendOutreachModal';
 import { DueTag, StatusBadge } from '@/components/ui/StatusBadge';
 import type { Campaign, ChatRoom, ClaimMode, Lead, Rep } from '@/lib/api/types';
+import { pageBrand } from '@/lib/domain/brand';
 import { bills, canUnclaim, lastSeller, repName, total } from '@/lib/domain/leads';
 import {
   defaultOutreachBrand, leadSelectable, leadSelRow, phoneCheckState, pruneSelection, selectionBar, setPhones, togglePhone,
@@ -29,7 +30,7 @@ interface RowCtx {
 }
 
 export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts }) {
-  const { reps, campaigns, meId, isAdmin, today, leads } = useAppState();
+  const { reps, campaigns, meId, isAdmin, today, leads, brand } = useAppState();
   const { openModal } = useActions();
   const act = useLeadActions();
   const openJst = useJst();
@@ -66,7 +67,7 @@ export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts 
       return l ? [leadSelRow(l, rooms.get(p))] : [];
     });
     if (!picked.length) return;
-    openModal(<SendOutreachModal rows={picked} defaultBrand={defaultOutreachBrand(picked, null)} onSent={() => setSel(new Set())} />);
+    openModal(<SendOutreachModal rows={picked} defaultBrand={defaultOutreachBrand(picked, pageBrand(brand) || null)} onSent={() => setSel(new Set())} />);
   };
   return (
     <>

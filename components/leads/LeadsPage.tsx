@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import { TopbarActions } from '@/components/shell/TopbarActions';
 import { PickFromBucketModal } from '@/components/modals/PickFromBucketModal';
+import { inBrand } from '@/lib/domain/brand';
 import { filtered, mineOrAll } from '@/lib/domain/leads';
 import { useActions, useAppState } from '@/lib/state/AppProvider';
 import { LeadTable } from './LeadTable';
@@ -10,11 +11,11 @@ import { LeadToolbar } from './LeadToolbar';
 import { PeriodCard } from './PeriodCard';
 import { useVerifyMine } from './useVerifyMine';
 
-/** หน้า Direct Sale: หัวหน้าเห็นทุกลีด เซลล์เห็นเฉพาะของตัวเอง (mineOrAll) */
+/** หน้า Direct Sale: หัวหน้าเห็นทุกลีด เซลล์เห็นเฉพาะของตัวเอง (mineOrAll) · เฉพาะแบรนด์ใหญ่ที่เลือกใน topbar */
 export function LeadsPage() {
-  const { leads, meId, isAdmin, ui, today } = useAppState();
+  const { leads, meId, isAdmin, ui, today, brand } = useAppState();
   const { openModal } = useActions();
-  const base = useMemo(() => leads.filter((l) => mineOrAll(l, { meId, isAdmin })), [leads, meId, isAdmin]);
+  const base = useMemo(() => leads.filter((l) => mineOrAll(l, { meId, isAdmin }) && inBrand(brand, l.brand)), [leads, meId, isAdmin, brand]);
   const list = useMemo(() => filtered(base, { ...ui, today }), [base, ui, today]);
   useVerifyMine();
   return (
