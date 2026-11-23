@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { ChatRoom, DemoCustomer, WorkerStatus } from '@/lib/api/types';
 import {
   batchProgress, brandRoomCounts, brandRoomHint, channelLabel, countBadges, DEFAULT_MAX_BATCH, defaultOutreachBrand, demoPreview, hasPending, isWorkerOnline, itemErrorText, itemsPending, maxBatch,
-  leadSelectable, leadSelRow, pageCheckState, renderTemplate, roomLabel, selectionBar, setPageSelected, shouldPoll, skipLabel, splitPreview, statusBadge, statusLabel,
-  skipReasonText, TEST_MODE_TEXT, toggleRoom, toggleSelect, toSelRow, upsertTemplate, validateSettings, validateTemplate, workerBanners, workerStateLabel, type SelRow,
+  leadSelectable, leadSelRow, pageCheckState, phoneCheckState, pruneSelection, renderTemplate, roomLabel, selectionBar, setPageSelected, setPhones, shouldPoll, skipLabel, splitPreview, statusBadge, statusLabel,
+  skipReasonText, TEST_MODE_TEXT, togglePhone, toggleRoom, toggleSelect, toSelRow, upsertTemplate, validateSettings, validateTemplate, workerBanners, workerStateLabel, type SelRow,
 } from './outreach';
 
 const row = (phone: string, over: Partial<SelRow> = {}): SelRow => ({ phone, name: `ลูกค้า ${phone}`, brands: ['bebeplay'], chat: 'c', taken: null, mine: false, chatBrands: [], ...over });
@@ -219,5 +219,26 @@ describe('Direct Sale: tick leads to send a message', () => {
     expect(leadSelRow(lead, undefined)).toEqual({
       phone: '0811111111', name: 'คุณเอ', brands: ['hosttail'], chat: 'เอ แชต', taken: null, mine: true, chatBrands: [],
     });
+  });
+});
+
+describe('Direct Sale selection by phone', () => {
+  it('pruneSelection drops phones that are no longer allowed and keeps the same instance when nothing changes', () => {
+    const sel = new Set(['01', '02', '03']);
+    expect([...pruneSelection(sel, new Set(['01', '03', '09']))]).toEqual(['01', '03']);
+    expect(pruneSelection(sel, new Set(['01', '02', '03', '04']))).toBe(sel);
+    expect(pruneSelection(new Set<string>(), new Set(['01']))).toEqual(new Set());
+  });
+  it('phoneCheckState for the header checkbox', () => {
+    expect(phoneCheckState(new Set(['01']), [])).toBe('none');
+    expect(phoneCheckState(new Set<string>(), ['01', '02'])).toBe('none');
+    expect(phoneCheckState(new Set(['01']), ['01', '02'])).toBe('some');
+    expect(phoneCheckState(new Set(['01', '02', '09']), ['01', '02'])).toBe('all');
+  });
+  it('togglePhone / setPhones', () => {
+    expect([...togglePhone(new Set(['01']), '02')]).toEqual(['01', '02']);
+    expect([...togglePhone(new Set(['01', '02']), '01')]).toEqual(['02']);
+    expect([...setPhones(new Set(['09']), ['01', '02'], true)].sort()).toEqual(['01', '02', '09']);
+    expect([...setPhones(new Set(['01', '02', '09']), ['01', '02'], false)]).toEqual(['09']);
   });
 });

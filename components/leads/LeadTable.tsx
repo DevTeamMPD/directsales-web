@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SelectionBar } from '@/components/campaigns/SelectionBar';
 import { useOutreachMax } from '@/components/campaigns/useOutreachMax';
 import { CallButton, ContactBar, type OpenJst } from '@/components/leads/ContactBar';
@@ -9,7 +9,7 @@ import { DueTag, StatusBadge } from '@/components/ui/StatusBadge';
 import type { Campaign, ChatRoom, ClaimMode, Lead, Rep } from '@/lib/api/types';
 import { bills, canUnclaim, lastSeller, repName, total } from '@/lib/domain/leads';
 import {
-  defaultOutreachBrand, leadSelectable, leadSelRow, pageCheckState, selectionBar, setPageSelected, toggleSelect, type SelRow,
+  defaultOutreachBrand, leadSelectable, leadSelRow, phoneCheckState, pruneSelection, selectionBar, setPhones, togglePhone,
 } from '@/lib/domain/outreach';
 import { baht, fmtDate } from '@/lib/format';
 import { channelsOf } from '@/lib/jst';
@@ -25,37 +25,48 @@ export interface TableOpts { mode?: ClaimMode; perCamp?: boolean; selectable?: b
 
 interface RowCtx {
   reps: Rep[]; campaigns: Campaign[]; meId: string; isAdmin: boolean; today: string; act: LeadActions; openJst: OpenJst;
-  rooms: ReadonlyMap<string, ChatRoom[]>; selectable: boolean; sel: ReadonlyMap<string, SelRow>; toggle: (l: Lead) => void;
+  rooms: ReadonlyMap<string, ChatRoom[]>; selectable: boolean; toggle: (phone: string) => void;
 }
 
 export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts }) {
-  const { reps, campaigns, meId, isAdmin, today } = useAppState();
+  const { reps, campaigns, meId, isAdmin, today, leads } = useAppState();
   const { openModal } = useActions();
   const act = useLeadActions();
   const openJst = useJst();
   const rooms = useLeadRooms(list);
   const selectable = !!opts.selectable;
-  const [sel, setSel] = useState<ReadonlyMap<string, SelRow>>(() => new Map());
+  // เก็บแค่เบอร์ — สร้างแถวส่งตอนกดส่งจากลีด/ห้องล่าสุด (ห้องโหลดเสร็จทีหลังก็ได้แบรนด์ถูก)
+  const [sel, setSel] = useState<ReadonlySet<string>>(() => new Set());
   const max = useOutreachMax(sel.size > 0);
   const headBox = useRef<HTMLInputElement>(null);
+  // ลีดของฉันทั้งหมด (ไม่ใช่เฉพาะที่กรองอยู่) → ติ๊กคงอยู่ข้ามตัวกรอง/คำค้น แต่ลีดที่ยกเลิกจอง/ถูกโอนออกถูกตัดทิ้ง
+  const minePhones = useMemo(() => new Set(leads.filter((l) => leadSelectable(l, meId)).map((l) => l.phone)), [leads, meId]);
+  useEffect(() => {
+    setSel((s) => pruneSelection(s, minePhones));
+  }, [minePhones]);
   const pickable = useMemo(
-    () => (selectable ? list.filter((l) => leadSelectable(l, meId)).map((l) => leadSelRow(l, rooms.get(l.phone))) : []),
-    [selectable, list, meId, rooms],
+    () => (selectable ? list.filter((l) => leadSelectable(l, meId)).map((l) => l.phone) : []),
+    [selectable, list, meId],
   );
-  const pageState = pageCheckState(sel, pickable);
+  const pageState = phoneCheckState(sel, pickable);
   useEffect(() => {
     if (headBox.current) headBox.current.indeterminate = pageState === 'some';
   }, [pageState]);
-  const toggle = useMemo(() => (l: Lead) => setSel((m) => toggleSelect(m, leadSelRow(l, rooms.get(l.phone)))), [rooms]);
-  // ctx คงที่จนกว่าทีม/แคมเปญ/วันนี้/ห้อง/ที่เลือกเปลี่ยน → พิมพ์ค้นหาแล้วแถวที่ลีดไม่เปลี่ยนไม่ต้องวาดใหม่ (memo)
+  const toggle = useCallback((phone: string) => setSel((s) => togglePhone(s, phone)), []);
+  // ctx คงที่จนกว่าทีม/แคมเปญ/วันนี้/ห้องเปลี่ยน → พิมพ์ค้นหา/ติ๊กแล้วแถวอื่นไม่ต้องวาดใหม่ (memo; ติ๊กส่งเป็น prop checked แยก)
   const ctx = useMemo<RowCtx>(
-    () => ({ reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, sel, toggle }),
-    [reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, sel, toggle],
+    () => ({ reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, toggle }),
+    [reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, toggle],
   );
   const openSend = () => {
     if (!selectionBar(sel.size, max).canSend) return;
-    const picked = [...sel.values()];
-    openModal(<SendOutreachModal rows={picked} defaultBrand={defaultOutreachBrand(picked, null)} onSent={() => setSel(new Map())} />);
+    const byPhone = new Map(leads.map((l) => [l.phone, l] as const));
+    const picked = [...sel].flatMap((p) => {
+      const l = byPhone.get(p);
+      return l ? [leadSelRow(l, rooms.get(p))] : [];
+    });
+    if (!picked.length) return;
+    openModal(<SendOutreachModal rows={picked} defaultBrand={defaultOutreachBrand(picked, null)} onSent={() => setSel(new Set())} />);
   };
   return (
     <>
@@ -68,7 +79,7 @@ export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts 
                   <input
                     ref={headBox} type="checkbox" id="lead-sel-page" aria-label="เลือกลีดของฉันทุกแถวที่แสดง" disabled={!pickable.length}
                     checked={pageState === 'all' && pickable.length > 0}
-                    onChange={(e) => setSel((m) => setPageSelected(m, pickable, e.target.checked))}
+                    onChange={(e) => setSel((s) => setPhones(s, pickable, e.target.checked))}
                   />
                 </th>
               ) : null}
@@ -80,7 +91,7 @@ export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts 
             {list.length ? (
               list.map((l) => {
                 const mode = opts.perCamp ? campaigns.find((c) => c.id === l.campaignId)?.claimMode || 'self' : opts.mode;
-                return <LeadRow key={l.id} l={l} mode={mode} ctx={ctx} />;
+                return <LeadRow key={l.id} l={l} mode={mode} ctx={ctx} checked={sel.has(l.phone)} />;
               })
             ) : (
               <tr><td colSpan={selectable ? 10 : 9} className="empty">ไม่พบรายการที่ตรงกับตัวกรอง</td></tr>
@@ -88,24 +99,24 @@ export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts 
           </tbody>
         </table>
       </div>
-      {selectable ? <SelectionBar count={sel.size} max={max} onClear={() => setSel(new Map())} onSend={openSend} /> : null}
+      {selectable ? <SelectionBar count={sel.size} max={max} onClear={() => setSel(new Set())} onSend={openSend} /> : null}
     </>
   );
 }
 
-const LeadRow = memo(function LeadRow({ l, mode, ctx }: { l: Lead; mode?: ClaimMode; ctx: RowCtx }) {
-  const { reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, sel, toggle } = ctx;
+const LeadRow = memo(function LeadRow({ l, mode, ctx, checked }: { l: Lead; mode?: ClaimMode; ctx: RowCtx; checked: boolean }) {
+  const { reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, toggle } = ctx;
   const owner = repName(reps, l.owner);
   const seller = lastSeller(l, reps);
   const lastNote = l.interactions[l.interactions.length - 1]?.note;
   const logType = l.noCall ? 'chat' : 'call';
   const myRooms = rooms.get(l.phone);
   return (
-    <tr className={sel.has(l.phone) ? 'sel' : undefined}>
+    <tr className={checked ? 'sel' : undefined}>
       {selectable ? (
         <td className="sel-col">
           {leadSelectable(l, meId) ? (
-            <input type="checkbox" data-lead-sel={l.phone} aria-label={`เลือก ${l.name}`} checked={sel.has(l.phone)} onChange={() => toggle(l)} />
+            <input type="checkbox" data-lead-sel={l.phone} aria-label={`เลือก ${l.name}`} checked={checked} onChange={() => toggle(l.phone)} />
           ) : null}
         </td>
       ) : null}

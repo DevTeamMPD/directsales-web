@@ -58,6 +58,34 @@ export function pageCheckState(sel: Selection, rows: ReadonlyArray<Pick<SelRow, 
 /** ติ๊กได้เฉพาะลีดที่ฉันเป็นเจ้าของ (ลีดแคมเปญที่ยังไม่จอง/ของคนอื่น enqueue จะข้ามเป็น taken อยู่ดี) */
 export const leadSelectable = (l: Pick<Lead, 'owner'>, meId: string): boolean => !!meId && l.owner === meId;
 
+/** ตัดเบอร์ที่ไม่ใช่ลีดของฉันแล้วออกจากที่เลือก (ไม่มีอะไรถูกตัด = คืนตัวเดิม เพื่อไม่ให้ React วาดใหม่) */
+export function pruneSelection(sel: ReadonlySet<string>, allowed: ReadonlySet<string>): ReadonlySet<string> {
+  for (const p of sel) if (!allowed.has(p)) return new Set([...sel].filter((x) => allowed.has(x)));
+  return sel;
+}
+
+/** สถานะช่องติ๊กหัวตารางของเบอร์ที่ติ๊กได้ในหน้านี้ */
+export function phoneCheckState(sel: ReadonlySet<string>, phones: ReadonlyArray<string>): 'all' | 'some' | 'none' {
+  const n = phones.filter((p) => sel.has(p)).length;
+  return n === 0 ? 'none' : n === phones.length ? 'all' : 'some';
+}
+
+export function togglePhone(sel: ReadonlySet<string>, phone: string): Set<string> {
+  const next = new Set(sel);
+  if (next.has(phone)) next.delete(phone);
+  else next.add(phone);
+  return next;
+}
+
+export function setPhones(sel: ReadonlySet<string>, phones: ReadonlyArray<string>, on: boolean): Set<string> {
+  const next = new Set(sel);
+  for (const p of phones) {
+    if (on) next.add(p);
+    else next.delete(p);
+  }
+  return next;
+}
+
 /** ภาพของลีดสำหรับ SendOutreachModal — chatBrands = แบรนด์ที่มีห้องส่งได้ (จาก useLeadRooms) */
 export function leadSelRow(l: Pick<Lead, 'phone' | 'name' | 'brand' | 'chatName'>, rooms: ReadonlyArray<ChatRoom> | undefined): SelRow {
   const rs = rooms ?? [];
