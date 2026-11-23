@@ -26,7 +26,7 @@ export function LeadsPage() {
       </TopbarActions>
       <PeriodCard />
       <LeadToolbar base={base} withCampSelect />
-      <LeadTable list={list} />
+      <LeadTable list={list} opts={{ selectable: true }} />
     </>
   );
 }

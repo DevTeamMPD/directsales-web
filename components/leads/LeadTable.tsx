@@ -1,63 +1,125 @@
 'use client';
 
-import { Fragment, memo, useMemo } from 'react';
-import { ContactBar, type OpenJst } from '@/components/leads/ContactBar';
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
+import { SelectionBar } from '@/components/campaigns/SelectionBar';
+import { useOutreachMax } from '@/components/campaigns/useOutreachMax';
+import { CallButton, ContactBar, type OpenJst } from '@/components/leads/ContactBar';
+import { SendOutreachModal } from '@/components/modals/SendOutreachModal';
 import { DueTag, StatusBadge } from '@/components/ui/StatusBadge';
-import type { Campaign, ClaimMode, Lead, Rep } from '@/lib/api/types';
+import type { Campaign, ChatRoom, ClaimMode, Lead, Rep } from '@/lib/api/types';
 import { bills, canUnclaim, lastSeller, repName, total } from '@/lib/domain/leads';
+import {
+  defaultOutreachBrand, leadSelectable, leadSelRow, pageCheckState, selectionBar, setPageSelected, toggleSelect, type SelRow,
+} from '@/lib/domain/outreach';
 import { baht, fmtDate } from '@/lib/format';
 import { channelsOf } from '@/lib/jst';
-import { useAppState } from '@/lib/state/AppProvider';
+import { useActions, useAppState } from '@/lib/state/AppProvider';
+import { RoomIcons } from './RoomIcons';
 import { useJst } from './useJst';
 import { useLeadActions, type LeadActions } from './useLeadActions';
+import { useLeadRooms } from './useLeadRooms';
 
-/** mode = วิธีจองของแคมเปญที่เลือก (หน้าแคมเปญ); perCamp = มุม "ลูกค้าทุกแคมเปญ" ใช้วิธีจองของแคมเปญของแต่ละลีด */
-export interface TableOpts { mode?: ClaimMode; perCamp?: boolean }
+/** mode = วิธีจองของแคมเปญที่เลือก (หน้าแคมเปญ); perCamp = มุม "ลูกค้าทุกแคมเปญ" ใช้วิธีจองของแคมเปญของแต่ละลีด;
+ *  selectable = คอลัมน์ติ๊กลีดของฉันเพื่อส่งข้อความ (หน้า Direct Sale เท่านั้น) */
+export interface TableOpts { mode?: ClaimMode; perCamp?: boolean; selectable?: boolean }
 
-interface RowCtx { reps: Rep[]; campaigns: Campaign[]; meId: string; isAdmin: boolean; today: string; act: LeadActions; openJst: OpenJst }
+interface RowCtx {
+  reps: Rep[]; campaigns: Campaign[]; meId: string; isAdmin: boolean; today: string; act: LeadActions; openJst: OpenJst;
+  rooms: ReadonlyMap<string, ChatRoom[]>; selectable: boolean; sel: ReadonlyMap<string, SelRow>; toggle: (l: Lead) => void;
+}
 
 export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts }) {
   const { reps, campaigns, meId, isAdmin, today } = useAppState();
+  const { openModal } = useActions();
   const act = useLeadActions();
   const openJst = useJst();
-  // ctx คงที่จนกว่าทีม/แคมเปญ/วันนี้เปลี่ยน → พิมพ์ค้นหาแล้วแถวที่ลีดไม่เปลี่ยนไม่ต้องวาดใหม่ (memo)
-  const ctx = useMemo<RowCtx>(() => ({ reps, campaigns, meId, isAdmin, today, act, openJst }), [reps, campaigns, meId, isAdmin, today, act, openJst]);
+  const rooms = useLeadRooms(list);
+  const selectable = !!opts.selectable;
+  const [sel, setSel] = useState<ReadonlyMap<string, SelRow>>(() => new Map());
+  const max = useOutreachMax(sel.size > 0);
+  const headBox = useRef<HTMLInputElement>(null);
+  const pickable = useMemo(
+    () => (selectable ? list.filter((l) => leadSelectable(l, meId)).map((l) => leadSelRow(l, rooms.get(l.phone))) : []),
+    [selectable, list, meId, rooms],
+  );
+  const pageState = pageCheckState(sel, pickable);
+  useEffect(() => {
+    if (headBox.current) headBox.current.indeterminate = pageState === 'some';
+  }, [pageState]);
+  const toggle = useMemo(() => (l: Lead) => setSel((m) => toggleSelect(m, leadSelRow(l, rooms.get(l.phone)))), [rooms]);
+  // ctx คงที่จนกว่าทีม/แคมเปญ/วันนี้/ห้อง/ที่เลือกเปลี่ยน → พิมพ์ค้นหาแล้วแถวที่ลีดไม่เปลี่ยนไม่ต้องวาดใหม่ (memo)
+  const ctx = useMemo<RowCtx>(
+    () => ({ reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, sel, toggle }),
+    [reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, sel, toggle],
+  );
+  const openSend = () => {
+    if (!selectionBar(sel.size, max).canSend) return;
+    const picked = [...sel.values()];
+    openModal(<SendOutreachModal rows={picked} defaultBrand={defaultOutreachBrand(picked, null)} onSent={() => setSel(new Map())} />);
+  };
   return (
-    <div className="card table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>ชื่อ / เบอร์</th><th>เลขบิลที่เคยซื้อ</th><th>ร้านค้า</th><th>แคมเปญ</th><th>พนักงานขาย</th>
-            <th className="r">ยอดซื้อรวม</th><th>สถานะ</th><th>บันทึกล่าสุด</th><th>ปุ่มดำเนินการ</th>
-          </tr>
-        </thead>
-        <tbody>
-          {list.length ? (
-            list.map((l) => {
-              const mode = opts.perCamp ? campaigns.find((c) => c.id === l.campaignId)?.claimMode || 'self' : opts.mode;
-              return <LeadRow key={l.id} l={l} mode={mode} ctx={ctx} />;
-            })
-          ) : (
-            <tr><td colSpan={9} className="empty">ไม่พบรายการที่ตรงกับตัวกรอง</td></tr>
-          )}
-        </tbody>
-      </table>
-    </div>
+    <>
+      <div className="card table-wrap">
+        <table>
+          <thead>
+            <tr>
+              {selectable ? (
+                <th className="sel-col" style={{ width: 1 }}>
+                  <input
+                    ref={headBox} type="checkbox" id="lead-sel-page" aria-label="เลือกลีดของฉันทุกแถวที่แสดง" disabled={!pickable.length}
+                    checked={pageState === 'all' && pickable.length > 0}
+                    onChange={(e) => setSel((m) => setPageSelected(m, pickable, e.target.checked))}
+                  />
+                </th>
+              ) : null}
+              <th>ชื่อ / เบอร์</th><th>เลขบิลที่เคยซื้อ</th><th>ร้านค้า</th><th>แคมเปญ</th><th>พนักงานขาย</th>
+              <th className="r">ยอดซื้อรวม</th><th>สถานะ</th><th>บันทึกล่าสุด</th><th>ปุ่มดำเนินการ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.length ? (
+              list.map((l) => {
+                const mode = opts.perCamp ? campaigns.find((c) => c.id === l.campaignId)?.claimMode || 'self' : opts.mode;
+                return <LeadRow key={l.id} l={l} mode={mode} ctx={ctx} />;
+              })
+            ) : (
+              <tr><td colSpan={selectable ? 10 : 9} className="empty">ไม่พบรายการที่ตรงกับตัวกรอง</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {selectable ? <SelectionBar count={sel.size} max={max} onClear={() => setSel(new Map())} onSend={openSend} /> : null}
+    </>
   );
 }
 
 const LeadRow = memo(function LeadRow({ l, mode, ctx }: { l: Lead; mode?: ClaimMode; ctx: RowCtx }) {
-  const { reps, campaigns, meId, isAdmin, today, act, openJst } = ctx;
+  const { reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, sel, toggle } = ctx;
   const owner = repName(reps, l.owner);
   const seller = lastSeller(l, reps);
   const lastNote = l.interactions[l.interactions.length - 1]?.note;
   const logType = l.noCall ? 'chat' : 'call';
+  const myRooms = rooms.get(l.phone);
   return (
-    <tr>
+    <tr className={sel.has(l.phone) ? 'sel' : undefined}>
+      {selectable ? (
+        <td className="sel-col">
+          {leadSelectable(l, meId) ? (
+            <input type="checkbox" data-lead-sel={l.phone} aria-label={`เลือก ${l.name}`} checked={sel.has(l.phone)} onChange={() => toggle(l)} />
+          ) : null}
+        </td>
+      ) : null}
       <td>
         <button className="cust-name" data-act="open" data-id={l.id} onClick={() => act.openCustomer(l.id)}>{l.name}</button>
         <div className="sub mono">{l.phone}</div>
-        <ContactBar x={l} chans={channelsOf(l)} mini openJst={openJst} />
+        {myRooms?.length ? (
+          <span className="ch-bar mini">
+            <CallButton phone={l.phone} />
+            <RoomIcons who={{ phone: l.phone, name: l.name, chat: l.chatName, brand: l.brand }} rooms={myRooms} openJst={openJst} />
+          </span>
+        ) : (
+          <ContactBar x={l} chans={channelsOf(l)} mini openJst={openJst} />
+        )}
       </td>
       <td>
         <div className="bills">{bills(l).map((b, i) => <span key={`${b}-${i}`} className="bill">{b}</span>)}</div>
