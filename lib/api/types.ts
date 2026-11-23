@@ -66,6 +66,8 @@ export interface ChatRoomJson { ms_id: number; provider: string | null; page: st
   /** ห้อง Facebook / Instagram เท่านั้น */ outer_user_id?: string | null; meta_page_id?: string | null; meta_business_id?: string | null }
 /** name = ชื่อของห้องนี้ใน JST (ใช้ค้นหา/คัดลอก) · metaInbox = ลิงก์ Inbox ของเพจใน Meta Business Suite (FB/IG ที่รู้ page id) */
 export interface ChatRoom { msId: number; provider: string; page: string; brand: Brand | null; sendable: boolean; name?: string; metaInbox?: string }
+/** แถวของ dsales_rooms_for_phones */
+export interface RoomsForPhoneRow { phone: string; rooms: ChatRoomJson[] | null }
 
 /** p_filters ของ dsales_base_customers (สร้างจาก UI ด้วย lib/domain/baseFilters.ts buildFilterJson) — ไม่มีตัวกรอง = {} */
 export type BaseFilterJson = Partial<{

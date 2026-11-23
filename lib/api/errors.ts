@@ -20,6 +20,7 @@ export const ERROR_TEXT: Readonly<Record<string, string>> = {
   // ส่งข้อความผ่าน JST worker (outreach contract)
   template_not_found: 'ไม่พบ template นี้ หรือถูกปิดใช้งานแล้ว',
   batch_too_large: 'เลือกลูกค้าเกินจำนวนสูงสุดต่อชุด',
+  too_many_phones: 'ส่งเบอร์เกินจำนวนสูงสุดต่อครั้ง',
   invalid_template: 'template ไม่ถูกต้อง ต้องมีชื่อและข้อความ',
   invalid_setting: 'ค่าตั้งค่าไม่ถูกต้อง (ระยะห่าง 5–3600 วินาที, เพดาน LINE ตั้งแต่ 0)',
   not_worker: 'บัญชีนี้ไม่ใช่บัญชีของ worker',

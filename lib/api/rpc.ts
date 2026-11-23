@@ -5,7 +5,7 @@ import { RpcError } from './errors';
 import { rowsTotal } from './map';
 import type {
   BaseFilterJson, BatchDetail, BatchRow, CampaignRow, ChannelRowJson, ChatSessionJson, ContactType, EnqueueResult, JstTagRow, LeadJson, LeadStatus, MeRow,
-  MemberJson, MemberTagsRow, NewCampaign, PoolRowJson, PreviewRow, PurchaseRowJson, TeamRow, Template, TemplateInput, WorkerRoom,
+  MemberJson, MemberTagsRow, NewCampaign, PoolRowJson, PreviewRow, PurchaseRowJson, RoomsForPhoneRow, TeamRow, Template, TemplateInput, WorkerRoom,
   WorkerSettingsInput, WorkerStatus,
 } from './types';
 
@@ -36,6 +36,15 @@ export const setMemberTags = (userId: string, tags: string[]) => call<string[]>(
 
 /* ---------- ลีด ---------- */
 export const getMyLeads = (limit = 1000, offset = 0) => call<LeadJson[]>('dsales_my_leads', { p_limit: limit, p_offset: offset });
+/** ห้องแชตของหลายเบอร์ (ลีดของฉัน; หัวหน้า = ทุกเบอร์) — ตัดซ้ำ/ว่าง แล้วส่งทีละ 100 เบอร์ (ขีดจำกัดของ RPC) */
+export async function getRoomsForPhones(phones: ReadonlyArray<string>): Promise<RoomsForPhoneRow[]> {
+  const uniq = [...new Set(phones.map((p) => p.trim()).filter(Boolean))];
+  const out: RoomsForPhoneRow[] = [];
+  for (let i = 0; i < uniq.length; i += 100) {
+    out.push(...((await call<RoomsForPhoneRow[] | null>('dsales_rooms_for_phones', { p_phones: uniq.slice(i, i + 100) })) ?? []));
+  }
+  return out;
+}
 export const claimLead = (leadId: string) => call<LeadJson>('dsales_claim_lead', { p_lead: leadId });
 export const unclaimLead = (leadId: string) => call<LeadJson>('dsales_unclaim_lead', { p_lead: leadId });
 export const assignLead = (leadId: string, userId: string) => call<LeadJson>('dsales_assign_lead', { p_lead: leadId, p_user: userId });

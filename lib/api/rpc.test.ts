@@ -4,7 +4,7 @@ const { rpc, from } = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn() }));
 vi.mock('@/lib/supabase/client', () => ({ db: () => ({ rpc, from }) }));
 
 import {
-  addMember, cancelOutreach, claimCustomer, enqueueOutreach, findWorkerRooms, getBaseCustomers, getMe, getOutreachBatch, getOutreachBatches,
+  addMember, cancelOutreach, claimCustomer, enqueueOutreach, findWorkerRooms, getBaseCustomers, getMe, getRoomsForPhones, getOutreachBatch, getOutreachBatches,
   getTemplates, getWorkerStatus, logContact, previewOutreach, saveTemplate, setCampaignClaimMode, setWorkerSettings,
 } from './rpc';
 
@@ -131,5 +131,25 @@ describe('outreach rpc wrappers (outreach contract ข้อ 2)', () => {
     await expect(enqueueOutreach(['0811111111'], 'T1')).rejects.toThrow('เลือกลูกค้าเกินจำนวนสูงสุดต่อชุด');
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'template_not_found' } });
     await expect(previewOutreach(['0811111111'], 'T1')).rejects.toThrow('ไม่พบ template นี้ หรือถูกปิดใช้งานแล้ว');
+  });
+});
+
+describe('getRoomsForPhones', () => {
+  it('sends unique trimmed phones in chunks of 100 and joins the rows', async () => {
+    rpc.mockImplementation(async (_fn: string, args: { p_phones: string[] }) => ({
+      data: args.p_phones.map((p) => ({ phone: p, rooms: [] })), error: null,
+    }));
+    const phones = Array.from({ length: 250 }, (_, i) => `08${String(i).padStart(8, '0')}`);
+    const rows = await getRoomsForPhones([...phones, ` ${phones[0]} `, '', '  ']);
+    expect(rpc.mock.calls.map((c) => [c[0], (c[1] as { p_phones: string[] }).p_phones.length])).toEqual([
+      ['dsales_rooms_for_phones', 100], ['dsales_rooms_for_phones', 100], ['dsales_rooms_for_phones', 50],
+    ]);
+    expect(rows).toHaveLength(250);
+  });
+  it('no phones = no call; null data = no rows', async () => {
+    await expect(getRoomsForPhones([])).resolves.toEqual([]);
+    expect(rpc).not.toHaveBeenCalled();
+    rpc.mockResolvedValue({ data: null, error: null });
+    await expect(getRoomsForPhones(['0812345678'])).resolves.toEqual([]);
   });
 });
