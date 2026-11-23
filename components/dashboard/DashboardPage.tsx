@@ -33,17 +33,18 @@ function StatCells({ x }: { x: DashStat }) {
  * Dashboard (renderDashboard L301-366): KPI 5 ใบ, เปรียบเทียบแยกแบรนด์, ยอดที่ปิดได้รายเดือนต่อเซลล์ (ค่าคอม + คัดลอก TSV),
  * ผลงานรายเซลล์, กิจกรรมล่าสุด — คิดจากลีดใน state (หัวหน้า = ทุกลีด, เซลล์ = ของตัวเอง) และช่วงวันที่
  * อัตราค่าคอมเก็บใน ui.commissionRate (คงค่าข้ามหน้า แต่หายเมื่อโหลดใหม่ เหมือน prototype ตอนล็อกอินจริง)
+ * แบรนด์ = แบรนด์ใหญ่ใน topbar (ชิปแบรนด์สลับแบรนด์ใหญ่; "ทุกแบรนด์" เฉพาะหัวหน้า) · ตารางเปรียบเทียบแสดงทั้งสองแบรนด์เสมอ
  */
 export function DashboardPage() {
-  const { leads, reps, meId, isAdmin, ui, today } = useAppState();
-  const { setUi, toast } = useActions();
+  const { leads, reps, meId, isAdmin, ui, today, brand } = useAppState();
+  const { setUi, toast, setBrand } = useActions();
   const [rateText, setRateText] = useState(ui.commissionRate ? String(ui.commissionRate) : '');
   const period = ui.period;
   const A = useMemo(() => leads.filter((l) => mineOrAll(l, { meId, isAdmin })), [leads, meId, isAdmin]);
-  const L = useMemo(() => byBrand(A, ui.dashBrand), [A, ui.dashBrand]);
+  const L = useMemo(() => byBrand(A, brand), [A, brand]);
   const s = dashStat(L, period, today);
   const all = dashStat(A, period, today);
-  const scope = scopeLabel(ui.dashBrand);
+  const scope = scopeLabel(brand);
   const rate = ui.commissionRate;
   const comm = commissionTable(L, reps, period, rate);
   const copy = () => {
@@ -55,8 +56,8 @@ export function DashboardPage() {
     <>
       <PeriodCard />
       <div className="toolbar">
-        {brandChips(A).map((c) => (
-          <button key={c.key} className={`chip ${ui.dashBrand === c.key ? 'active' : ''}`} data-brand={c.key} onClick={() => setUi({ dashBrand: c.key })}>
+        {brandChips(A, isAdmin).map((c) => (
+          <button key={c.key} className={`chip ${brand === c.key ? 'active' : ''}`} data-brand={c.key} onClick={() => setBrand(c.key)}>
             {c.dot ? <i className="dot" style={{ background: c.dot }} /> : null}
             {c.label} ({c.n})
           </button>
@@ -81,7 +82,7 @@ export function DashboardPage() {
             </thead>
             <tbody>
               {(['bebeplay', 'hosttail'] as const).map((k) => (
-                <tr key={k} className={ui.dashBrand === k ? 'sel' : ''}>
+                <tr key={k} className={brand === k ? 'sel' : ''}>
                   <td><span className={`tag ${k === 'bebeplay' ? 'bebe' : 'host'}`}>{k === 'bebeplay' ? 'Bebeplay' : 'Hosttail'}</span></td>
                   <StatCells x={dashStat(byBrand(A, k), period, today)} />
                 </tr>

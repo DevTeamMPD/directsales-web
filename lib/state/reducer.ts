@@ -9,12 +9,12 @@ export interface Period { from: string; to: string; key: PeriodKey }
 /** ตัวกรองที่คงค่าข้ามหน้า (prototype ui L27) + focusSearch (L616: โฟกัสช่องค้นหาถังหลัง "เลือกจากถัง" — หน้าแคมเปญแผน C ใช้) */
 export interface UiFilters {
   q: string; status: string; camp: string; rep: string; selCamp: string | null;
-  sort: 'due' | 'spend' | 'none'; dashBrand: 'all' | Brand; period: Period; focusSearch: boolean;
+  sort: 'due' | 'spend' | 'none'; period: Period; focusSearch: boolean;
   /** อัตราค่าคอม (%) ของตาราง Dashboard — prototype state.commissionRate (ล็อกอินจริงไม่บันทึก หายเมื่อโหลดหน้าใหม่) */
   commissionRate: number;
 }
 export const initialUi: UiFilters = {
-  q: '', status: 'all', camp: 'all', rep: 'all', selCamp: null, sort: 'due', dashBrand: 'all',
+  q: '', status: 'all', camp: 'all', rep: 'all', selCamp: null, sort: 'due',
   period: { from: '', to: '', key: 'all' }, focusSearch: false, commissionRate: 0,
 };
 
