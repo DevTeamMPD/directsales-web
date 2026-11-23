@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { DemoCustomer, WorkerStatus } from '@/lib/api/types';
+import type { ChatRoom, DemoCustomer, WorkerStatus } from '@/lib/api/types';
 import {
   batchProgress, brandRoomCounts, brandRoomHint, channelLabel, countBadges, DEFAULT_MAX_BATCH, defaultOutreachBrand, demoPreview, hasPending, isWorkerOnline, itemErrorText, itemsPending, maxBatch,
-  pageCheckState, renderTemplate, roomLabel, selectionBar, setPageSelected, shouldPoll, skipLabel, splitPreview, statusBadge, statusLabel,
+  leadSelectable, leadSelRow, pageCheckState, renderTemplate, roomLabel, selectionBar, setPageSelected, shouldPoll, skipLabel, splitPreview, statusBadge, statusLabel,
   skipReasonText, TEST_MODE_TEXT, toggleRoom, toggleSelect, toSelRow, upsertTemplate, validateSettings, validateTemplate, workerBanners, workerStateLabel, type SelRow,
 } from './outreach';
 
@@ -199,5 +199,25 @@ describe('demoPreview with the chat rooms of the row', () => {
     expect(a).toMatchObject({ skip: null, ms_id: 11, page: 'LOA_bebeplay', provider: 'Line', chat_name: 'a_chat', message: 'คุณเอ LOA_bebeplay' });
     expect(b.skip).toBe('window_closed');
     expect(c.skip).toBe('no_chat_room');
+  });
+});
+
+describe('Direct Sale: tick leads to send a message', () => {
+  const room = (over: Partial<ChatRoom>): ChatRoom => ({ msId: 1, provider: 'line', page: 'Bebeplayofficial', brand: 'bebeplay', sendable: true, ...over });
+  const lead = { phone: '0811111111', name: 'คุณเอ', brand: 'hosttail' as const, chatName: 'เอ แชต', owner: 'u1' };
+  it('only leads I own can be ticked', () => {
+    expect(leadSelectable(lead, 'u1')).toBe(true);
+    expect(leadSelectable(lead, 'u2')).toBe(false);
+    expect(leadSelectable({ owner: null }, 'u1')).toBe(false);
+    expect(leadSelectable(lead, '')).toBe(false);
+  });
+  it('builds the selection row from the lead and its rooms (sendable brands only)', () => {
+    const rooms = [room({ msId: 1 }), room({ msId: 2, brand: 'hosttail', sendable: false }), room({ msId: 3, brand: null, sendable: false })];
+    expect(leadSelRow(lead, rooms)).toEqual({
+      phone: '0811111111', name: 'คุณเอ', brands: ['hosttail'], chat: 'เอ แชต', taken: null, mine: true, chatBrands: ['bebeplay'], chatRooms: rooms,
+    });
+    expect(leadSelRow(lead, undefined)).toEqual({
+      phone: '0811111111', name: 'คุณเอ', brands: ['hosttail'], chat: 'เอ แชต', taken: null, mine: true, chatBrands: [],
+    });
   });
 });

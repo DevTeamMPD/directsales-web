@@ -1,5 +1,5 @@
 import type {
-  BatchItem, Brand, ChatRoom, DemoCustomer, EnqueueSkipReason, OutreachCounts, OutreachStatus, PreviewRow, Template, WorkerRoom, WorkerRow, WorkerState,
+  BatchItem, Brand, ChatRoom, DemoCustomer, EnqueueSkipReason, Lead, OutreachCounts, OutreachStatus, PreviewRow, Template, WorkerRoom, WorkerRow, WorkerState,
   WorkerStatus,
 } from '@/lib/api/types';
 import { BRAND, PLAT } from '@/lib/constants';
@@ -52,6 +52,20 @@ export function setPageSelected(sel: Selection, rows: ReadonlyArray<SelRow>, on:
 export function pageCheckState(sel: Selection, rows: ReadonlyArray<Pick<SelRow, 'phone'>>): 'all' | 'some' | 'none' {
   const n = rows.filter((r) => sel.has(r.phone)).length;
   return n === 0 ? 'none' : n === rows.length ? 'all' : 'some';
+}
+
+/* ---------- หน้า Direct Sale: ติ๊กลีดเพื่อส่งข้อความ ---------- */
+/** ติ๊กได้เฉพาะลีดที่ฉันเป็นเจ้าของ (ลีดแคมเปญที่ยังไม่จอง/ของคนอื่น enqueue จะข้ามเป็น taken อยู่ดี) */
+export const leadSelectable = (l: Pick<Lead, 'owner'>, meId: string): boolean => !!meId && l.owner === meId;
+
+/** ภาพของลีดสำหรับ SendOutreachModal — chatBrands = แบรนด์ที่มีห้องส่งได้ (จาก useLeadRooms) */
+export function leadSelRow(l: Pick<Lead, 'phone' | 'name' | 'brand' | 'chatName'>, rooms: ReadonlyArray<ChatRoom> | undefined): SelRow {
+  const rs = rooms ?? [];
+  const chatBrands = [...new Set(rs.filter((r) => r.sendable && r.brand).map((r) => r.brand as Brand))];
+  return {
+    phone: l.phone, name: l.name, brands: [l.brand], chat: l.chatName, taken: null, mine: true, chatBrands,
+    ...(rs.length ? { chatRooms: [...rs] } : {}),
+  };
 }
 
 /** แถบลอยด้านล่าง: ส่งได้เมื่อเลือก 1..max คน */
