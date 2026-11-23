@@ -28,7 +28,7 @@ begin
   -- a second run with nothing new writes nothing
   assert dsales.dsales_refresh_room_customer_last() = 0, 'unchanged rooms are not rewritten';
 
-  -- dsales_sendable_rooms = old rule (customer message in the last 24 h read from iim_messages)
+  -- dsales_sendable_rooms = old rule (customer message within dsales_meta_window() read from iim_messages)
   select count(*) into v_bad from (
     (select * from dsales.dsales_sendable_rooms()
      except
@@ -40,7 +40,7 @@ begin
      where not s.expired
        and (lower(s.channel) not in ('facebook', 'instagram')
             or exists (select 1 from dsales.dsales_chat_messages_v cm
-                       where cm.ms_id = s.ms_id and cm.dir = 'customer' and cm.time > now() - interval '24 hours')))
+                       where cm.ms_id = s.ms_id and cm.dir = 'customer' and cm.time > now() - dsales.dsales_meta_window())))
     union all
     (select distinct l.phone_normalized, m.brand
      from dsales.dsales_chat_links l
@@ -50,7 +50,7 @@ begin
      where not s.expired
        and (lower(s.channel) not in ('facebook', 'instagram')
             or exists (select 1 from dsales.dsales_chat_messages_v cm
-                       where cm.ms_id = s.ms_id and cm.dir = 'customer' and cm.time > now() - interval '24 hours'))
+                       where cm.ms_id = s.ms_id and cm.dir = 'customer' and cm.time > now() - dsales.dsales_meta_window()))
      except
      select * from dsales.dsales_sendable_rooms())) x;
   assert v_bad = 0, format('sendable rooms differ from the old rule: %s rows', v_bad);

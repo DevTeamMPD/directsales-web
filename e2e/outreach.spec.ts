@@ -101,7 +101,7 @@ for (const s of SIZES) {
       });
       await expect(page.locator('#view tbody tr').nth(2).locator('[data-sendable="0"]')).toHaveCount(2);
       await expect(page.locator('#view tbody tr').nth(2).locator('[data-sendable="0"]').last()).toHaveAttribute('title', /เพจนอกแบรนด์/);
-      await expect(page.locator('#view tbody tr').nth(2).locator('[data-sendable="0"]').first()).toHaveAttribute('title', /เกิน 24 ชม\. ส่งผ่าน worker ไม่ได้/);
+      await expect(page.locator('#view tbody tr').nth(2).locator('[data-sendable="0"]').first()).toHaveAttribute('title', /เกิน 7 วัน ส่งผ่าน worker ไม่ได้/);
 
       // ที่ติ๊กไว้คงอยู่หลังเปลี่ยนตัวกรอง
       await page.locator('#view tbody input[data-sel]').first().check();

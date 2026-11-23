@@ -122,7 +122,7 @@ describe('sortBaseRows', () => {
 describe('room icons', () => {
   it('explains rooms the worker cannot send to', () => {
     expect(roomNote(room())).toBeNull();
-    expect(roomNote(room({ provider: 'facebook', sendable: false }))).toBe('เกิน 24 ชม. ส่งผ่าน worker ไม่ได้');
+    expect(roomNote(room({ provider: 'facebook', sendable: false }))).toBe('เกิน 7 วัน ส่งผ่าน worker ไม่ได้');
     expect(roomNote(room({ brand: null, sendable: false }))).toBe('เพจนอกแบรนด์');
     expect(roomTitle(room())).toBe('LINE · bebeplayspace — เปิดแชตใน JST');
     expect(roomTitle(room({ provider: 'facebook', page: 'MPD Outlet', brand: null, sendable: false }))).toBe(
@@ -130,7 +130,7 @@ describe('room icons', () => {
     );
     expect(roomTitle(room({ provider: 'facebook', page: 'Bebeplay', name: 'Kampan N' }))).toBe('Facebook · Bebeplay · Kampan N — เปิดแชตใน JST');
     expect(roomTitle(room({ provider: 'facebook', page: 'Bebeplay', sendable: false, metaInbox: 'https://x' }))).toBe(
-      'Facebook · Bebeplay — เกิน 24 ชม. ส่งผ่าน worker ไม่ได้ (กดเพื่อเปิด Inbox ของเพจใน Meta Business Suite)',
+      'Facebook · Bebeplay — เกิน 7 วัน ส่งผ่าน worker ไม่ได้ (กดเพื่อเปิด Inbox ของเพจใน Meta Business Suite)',
     );
     expect(roomOpensMeta(room({ provider: 'facebook', sendable: false, metaInbox: 'https://x' }))).toBe(true);
     expect(roomOpensMeta(room({ provider: 'instagram', sendable: false, metaInbox: 'https://x' }))).toBe(true);

@@ -74,7 +74,7 @@ async function openChatPage(t: JstTarget, deps: JstDeps, auto: boolean): Promise
 }
 
 /**
- * ห้อง Facebook / Instagram ที่เกิน 24 ชม. (ส่งผ่าน JST ไม่ได้): คัดลอกชื่อห้อง แล้วเปิด Inbox ของเพจใน Meta Business Suite
+ * ห้อง Facebook / Instagram ที่เกิน 7 วัน (ส่งผ่าน JST ไม่ได้): คัดลอกชื่อห้อง แล้วเปิด Inbox ของเพจใน Meta Business Suite
  * (Business Suite เปิดแชตของลูกค้าตรง ๆ จาก PSID ไม่ได้ — เซลล์วางชื่อในช่องค้นหาของ Meta)
  */
 export async function metaOpen(url: string, name: string, page: string, deps: JstDeps): Promise<void> {

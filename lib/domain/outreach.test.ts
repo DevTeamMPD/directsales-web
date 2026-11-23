@@ -41,7 +41,7 @@ describe('selection', () => {
 describe('labels', () => {
   it('skip reasons, statuses and worker states in Thai', () => {
     expect(skipLabel('no_chat_room')).toBe('ไม่พบห้องแชตของแบรนด์นี้');
-    expect(skipLabel('window_closed')).toBe('หมดช่วงส่งข้อความ (ลูกค้าไม่ได้ทักมาเกิน 24 ชม.)');
+    expect(skipLabel('window_closed')).toBe('หมดช่วงส่งข้อความ (ลูกค้าไม่ได้ทักมาเกิน 7 วัน)');
     expect(skipLabel('claim_failed')).toBe('จองลูกค้าไม่สำเร็จ');
     expect(skipLabel('something_new')).toBe('something_new');
     expect(statusLabel('queued')).toBe('รอส่ง');

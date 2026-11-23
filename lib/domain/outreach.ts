@@ -144,7 +144,7 @@ export const SKIP_TEXT: Readonly<Record<EnqueueSkipReason, string>> = {
   taken: 'เป็นลูกค้าของเซลล์คนอื่น',
   already_queued: 'อยู่ในคิวส่งข้อความแล้ว',
   no_chat_room: 'ไม่พบห้องแชตของแบรนด์นี้',
-  window_closed: 'หมดช่วงส่งข้อความ (ลูกค้าไม่ได้ทักมาเกิน 24 ชม.)',
+  window_closed: 'หมดช่วงส่งข้อความ (ลูกค้าไม่ได้ทักมาเกิน 7 วัน)',
   no_call: 'ลูกค้าไม่สะดวกให้ติดต่อ',
   claim_failed: 'จองลูกค้าไม่สำเร็จ',
 };
@@ -173,7 +173,7 @@ export function itemErrorText(error: string | null | undefined): string {
   const e = (error ?? '').trim();
   if (!e) return '';
   if (e === 'room_mismatch') return 'ห้องแชตไม่ตรงกับที่บันทึกไว้ (ไม่ได้ส่ง)';
-  if (e === 'window_closed') return 'หมดช่วงส่งข้อความ (ลูกค้าไม่ได้ทักมาเกิน 24 ชม.) — โทรหาแทน';
+  if (e === 'window_closed') return 'หมดช่วงส่งข้อความ (ลูกค้าไม่ได้ทักมาเกิน 7 วัน) — โทรหาแทน';
   if (e === 'stale_sending') return 'ส่งค้างนานเกินไป ระบบคืนเข้าคิว';
   const jst = /^jst_error:\s*([\s\S]*)$/.exec(e);
   if (jst) return `JST ส่งไม่สำเร็จ${jst[1] ? ': ' + jst[1] : ''}`;
@@ -329,7 +329,7 @@ export function demoPreview(rows: ReadonlyArray<SelRow>, t: Pick<Template, 'body
       .sort((a, b) => ROOM_ORDER[a.plat] - ROOM_ORDER[b.plat]);
     if (!rooms.length) return { ...base, skip: 'no_chat_room' };
     const room = rooms[0];
-    // ลูกค้าเก่าส่วนมากเงียบเกิน 24 ชม. → ห้อง Facebook/Instagram ปิดช่วงส่ง (ข้อ 4.4)
+    // ลูกค้าเก่าส่วนมากเงียบเกิน 7 วัน → ห้อง Facebook/Instagram ปิดช่วงส่ง (ข้อ 4.4)
     if (ROOM_ORDER[room.plat] === 2) return { ...base, skip: 'window_closed' };
     const msg = renderTemplate(t.body, { name: c.name, product, shop: room.shop });
     return { ...base, ms_id: null, page: room.shop, provider: PROVIDER[room.plat], chat_name: room.chat, message: msg.text, skip: null };

@@ -60,7 +60,7 @@ export interface MemberJson { user_id: string; email: string; display_name: stri
 
 /**
  * ห้องแชตที่ผูกกับลูกค้า (dsales_base_customers.chat_rooms เรียงห้องที่ส่งได้ก่อน)
- * brand null = เพจนอก 2 แบรนด์; sendable false = brand null หรือ Facebook/Instagram ที่ลูกค้าไม่ได้ทักมาใน 24 ชม.
+ * brand null = เพจนอก 2 แบรนด์; sendable false = brand null หรือ Facebook/Instagram ที่ลูกค้าไม่ได้ทักมาใน 7 วัน
  */
 export interface ChatRoomJson { ms_id: number; provider: string | null; page: string | null; brand: string | null; sendable: boolean; name?: string | null;
   /** ห้อง Facebook / Instagram เท่านั้น */ outer_user_id?: string | null; meta_page_id?: string | null; meta_business_id?: string | null }

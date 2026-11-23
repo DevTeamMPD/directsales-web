@@ -47,11 +47,11 @@ begin
 end $$;
 revoke all on function dsales.dsales_refresh_room_customer_last() from public, anon, authenticated;
 
--- ห้อง FB/IG ที่ลูกค้าทักมาใน 24 ชม. (จากตาราง) — SQL function ธรรมดาให้ planner inline เป็น index lookup
+-- ห้อง FB/IG ที่ลูกค้าทักมาภายในช่วงส่ง (dsales_meta_window, ค่าเริ่ม 7 วัน) จากตาราง — SQL function ธรรมดาให้ planner inline เป็น index lookup
 create or replace function dsales.dsales_meta_open(p_ms_id bigint) returns boolean
 language sql stable as $$
   select exists (select 1 from dsales.dsales_room_customer_last c
-                 where c.ms_id = p_ms_id and c.last_customer_at > now() - interval '24 hours')
+                 where c.ms_id = p_ms_id and c.last_customer_at > now() - dsales.dsales_meta_window())
 $$;
 revoke all on function dsales.dsales_meta_open(bigint) from public, anon, authenticated;
 

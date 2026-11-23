@@ -18,10 +18,10 @@ export const roomTarget = (who: RoomOwner, room: ChatRoom): JstTarget =>
     { shop: room.page, chat: roomSearchName(room, who), platform: room.provider, ms_id: room.msId },
   );
 
-/** FB/IG เกิน 24 ชม. ที่รู้ page id → Inbox ของเพจใน Meta */
+/** FB/IG เกิน 7 วัน ที่รู้ page id → Inbox ของเพจใน Meta */
 const opensMeta = (room: ChatRoom): boolean => Boolean(roomOpensMeta(room) && room.metaInbox);
 
-/** กดห้อง: FB/IG เกิน 24 ชม. ที่รู้ page id → Inbox ของเพจใน Meta (คัดลอกชื่อห้อง) · ห้องอื่น → แชตใน JST */
+/** กดห้อง: FB/IG เกิน 7 วัน ที่รู้ page id → Inbox ของเพจใน Meta (คัดลอกชื่อห้อง) · ห้องอื่น → แชตใน JST */
 function useOpenRoom(openJst: OpenJst): (who: RoomOwner, room: ChatRoom) => void {
   const { toast } = useActions();
   return (who, room) => {

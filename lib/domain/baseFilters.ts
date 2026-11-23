@@ -186,13 +186,13 @@ export function sortBaseRows<T extends Pick<PoolRow, 'ltv' | 'dormantDays' | 'la
 /* ---------- ไอคอนห้องแชตในตาราง ---------- */
 const platName = (p: string): string => (PLAT as Readonly<Record<string, string>>)[p] || p;
 
-/** ห้องที่ worker ส่งไม่ได้: เพจนอก 2 แบรนด์ / Facebook-Instagram ที่ลูกค้าเงียบเกิน 24 ชม. */
+/** ห้องที่ worker ส่งไม่ได้: เพจนอก 2 แบรนด์ / Facebook-Instagram ที่ลูกค้าเงียบเกิน 7 วัน */
 export function roomNote(r: Pick<ChatRoom, 'brand' | 'sendable'>): string | null {
   if (r.sendable) return null;
-  return r.brand ? 'เกิน 24 ชม. ส่งผ่าน worker ไม่ได้' : 'เพจนอกแบรนด์';
+  return r.brand ? 'เกิน 7 วัน ส่งผ่าน worker ไม่ได้' : 'เพจนอกแบรนด์';
 }
 
-/** ห้อง FB/IG ที่ส่งผ่าน JST ไม่ได้ (เกิน 24 ชม.) และรู้ page id → กดแล้วเปิด Inbox ของเพจใน Meta แทน JST */
+/** ห้อง FB/IG ที่ส่งผ่าน JST ไม่ได้ (เกิน 7 วัน) และรู้ page id → กดแล้วเปิด Inbox ของเพจใน Meta แทน JST */
 export const roomOpensMeta = (r: Pick<ChatRoom, 'provider' | 'sendable' | 'metaInbox'>): boolean =>
   !r.sendable && !!r.metaInbox && (r.provider === 'facebook' || r.provider === 'instagram');
 

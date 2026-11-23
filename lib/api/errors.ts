@@ -26,7 +26,7 @@ export const ERROR_TEXT: Readonly<Record<string, string>> = {
   not_worker: 'บัญชีนี้ไม่ใช่บัญชีของ worker',
   already_queued: 'ลูกค้ารายนี้อยู่ในคิวส่งข้อความแล้ว',
   no_chat_room: 'ไม่พบห้องแชตของลูกค้าในแบรนด์นี้',
-  window_closed: 'หมดช่วงที่ร้านส่งข้อความได้ (ลูกค้าไม่ได้ทักมาเกิน 24 ชม.)',
+  window_closed: 'หมดช่วงที่ร้านส่งข้อความได้ (ลูกค้าไม่ได้ทักมาเกิน 7 วัน)',
   claim_failed: 'จองลูกค้าไม่สำเร็จ',
   invalid_state: 'สถานะของรายการเปลี่ยนไปแล้ว',
   invalid_status: 'สถานะไม่ถูกต้อง',
