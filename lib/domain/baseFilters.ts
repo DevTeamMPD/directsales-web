@@ -102,10 +102,10 @@ export function tagOptions(tags: ReadonlyArray<string | null | undefined>): stri
   return [...seen.values()].sort((a, b) => a.localeCompare(b));
 }
 
-/* ---------- เก็บตัวกรองใน URL (?brand=&rfm=&dormant=&ltv=&orders=&provider=&tag=&chat=1&sort=) ---------- */
-export function filtersToQuery(f: BaseFilters, brand: string): string {
+/* ---------- เก็บตัวกรองใน URL (?rfm=&dormant=&ltv=&orders=&provider=&tag=&chat=1&sort=) ---------- */
+/** แบรนด์ไม่อยู่ใน URL แล้ว (ใช้แบรนด์ใหญ่ใน topbar) */
+export function filtersToQuery(f: BaseFilters): string {
   const q = new URLSearchParams();
-  if (brand) q.set('brand', brand);
   for (const v of f.rfm) q.append('rfm', v);
   if (f.dormant) q.set('dormant', f.dormant);
   if (f.ltv) q.set('ltv', f.ltv);
@@ -117,7 +117,7 @@ export function filtersToQuery(f: BaseFilters, brand: string): string {
   return q.toString();
 }
 
-/** ค่าที่ไม่รู้จักใน URL ถูกทิ้ง (กลับเป็นค่าเริ่มต้น) */
+/** ค่าที่ไม่รู้จักใน URL ถูกทิ้ง (กลับเป็นค่าเริ่มต้น) · `brand` อ่านจากลิงก์เดิม (?brand=) เพื่อตั้งแบรนด์ใหญ่ครั้งเดียว */
 export function filtersFromQuery(search: string): { filters: BaseFilters; brand: '' | Brand } {
   const q = new URLSearchParams(search);
   const pick = (k: string, ok: (v: string) => boolean): string => {

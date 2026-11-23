@@ -10,6 +10,7 @@ import { mapPoolRow, rowsTotal } from '@/lib/api/map';
 import { getBaseCustomers, getJstAdminTags } from '@/lib/api/rpc';
 import type { PoolRow } from '@/lib/api/types';
 import { PAGE, PATHS, type Brand } from '@/lib/constants';
+import { pageBrand } from '@/lib/domain/brand';
 import {
   ANY_LABEL, buildFilterJson, DORMANT_PRESETS, EMPTY_FILTERS, filtersFromQuery, filtersToQuery, hasFilters, LTV_PRESETS, NO_TAG, NO_TAG_LABEL,
   ORDERS_PRESETS, PROVIDER_OPTIONS, resultCountText, RFM_OPTIONS, SORT_OPTIONS, tagOptions, toggleRfm, type BaseFilters, type BaseSort,
@@ -28,19 +29,22 @@ import { SelectionBar } from './SelectionBar';
 import { useBulkFollow, useCustomerClaim } from './useCustomerClaim';
 import { useOutreachMax } from './useOutreachMax';
 
-/** ตัวกรองของหน้า /mine, /pool (คงค่าระหว่างอยู่ในหน้าเดียวกัน; แบรนด์ + ตัวกรองเก็บใน URL ด้วย) */
-interface BaseFilter { brand: '' | Brand; q: string; page: number; filters: BaseFilters }
+/** ตัวกรองของหน้า /mine, /pool (คงค่าระหว่างอยู่ในหน้าเดียวกัน; ตัวกรองเก็บใน URL ด้วย) · แบรนด์ = แบรนด์ใหญ่ใน topbar */
+interface BaseFilter { q: string; page: number; filters: BaseFilters }
 type SelectKey = 'dormant' | 'ltv' | 'orders' | 'provider' | 'tag';
 
+// BasePage แสดงหลังโหลดข้อมูลฝั่ง client เท่านั้น (ตอน SSR Shell แสดงการ์ดกำลังโหลด) จึงอ่าน URL ตอนเริ่มได้
+const urlState = (): { brand: '' | Brand; filters: BaseFilters } =>
+  typeof window === 'undefined' ? { brand: '', filters: EMPTY_FILTERS } : filtersFromQuery(window.location.search);
+
 function initialFilter(): BaseFilter {
-  // BasePage แสดงหลังโหลดข้อมูลฝั่ง client เท่านั้น (ตอน SSR Shell แสดงการ์ดกำลังโหลด) จึงอ่าน URL ตอนเริ่มได้
-  const u = typeof window === 'undefined' ? { brand: '' as const, filters: EMPTY_FILTERS } : filtersFromQuery(window.location.search);
-  return { brand: u.brand, q: '', page: 0, filters: u.filters };
+  return { q: '', page: 0, filters: urlState().filters };
 }
 
 /**
  * ลูกค้าของฉัน (/mine) และถังกลาง (/pool) — หน้าใหม่ของเฟส 1 (spec ข้อ 3) ไม่มีใน prototype ใช้ markup ของถังลูกค้า (poolPanel L672-688)
- * - dsales_base_customers(scope) 50 แถว/หน้า, ค้นหา debounce 300 ms (เบอร์ +66/66/ขีด แปลงใน rpc.ts), เลือกแบรนด์
+ * - dsales_base_customers(scope) 50 แถว/หน้า, ค้นหา debounce 300 ms (เบอร์ +66/66/ขีด แปลงใน rpc.ts)
+ * - แบรนด์ = แบรนด์ใหญ่ใน topbar (ทั้งหมด = ทุกแบรนด์) · ลิงก์เดิมที่มี ?brand= ตั้งแบรนด์ใหญ่ครั้งเดียวตอนเปิด · เปลี่ยนแบรนด์ = กลับหน้าแรกแล้วโหลดใหม่
  * - แถวตัวกรอง (p_filters): กลุ่มลูกค้า, ส่งแชตได้, ไม่ได้ซื้อมา, ยอดซื้อสะสม, ออเดอร์, ช่องทาง, Tag (หัวหน้าเท่านั้น), เรียงตาม
  *   เปลี่ยนตัวกรอง = กลับหน้าแรกแล้วโหลดใหม่ (ที่ติ๊กเลือกไว้คงเดิม) + จำนวนผลลัพธ์
  * - คอลัมน์ "ช่องทาง": ปุ่มโทร + ไอคอนห้องแชต (chat_rooms) กดเปิดแชตใน JST, ห้องที่ worker ส่งไม่ได้แสดงจาง
@@ -52,8 +56,9 @@ function initialFilter(): BaseFilter {
  *   popup เริ่มที่แบรนด์ที่คนที่เลือกมีห้องแชตมากที่สุด แล้ว preview แสดงรายการที่ถูกข้าม
  */
 export function BasePage({ scope }: { scope: BaseScopeKey }) {
-  const { live, customers, leads, meId, today, poolVersion, isAdmin } = useAppState();
-  const { openModal, toast, handleAuthError } = useActions();
+  const { live, customers, leads, meId, today, poolVersion, isAdmin, brand: scopeBrand } = useAppState();
+  const { openModal, toast, handleAuthError, setBrand } = useActions();
+  const b = pageBrand(scopeBrand);
   const act = useLeadActions();
   const openJst = useJst();
   const claimRow = useCustomerClaim();
@@ -66,6 +71,18 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
   const [liveTags, setLiveTags] = useState<string[]>([]);
   const headBox = useRef<HTMLInputElement>(null);
   const max = useOutreachMax(sel.size > 0);
+  // ?brand= ของลิงก์เดิม → ตั้งแบรนด์ใหญ่ครั้งเดียว (ยังไม่โหลดจนกว่าแบรนด์ใหญ่จะตามลิงก์ — กันโหลดแบรนด์เก่าทิ้ง 1 รอบ)
+  const [linkBrand] = useState(() => urlState().brand);
+  const urlBrand = useRef<'' | Brand>(linkBrand);
+  useEffect(() => {
+    if (urlBrand.current) setBrand(urlBrand.current);
+  }, [setBrand]);
+  // เปลี่ยนแบรนด์ใหญ่ = กลับหน้าแรก (ปรับระหว่าง render จึงโหลดครั้งเดียว) ที่ติ๊กเลือกไว้คงเดิม
+  const [prevBrand, setPrevBrand] = useState(b);
+  if (prevBrand !== b) {
+    setPrevBrand(b);
+    setF((x) => (x.page ? { ...x, page: 0 } : x));
+  }
 
   // รายชื่อ tag ของ JST สำหรับตัวกรอง Tag (หัวหน้าเท่านั้น; โหลดไม่ได้ = มีแค่ "ไม่มี tag")
   useEffect(() => {
@@ -85,12 +102,12 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
   }, [live, isAdmin, handleAuthError]);
   const tags = useMemo(() => (live ? liveTags : tagOptions(customers.map((c) => c.ownerTag))), [live, liveTags, customers]);
 
-  // แบรนด์ + ตัวกรองใน URL (รีเฟรช/ส่งลิงก์แล้วยังอยู่)
+  // ตัวกรองใน URL (รีเฟรช/ส่งลิงก์แล้วยังอยู่)
   useEffect(() => {
-    const qs = filtersToQuery(f.filters, f.brand);
+    const qs = filtersToQuery(f.filters);
     if (qs === window.location.search.replace(/^\?/, '')) return;
     window.history.replaceState(window.history.state, '', qs ? `?${qs}` : window.location.pathname);
-  }, [f.filters, f.brand]);
+  }, [f.filters]);
 
   useEffect(() => {
     if (f.q === qKey) return;
@@ -103,10 +120,14 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
 
   useEffect(() => {
     if (!live) return;
+    if (urlBrand.current) {
+      if (urlBrand.current !== b) return; // รอแบรนด์ใหญ่ตาม ?brand= ก่อน
+      urlBrand.current = '';
+    }
     let alive = true;
     setLoading(true);
     setData((d) => ({ ...d, err: '' }));
-    getBaseCustomers(scope, { search: qKey, offset: f.page * PAGE, brand: f.brand || null, filters: buildFilterJson(f.filters) })
+    getBaseCustomers(scope, { search: qKey, offset: f.page * PAGE, brand: b || null, filters: buildFilterJson(f.filters) })
       .then((rows) => {
         if (alive && clampPage(f.page, rows.length) !== f.page) {
           setF((x) => (x.page === f.page ? { ...x, page: clampPage(x.page, 0) } : x)); // หน้าท้ายว่าง → ถอยหนึ่งหน้า (โหลดซ้ำเอง)
@@ -123,11 +144,11 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
     return () => {
       alive = false;
     };
-  }, [live, scope, qKey, f.page, f.brand, f.filters, poolVersion, meId, handleAuthError]);
+  }, [live, scope, qKey, f.page, b, f.filters, poolVersion, meId, handleAuthError]);
 
   const demo = useMemo(
-    () => (live ? null : demoBase(customers, leads, scope, { brand: f.brand || null, q: qKey, page: f.page, today, meId, filters: f.filters })),
-    [live, customers, leads, scope, f.brand, qKey, f.page, f.filters, today, meId],
+    () => (live ? null : demoBase(customers, leads, scope, { brand: b || null, q: qKey, page: f.page, today, meId, filters: f.filters })),
+    [live, customers, leads, scope, b, qKey, f.page, f.filters, today, meId],
   );
   const rows = demo ? demo.rows : data.rows;
   const total = demo ? demo.total : data.total;
@@ -141,7 +162,7 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
   const openSend = () => {
     if (!bar.canSend) return;
     const picked = [...sel.values()];
-    openModal(<SendOutreachModal rows={picked} defaultBrand={defaultOutreachBrand(picked, f.brand)} onSent={() => setSel(new Map())} />);
+    openModal(<SendOutreachModal rows={picked} defaultBrand={defaultOutreachBrand(picked, b)} onSent={() => setSel(new Map())} />);
   };
   const setFilters = (fn: (x: BaseFilters) => BaseFilters) => setF((x) => ({ ...x, filters: fn(x.filters), page: 0 }));
   const selectProps = (key: SelectKey) => ({
@@ -150,7 +171,7 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
   });
 
   const claim = (r: PoolRow, a: RowAction, seq?: number) => {
-    const brand = claimBrand(f.brand, r.brands);
+    const brand = claimBrand(b, r.brands);
     if (!brand) {
       toast(NO_BRAND_TEXT);
       return;
@@ -169,11 +190,6 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
           <svg viewBox="0 0 24 24"><path d={PATHS.search} /></svg>
           <input id="base-q" type="search" placeholder="ค้นหา เบอร์ / ชื่อแชต / ชื่อลูกค้า" value={f.q} onChange={(e) => setF((x) => ({ ...x, q: e.target.value }))} />
         </label>
-        <select id="base-brand" className="select" aria-label="แบรนด์" value={f.brand} onChange={(e) => setF((x) => ({ ...x, brand: e.target.value as BaseFilter['brand'], page: 0 }))}>
-          <option value="">ทุกแบรนด์</option>
-          <option value="bebeplay">Bebeplay</option>
-          <option value="hosttail">Hosttail</option>
-        </select>
         {busy ? <span className="sub">กำลังโหลด…</span> : null}
       </div>
       <div id="base-filters" style={{ display: 'grid', gap: 8 }}>
@@ -255,7 +271,7 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
                       <div className="sub mono">{r.phone}</div>
                       {r.chat ? <div className="sub">แชต: {r.chat}</div> : null}
                     </td>
-                    <td><ChannelCell r={r} brand={claimBrand(f.brand, r.brands) ?? 'bebeplay'} openJst={openJst} /></td>
+                    <td><ChannelCell r={r} brand={claimBrand(b, r.brands) ?? 'bebeplay'} openJst={openJst} /></td>
                     <td>
                       <div>{dormantText(r.dormantDays)}</div>
                       {r.ownerTag ? <span className="tag">{r.ownerTag}</span> : null}
@@ -285,7 +301,7 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
         extra={scope === 'mine' ? (
           <button
             className="btn" id="sel-follow" disabled={!bar.canSend} title="ส่งลูกค้าที่เลือกเข้าหน้า Direct Sale เพื่อติดตามใกล้ชิด"
-            onClick={() => void bulkFollow([...sel.values()], f.brand, () => setSel(new Map()))}
+            onClick={() => void bulkFollow([...sel.values()], b, () => setSel(new Map()))}
           >
             เข้า Direct Sale
           </button>

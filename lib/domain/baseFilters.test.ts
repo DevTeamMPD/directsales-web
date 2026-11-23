@@ -63,12 +63,16 @@ describe('tagOptions / resultCountText', () => {
 });
 
 describe('URL round trip', () => {
-  it('writes only non-default values and reads them back', () => {
+  it('writes only non-default values (no brand — it is the global brand now) and reads them back', () => {
     const f = F({ rfm: ['At Risk', ''], dormant: '30-60', provider: 'line', tag: 'none', hasChat: true, sort: 'last_desc' });
-    const qs = filtersToQuery(f, 'hosttail');
-    expect(qs).toBe('brand=hosttail&rfm=At+Risk&rfm=&dormant=30-60&provider=line&tag=none&chat=1&sort=last_desc');
-    expect(filtersFromQuery('?' + qs)).toEqual({ brand: 'hosttail', filters: f });
-    expect(filtersToQuery(EMPTY_FILTERS, '')).toBe('');
+    const qs = filtersToQuery(f);
+    expect(qs).toBe('rfm=At+Risk&rfm=&dormant=30-60&provider=line&tag=none&chat=1&sort=last_desc');
+    expect(filtersFromQuery('?' + qs)).toEqual({ brand: '', filters: f });
+    expect(filtersToQuery(EMPTY_FILTERS)).toBe('');
+  });
+  it('still reads ?brand= of old links (sets the global brand once)', () => {
+    expect(filtersFromQuery('?brand=hosttail&dormant=30-60')).toEqual({ brand: 'hosttail', filters: F({ dormant: '30-60' }) });
+    expect(filtersFromQuery('?brand=bebeplay').brand).toBe('bebeplay');
   });
   it('ignores unknown values', () => {
     expect(filtersFromQuery('?brand=x&rfm=Foo&dormant=1-2&ltv=7&sort=zzz&chat=yes')).toEqual({ brand: '', filters: EMPTY_FILTERS });
