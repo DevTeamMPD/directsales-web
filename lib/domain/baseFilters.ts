@@ -183,10 +183,18 @@ export function roomNote(r: Pick<ChatRoom, 'brand' | 'sendable'>): string | null
   return r.brand ? 'เกิน 24 ชม. ส่งผ่าน worker ไม่ได้' : 'เพจนอกแบรนด์';
 }
 
+/** ห้อง FB/IG ที่ส่งผ่าน JST ไม่ได้ (เกิน 24 ชม.) และรู้ page id → กดแล้วเปิด Inbox ของเพจใน Meta แทน JST */
+export const roomOpensMeta = (r: Pick<ChatRoom, 'provider' | 'sendable' | 'metaInbox'>): boolean =>
+  !r.sendable && !!r.metaInbox && (r.provider === 'facebook' || r.provider === 'instagram');
+
 export function roomTitle(r: ChatRoom): string {
   const note = roomNote(r);
-  return `${platName(r.provider)}${r.page ? ' · ' + r.page : ''} — ${note ? note + ' (กดเพื่อเปิดแชตใน JST)' : 'เปิดแชตใน JST'}`;
+  const action = roomOpensMeta(r) ? 'กดเพื่อเปิด Inbox ของเพจใน Meta Business Suite' : 'กดเพื่อเปิดแชตใน JST';
+  return `${platName(r.provider)}${r.page ? ' · ' + r.page : ''}${r.name ? ' · ' + r.name : ''} — ${note ? `${note} (${action})` : 'เปิดแชตใน JST'}`;
 }
+
+/** ชื่อที่ใช้ค้นหา/คัดลอกตอนกดไอคอนห้อง: ชื่อของห้องนั้นเอง → ชื่อแชตของลูกค้า → ชื่อลูกค้า (ลูกค้าคนเดียวอาจมีหลายห้องที่ชื่อต่างกัน) */
+export const roomSearchName = (room: Pick<ChatRoom, 'name'>, row: { chat: string; name: string }): string => room.name || row.chat || row.name;
 
 /** จำนวนผลลัพธ์ใต้ตัวกรอง */
 export const resultCountText = (total: number | null): string => (total == null ? '' : `พบ ${total.toLocaleString('th-TH')} คน`);

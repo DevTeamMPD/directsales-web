@@ -78,9 +78,26 @@ export function normProvider(p: string | null | undefined): string {
   return (Object.keys(PLAT) as string[]).find((k) => key.startsWith(k)) || key || 'other';
 }
 
+/**
+ * Inbox ของเพจใน Meta Business Suite — Business Suite ไม่รับ PSID ของ JST เป็น selected_item_id (ทดสอบ 2026-11-20)
+ * จึงเปิดได้แค่ Inbox ของเพจ แล้วให้เซลล์ค้นชื่อเอง
+ */
+export function metaInboxUrl(pageId: string | null | undefined, businessId: string | null | undefined): string | null {
+  const p = String(pageId ?? '').trim();
+  if (!/^\d+$/.test(p)) return null;
+  const b = String(businessId ?? '').trim();
+  return `https://business.facebook.com/latest/inbox/all/?${/^\d+$/.test(b) ? `business_id=${b}&` : ''}asset_id=${p}&mailbox_id=${p}`;
+}
+
 export function mapChatRoom(r: ChatRoomJson): ChatRoom {
   const brand = isBrand(r.brand) ? r.brand : null;
-  return { msId: Number(r.ms_id), provider: normProvider(r.provider), page: r.page || '', brand, sendable: !!r.sendable && brand !== null };
+  const provider = normProvider(r.provider);
+  const name = (r.name ?? '').trim();
+  const meta = provider === 'facebook' || provider === 'instagram' ? metaInboxUrl(r.meta_page_id, r.meta_business_id) : null;
+  return {
+    msId: Number(r.ms_id), provider, page: r.page || '', brand, sendable: !!r.sendable && brand !== null,
+    ...(name ? { name } : {}), ...(meta ? { metaInbox: meta } : {}),
+  };
 }
 
 /** total_count ของผลค้นหา (มีเฉพาะเมื่อหน้านั้นมีแถว) */

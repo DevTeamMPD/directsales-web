@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ChatRoom, PoolRow } from '@/lib/api/types';
 import {
   buildFilterJson, DORMANT_PRESETS, EMPTY_FILTERS, filtersFromQuery, filtersToQuery, hasFilters, LTV_PRESETS, matchesFilters, ORDERS_PRESETS,
-  PROVIDER_OPTIONS, resultCountText, RFM_OPTIONS, roomNote, roomTitle, SORT_OPTIONS, sortBaseRows, tagOptions, toggleRfm, type BaseFilters,
+  PROVIDER_OPTIONS, resultCountText, RFM_OPTIONS, roomNote, roomOpensMeta, roomSearchName, roomTitle, SORT_OPTIONS, sortBaseRows, tagOptions, toggleRfm, type BaseFilters,
 } from './baseFilters';
 
 const F = (over: Partial<BaseFilters> = {}): BaseFilters => ({ ...EMPTY_FILTERS, ...over });
@@ -119,5 +119,18 @@ describe('room icons', () => {
     expect(roomTitle(room({ provider: 'facebook', page: 'MPD Outlet', brand: null, sendable: false }))).toBe(
       'Facebook · MPD Outlet — เพจนอกแบรนด์ (กดเพื่อเปิดแชตใน JST)',
     );
+    expect(roomTitle(room({ provider: 'facebook', page: 'Bebeplay', name: 'Kampan N' }))).toBe('Facebook · Bebeplay · Kampan N — เปิดแชตใน JST');
+    expect(roomTitle(room({ provider: 'facebook', page: 'Bebeplay', sendable: false, metaInbox: 'https://x' }))).toBe(
+      'Facebook · Bebeplay — เกิน 24 ชม. ส่งผ่าน worker ไม่ได้ (กดเพื่อเปิด Inbox ของเพจใน Meta Business Suite)',
+    );
+    expect(roomOpensMeta(room({ provider: 'facebook', sendable: false, metaInbox: 'https://x' }))).toBe(true);
+    expect(roomOpensMeta(room({ provider: 'instagram', sendable: false, metaInbox: 'https://x' }))).toBe(true);
+    expect(roomOpensMeta(room({ provider: 'facebook', sendable: true, metaInbox: 'https://x' }))).toBe(false);
+    expect(roomOpensMeta(room({ provider: 'facebook', sendable: false }))).toBe(false);
+  });
+  it('search name = the clicked room own name, then the customer chat name, then the customer name', () => {
+    expect(roomSearchName(room({ name: 'ชื่อห้องนี้' }), { chat: 'ชื่อแชตลูกค้า', name: 'ลูกค้า' })).toBe('ชื่อห้องนี้');
+    expect(roomSearchName(room(), { chat: 'ชื่อแชตลูกค้า', name: 'ลูกค้า' })).toBe('ชื่อแชตลูกค้า');
+    expect(roomSearchName(room(), { chat: '', name: 'ลูกค้า' })).toBe('ลูกค้า');
   });
 });

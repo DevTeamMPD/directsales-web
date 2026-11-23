@@ -6,7 +6,7 @@ vi.mock('@/lib/supabase/client', () => ({ db: () => ({ rpc }) }));
 import type { ChatSessionJson, Lead } from '@/lib/api/types';
 import { fixturePayload } from '@/lib/fixtures/load';
 import {
-  chatAria, chatCheckFor, chatCheckView, channelsOf, chatTitle, jstChatUrl, jstOpen, jstTarget, JST_TIMEOUT_MS, localChatCheck, nextChatCheck, platformOf, shouldStartVerify,
+  chatAria, chatCheckFor, chatCheckView, channelsOf, chatTitle, jstChatUrl, jstOpen, jstTarget, JST_TIMEOUT_MS, localChatCheck, metaOpen, nextChatCheck, platformOf, shouldStartVerify,
   runVerify, summarizeChats, verifyTodo, type ChatCheckResult, type JstDeps, type JstTarget,
 } from './jst';
 
@@ -146,7 +146,7 @@ describe('jstOpen with the JST chat page (Tampermonkey script opens the chat)', 
     expect(m.openJst).toHaveBeenCalledWith(CHAT + '#dsales-chat=mom_ploy114_sh&dsales-ms=&dsales-t=1700000000000');
     expect(order).toEqual(['copy', 'open']); // writeText เริ่มก่อน (เอกสารยังโฟกัสอยู่) แล้วเปิดแท็บทันทีในจังหวะเดียวกัน
     expect(m.fetch).not.toHaveBeenCalled();
-    expect(m.toast).toHaveBeenCalledWith('เปิดแชตใน JST แล้ว · ถ้าแชตไม่เปิดเอง กด Ctrl+V ในช่องค้นหา');
+    expect(m.toast).toHaveBeenCalledWith('เปิดแชตใน JST แล้ว · คัดลอก "mom_ploy114_sh" แล้ว ถ้าแชตไม่เปิดเอง กด Ctrl+V ในช่องค้นหา');
   });
   it('auto mode (after a claim) opens and copies without a toast', async () => {
     const m = mocks();
@@ -165,7 +165,30 @@ describe('jstOpen with the JST chat page (Tampermonkey script opens the chat)', 
     m.openJst.mockReturnValue(false);
     m.writeText.mockResolvedValue();
     await expect(jstOpen(T, 'Dev MPD', depsOf(m, { chatUrl: CHAT }))).resolves.toBe(false);
-    expect(m.toast).toHaveBeenLastCalledWith('เบราว์เซอร์บล็อกการเปิดแท็บ JST · คัดลอกชื่อแชตแล้ว นำไปค้นหาใน JST');
+    expect(m.toast).toHaveBeenLastCalledWith('เบราว์เซอร์บล็อกการเปิดแท็บ JST · คัดลอก "mom_ploy114_sh" แล้ว นำไปค้นหาใน JST');
+  });
+});
+
+describe('metaOpen (Facebook / Instagram room past the 24 h window)', () => {
+  const URL = 'https://business.facebook.com/latest/inbox/all/?asset_id=1&mailbox_id=1';
+  it('copies the room name, opens the page inbox and says what to search', async () => {
+    const m = mocks();
+    const order: string[] = [];
+    m.writeText.mockImplementation(async () => { order.push('copy'); });
+    m.open.mockImplementation(() => { order.push('open'); });
+    await metaOpen(URL, 'Kampan N', 'Bebeplay', depsOf(m));
+    expect(m.writeText).toHaveBeenCalledWith('Kampan N');
+    expect(m.open).toHaveBeenCalledWith(URL);
+    expect(order).toEqual(['copy', 'open']);
+    expect(m.fetch).not.toHaveBeenCalled();
+    expect(m.openJst).not.toHaveBeenCalled();
+    expect(m.toast).toHaveBeenCalledWith('เปิด Inbox เพจ Bebeplay ใน Meta แล้ว · คัดลอก "Kampan N" แล้ว กด Ctrl+V ในช่องค้นหาของ Meta');
+  });
+  it('clipboard failure shows the name to search', async () => {
+    const m = mocks();
+    m.writeText.mockRejectedValue(new Error('denied'));
+    await metaOpen(URL, 'Kampan N', 'Bebeplay', depsOf(m));
+    expect(m.toast).toHaveBeenCalledWith('เปิด Inbox เพจ Bebeplay ใน Meta แล้ว · ค้นหาด้วย: Kampan N');
   });
 });
 

@@ -62,8 +62,10 @@ export interface MemberJson { user_id: string; email: string; display_name: stri
  * ห้องแชตที่ผูกกับลูกค้า (dsales_base_customers.chat_rooms เรียงห้องที่ส่งได้ก่อน)
  * brand null = เพจนอก 2 แบรนด์; sendable false = brand null หรือ Facebook/Instagram ที่ลูกค้าไม่ได้ทักมาใน 24 ชม.
  */
-export interface ChatRoomJson { ms_id: number; provider: string | null; page: string | null; brand: string | null; sendable: boolean }
-export interface ChatRoom { msId: number; provider: string; page: string; brand: Brand | null; sendable: boolean }
+export interface ChatRoomJson { ms_id: number; provider: string | null; page: string | null; brand: string | null; sendable: boolean; name?: string | null;
+  /** ห้อง Facebook / Instagram เท่านั้น */ outer_user_id?: string | null; meta_page_id?: string | null; meta_business_id?: string | null }
+/** name = ชื่อของห้องนี้ใน JST (ใช้ค้นหา/คัดลอก) · metaInbox = ลิงก์ Inbox ของเพจใน Meta Business Suite (FB/IG ที่รู้ page id) */
+export interface ChatRoom { msId: number; provider: string; page: string; brand: Brand | null; sendable: boolean; name?: string; metaInbox?: string }
 
 /** p_filters ของ dsales_base_customers (สร้างจาก UI ด้วย lib/domain/baseFilters.ts buildFilterJson) — ไม่มีตัวกรอง = {} */
 export type BaseFilterJson = Partial<{
