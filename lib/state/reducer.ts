@@ -1,5 +1,6 @@
 import { upsertLead } from '@/lib/api/map';
 import type { Brand, Campaign, DemoCustomer, Lead, LeadJson, OutreachDemo, Rep } from '@/lib/api/types';
+import { effectiveBrand, type BrandScope } from '@/lib/domain/brand';
 import { upsertRep } from '@/lib/domain/setup';
 
 export type PeriodKey = 'all' | 'today' | '7d' | 'm0' | 'm1' | 'y0' | 'month' | 'year' | 'custom';
@@ -35,12 +36,15 @@ export interface LoadedPayload {
 }
 /** expired = session หมดอายุระหว่างใช้งาน (ต้องล็อกอินใหม่) */
 export type Phase = 'loading' | 'ready' | 'no-access' | 'inactive' | 'expired' | 'error';
-/** poolVersion เพิ่มทุกครั้งที่ถังลูกค้าต้องโหลดใหม่ (prototype ui.pool.loaded = false) */
-export interface AppState extends LoadedPayload { phase: Phase; error: string; ui: UiFilters; poolVersion: number; pool: PoolUi }
+/**
+ * poolVersion เพิ่มทุกครั้งที่ถังลูกค้าต้องโหลดใหม่ (prototype ui.pool.loaded = false)
+ * brand = แบรนด์ใหญ่ที่เลือกใน topbar (จำใน localStorage, 'all' เฉพาะหัวหน้า)
+ */
+export interface AppState extends LoadedPayload { phase: Phase; error: string; ui: UiFilters; poolVersion: number; pool: PoolUi; brand: BrandScope }
 
 export const initialState: AppState = {
   phase: 'loading', error: '', email: '', meId: '', isAdmin: false, live: false, reps: [], campaigns: [], leads: [], customers: [], today: '',
-  ui: initialUi, poolVersion: 0, pool: initialPool,
+  ui: initialUi, poolVersion: 0, pool: initialPool, brand: 'bebeplay',
 };
 
 export type Action =
@@ -56,7 +60,9 @@ export type Action =
   | { type: 'upsertRep'; rep: Rep }
   | { type: 'setUi'; patch: Partial<UiFilters> }
   | { type: 'setPool'; patch: Partial<PoolUi> }
-  | { type: 'invalidatePool' };
+  | { type: 'invalidatePool' }
+  /** ไม่อยู่ใน DATA_ACTIONS: ตั้งจาก localStorage ได้ก่อนโหลดข้อมูลเสร็จ */
+  | { type: 'setBrand'; brand: BrandScope };
 
 const DATA_ACTIONS: ReadonlySet<Action['type']> = new Set<Action['type']>([
   'upsertLead', 'patchLead', 'removeLead', 'upsertCampaign', 'upsertRep', 'setUi', 'setPool', 'invalidatePool',
@@ -67,15 +73,15 @@ export function reducer(state: AppState, action: Action): AppState {
   if (state.phase !== 'ready' && DATA_ACTIONS.has(action.type)) return state;
   switch (action.type) {
     case 'loaded':
-      return { ...state, ...action.payload, phase: 'ready', error: '' };
+      return { ...state, ...action.payload, phase: 'ready', error: '', brand: effectiveBrand(state.brand, action.payload.isAdmin) };
     case 'noAccess':
-      return { ...initialState, phase: action.inactive ? 'inactive' : 'no-access', email: action.email };
+      return { ...initialState, phase: action.inactive ? 'inactive' : 'no-access', email: action.email, brand: state.brand };
     case 'failed':
       // หลังโหลดเสร็จ error ระหว่างใช้งานแสดงด้วย toast เท่านั้น (ห้ามแทนทั้ง Shell ด้วยการ์ด error)
       return state.phase === 'ready' ? state : { ...state, phase: 'error', error: action.error };
     case 'sessionLost':
       // ระหว่างใช้งาน: session หมดอายุ / ถูกปิดใช้งาน → ล้างข้อมูลลูกค้าทั้งหมดออกจากหน้า เหลือแค่การ์ด (คงอีเมลไว้แสดง)
-      return state.phase === 'ready' ? { ...initialState, phase: action.reason, email: state.email } : state;
+      return state.phase === 'ready' ? { ...initialState, phase: action.reason, email: state.email, brand: state.brand } : state;
     case 'setToday':
       return action.today && action.today !== state.today ? { ...state, today: action.today } : state;
     case 'upsertLead':
@@ -99,5 +105,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, pool: { ...state.pool, ...action.patch } };
     case 'invalidatePool':
       return { ...state, poolVersion: state.poolVersion + 1 };
+    case 'setBrand':
+      return { ...state, brand: action.brand };
   }
 }

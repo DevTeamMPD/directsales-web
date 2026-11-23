@@ -7,6 +7,7 @@ import { errorMessage, kindOf } from '@/lib/api/errors';
 import { buildReps, mapCampaign, mapLead } from '@/lib/api/map';
 import { getMe, getMyLeads, getTeam, listCampaigns } from '@/lib/api/rpc';
 import type { Lead, LeadJson } from '@/lib/api/types';
+import { readStoredBrand, writeStoredBrand, type BrandScope } from '@/lib/domain/brand';
 import { todayBangkok } from '@/lib/format';
 import { supabase } from '@/lib/supabase/client';
 import { createBusyGuard } from './busy';
@@ -20,6 +21,16 @@ export type { ModalState };
 
 /** ตรวจว่าข้ามเที่ยงคืน (เวลาไทย) หรือยังทุก 1 นาที — เปิดหน้าค้างข้ามวัน "วันนี้" / เลยนัด / นัดวันนี้ ต้องเปลี่ยนตาม */
 export const TODAY_CHECK_MS = 60_000;
+
+/** localStorage ของเบราว์เซอร์ — ฝั่ง server / เบราว์เซอร์ที่บล็อก storage (getter โยน SecurityError) = undefined */
+function browserStorage(): Storage | undefined {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
+}
 
 /** ฟังก์ชันที่คงที่ตลอดอายุ provider — component ที่ใช้แค่ส่วนนี้ไม่ re-render ตาม state / toast / modal */
 export interface AppActions {
@@ -39,6 +50,8 @@ export interface AppActions {
   patchLead: (id: string, patch: Partial<Lead>) => void;
   setUi: (patch: Partial<UiFilters>) => void;
   setPool: (patch: Partial<PoolUi>) => void;
+  /** แบรนด์ใหญ่ใน topbar — จำไว้ใน localStorage (dsales.brand) */
+  setBrand: (b: BrandScope) => void;
 }
 
 const StateContext = createContext<AppState | null>(null);
@@ -80,6 +93,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toaster = useMemo(() => createToaster(setToastMsg), []);
 
   useEffect(() => {
+    // แบรนด์ที่จำไว้ในเครื่อง — ตั้งก่อนโหลดข้อมูล (setBrand ไม่ถูกทิ้งก่อน phase ready; ตอน loaded ปรับตามสิทธิ์)
+    dispatch({ type: 'setBrand', brand: readStoredBrand(browserStorage()) });
     let cancelled = false;
     (async () => {
       let action: Action | 'login';
@@ -153,6 +168,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       patchLead: (id, patch) => dispatch({ type: 'patchLead', id, patch }),
       setUi: (patch) => dispatch({ type: 'setUi', patch }),
       setPool: (patch) => dispatch({ type: 'setPool', patch }),
+      setBrand: (b) => {
+        writeStoredBrand(browserStorage(), b);
+        dispatch({ type: 'setBrand', brand: b });
+      },
     };
   }, [toaster]);
 
