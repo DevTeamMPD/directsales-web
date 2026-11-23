@@ -7,7 +7,7 @@ import { useJst } from '@/components/leads/useJst';
 import { useLeadActions } from '@/components/leads/useLeadActions';
 import { errorMessage } from '@/lib/api/errors';
 import { mapPoolRow, rowsTotal } from '@/lib/api/map';
-import { getBaseCustomers, getJstAdminTags, getWorkerStatus } from '@/lib/api/rpc';
+import { getBaseCustomers, getJstAdminTags } from '@/lib/api/rpc';
 import type { PoolRow } from '@/lib/api/types';
 import { PAGE, PATHS, type Brand } from '@/lib/constants';
 import {
@@ -17,14 +17,16 @@ import {
 import {
   baseAction, canNext, clampPage, claimBrand, demoBase, dormantText, keepTotal, NO_BRAND_TEXT, pageRange, type BaseScopeKey, type RowAction,
 } from '@/lib/domain/pool';
-import { defaultOutreachBrand, maxBatch, pageCheckState, selectionBar, setPageSelected, toggleSelect, type SelRow } from '@/lib/domain/outreach';
+import { defaultOutreachBrand, pageCheckState, selectionBar, setPageSelected, toggleSelect, type SelRow } from '@/lib/domain/outreach';
 import { baht, fmtDate } from '@/lib/format';
 import { useActions, useAppState } from '@/lib/state/AppProvider';
 import { BrandTags } from './BrandTags';
 import { ChannelCell } from './ChannelCell';
 import { POOL_DEBOUNCE_MS } from './PoolPanel';
 import { RowButton } from './RowButton';
+import { SelectionBar } from './SelectionBar';
 import { useBulkFollow, useCustomerClaim } from './useCustomerClaim';
+import { useOutreachMax } from './useOutreachMax';
 
 /** ตัวกรองของหน้า /mine, /pool (คงค่าระหว่างอยู่ในหน้าเดียวกัน; แบรนด์ + ตัวกรองเก็บใน URL ด้วย) */
 interface BaseFilter { brand: '' | Brand; q: string; page: number; filters: BaseFilters }
@@ -50,7 +52,7 @@ function initialFilter(): BaseFilter {
  *   popup เริ่มที่แบรนด์ที่คนที่เลือกมีห้องแชตมากที่สุด แล้ว preview แสดงรายการที่ถูกข้าม
  */
 export function BasePage({ scope }: { scope: BaseScopeKey }) {
-  const { live, customers, leads, meId, today, poolVersion, outreachDemo, isAdmin } = useAppState();
+  const { live, customers, leads, meId, today, poolVersion, isAdmin } = useAppState();
   const { openModal, toast, handleAuthError } = useActions();
   const act = useLeadActions();
   const openJst = useJst();
@@ -61,28 +63,9 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
   const [data, setData] = useState<{ rows: PoolRow[]; total: number | null; err: string }>({ rows: [], total: null, err: '' });
   const [loading, setLoading] = useState(live);
   const [sel, setSel] = useState<ReadonlyMap<string, SelRow>>(() => new Map());
-  const [liveMax, setLiveMax] = useState<number | null>(null);
   const [liveTags, setLiveTags] = useState<string[]>([]);
   const headBox = useRef<HTMLInputElement>(null);
-  const max = live ? (liveMax ?? maxBatch(null)) : maxBatch(outreachDemo?.worker.settings);
-
-  // จำนวนสูงสุดต่อชุดจาก dsales_worker_status_get (โหลดครั้งแรกที่เริ่มติ๊ก; ล้มเหลว = ใช้ค่าเริ่มต้น 50)
-  const wantMax = live && sel.size > 0 && liveMax === null;
-  useEffect(() => {
-    if (!wantMax) return;
-    let alive = true;
-    getWorkerStatus().then(
-      (s) => {
-        if (alive) setLiveMax(maxBatch(s?.settings));
-      },
-      (e: unknown) => {
-        if (alive && !handleAuthError(e)) setLiveMax(maxBatch(null));
-      },
-    );
-    return () => {
-      alive = false;
-    };
-  }, [wantMax, handleAuthError]);
+  const max = useOutreachMax(sel.size > 0);
 
   // รายชื่อ tag ของ JST สำหรับตัวกรอง Tag (หัวหน้าเท่านั้น; โหลดไม่ได้ = มีแค่ "ไม่มี tag")
   useEffect(() => {
@@ -297,25 +280,17 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
         <span className="sub num">{pageRange(f.page, rows.length, total)}</span>
         <button className="btn sm" data-pool="next" disabled={!canNext(f.page, rows.length, total)} onClick={() => setF((x) => ({ ...x, page: x.page + 1 }))}>ถัดไป →</button>
       </div>
-      {sel.size ? (
-        <div className="panel" id="sel-bar" style={{ position: 'sticky', bottom: 12, zIndex: 4, boxShadow: 'var(--shadow)' }}>
-          <div className="panel-b toolbar">
-            <b className="num">{bar.text}</b>
-            {bar.over ? <span className="sub" style={{ color: 'var(--bad)' }}>{bar.over}</span> : <span className="sub">สูงสุด {max} คนต่อชุด</span>}
-            <span style={{ flex: 1 }} />
-            <button className="btn" id="sel-clear" onClick={() => setSel(new Map())}>ล้าง</button>
-            {scope === 'mine' ? (
-              <button
-                className="btn" id="sel-follow" disabled={!bar.canSend} title="ส่งลูกค้าที่เลือกเข้าหน้า Direct Sale เพื่อติดตามใกล้ชิด"
-                onClick={() => void bulkFollow([...sel.values()], f.brand, () => setSel(new Map()))}
-              >
-                เข้า Direct Sale
-              </button>
-            ) : null}
-            <button className="btn primary" id="sel-send" disabled={!bar.canSend} onClick={openSend}>{bar.text} · ส่งข้อความ</button>
-          </div>
-        </div>
-      ) : null}
+      <SelectionBar
+        count={sel.size} max={max} onClear={() => setSel(new Map())} onSend={openSend}
+        extra={scope === 'mine' ? (
+          <button
+            className="btn" id="sel-follow" disabled={!bar.canSend} title="ส่งลูกค้าที่เลือกเข้าหน้า Direct Sale เพื่อติดตามใกล้ชิด"
+            onClick={() => void bulkFollow([...sel.values()], f.brand, () => setSel(new Map()))}
+          >
+            เข้า Direct Sale
+          </button>
+        ) : null}
+      />
     </>
   );
 }
