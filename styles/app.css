@@ -74,7 +74,8 @@ a { color: var(--accent-strong); }
 /* global brand switch (BrandSwitch): segmented on wide screens, compact select on phones */
 .brand-switch { margin-left: auto; flex: none; display: flex; align-items: center; }
 .brand-seg { border: 1px solid var(--border); }
-.brand-seg .seg-btn { font-size: 13px; white-space: nowrap; }
+/* fixed 36px tall so the 64px topbar keeps its height (a fractional height shifts every page below it) */
+.brand-seg .seg-btn { font-size: 13px; line-height: 20px; padding: 4px 14px; white-space: nowrap; }
 .brand-seg .seg-btn:hover { color: var(--fg); }
 .brand-seg .seg-btn.on { background: var(--accent); color: var(--accent-fg); font-weight: 600; box-shadow: var(--shadow-sm); }
 .brand-seg .seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

@@ -14,7 +14,7 @@ export function BrandSwitch() {
     ...(isAdmin ? [{ value: 'all' as const, label: 'ทั้งหมด' }] : []),
   ];
   return (
-    <div className="brand-switch" data-brand={brand}>
+    <div className="brand-switch" data-scope={brand}>
       <div className="seg brand-seg" role="group" aria-label="แบรนด์">
         {opts.map((o) => (
           <button key={o.value} type="button" className={`seg-btn${brand === o.value ? ' on' : ''}`} data-brand-pick={o.value}
