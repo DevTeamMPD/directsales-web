@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { PATHS } from '../lib/constants';
+import { expectAllBrands, pinAllBrands } from './brand-pin';
 
 const LEGACY = 'http://127.0.0.1:4100/index.html';
 const APP = 'http://127.0.0.1:3100';
@@ -22,6 +23,11 @@ const COARSE = SELF;
 const INJECT = process.env.PARITY_INJECT_CSS;
 // แผน A เทียบเฉพาะ shell: ซ่อนเนื้อหาหน้าและปุ่มของหน้าใน topbar ทั้งสองฝั่ง
 const HIDE_WORK_AREA = '#view > *, #topbar-actions > * { display: none !important; }';
+
+// prototype แสดงทุกแบรนด์ → แอปตั้งแบรนด์ใหญ่ "ทั้งหมด" ก่อนเปิดหน้า (ตัวสลับใน topbar ตรวจใน brand-switch.spec.ts)
+test.beforeEach(async ({ page }) => {
+  await pinAllBrands(page);
+});
 
 
 async function settle(page: Page) {
@@ -85,6 +91,7 @@ async function openAppShell(page: Page) {
   await page.goto(`${APP}/leads`);
   await expect(page.locator('#page-title')).toHaveText('Direct Sale', { timeout: 60_000 });
   await expect(page.locator('.nav-item.active')).toHaveAttribute('data-route', 'leads');
+  await expectAllBrands(page);
   if (INJECT) await page.addStyleTag({ content: INJECT });
   await settle(page);
 }
@@ -208,6 +215,7 @@ async function openLegacyLeads(page: Page, claim?: string) {
 async function openAppLeads(page: Page, claim?: string) {
   await page.goto(`${APP}/leads${claim ? `?claim=${claim}` : ''}`);
   await expect(page.locator('#view tbody tr')).toHaveCount(28, { timeout: 60_000 });
+  await expectAllBrands(page);
   if (INJECT) await page.addStyleTag({ content: INJECT });
   await settleWork(page);
 }
@@ -383,6 +391,7 @@ async function openLegacyCampaign(page: Page, brand: 'bebeplay' | 'hosttail', ro
 async function openAppCampaign(page: Page, brand: 'bebeplay' | 'hosttail', rows: number) {
   await page.goto(`${APP}/campaigns/${brand}`);
   await expect(page.locator('#view tbody tr')).toHaveCount(rows, { timeout: 60_000 });
+  await expectAllBrands(page);
   if (INJECT) await page.addStyleTag({ content: INJECT });
   await settleWork(page);
 }
@@ -532,17 +541,20 @@ for (const s of SIZES) {
       for (const [path, rows, first] of [['mine', 7, 'ยกเลิกจอง'], ['pool', 50, 'จอง']] as const) {
         await page.goto(`${APP}/${path}`);
         await expect(page.locator('#view tbody tr')).toHaveCount(rows, { timeout: 60_000 });
+        await expectAllBrands(page);
         await expect(page.locator('#page-title')).toHaveText(path === 'mine' ? 'ลูกค้าของฉัน' : 'ถังกลาง');
         // คอลัมน์แรก = ช่องติ๊กเลือกลูกค้าเพื่อส่งข้อความ (outreach), คอลัมน์ที่ 3 = ปุ่มโทร + ไอคอนห้องแชต (ตั้งใจต่างจากเดิม)
         await expect(page.locator('#view thead th')).toHaveText(['', 'ชื่อ / เบอร์', 'ช่องทาง', 'ไม่ซื้อมา / tag', 'กลุ่มลูกค้า', 'ยอดซื้อสะสม', 'ออเดอร์', 'ซื้อล่าสุด', 'แบรนด์', '']);
         await expect(page.locator('#view tbody tr').first().locator('td').nth(3)).toContainText(/^ไม่ซื้อมา [\d,]+ วัน/);
         await expect(page.locator('#view tbody tr').first().locator('td:last-child button')).toHaveText(first);
-        await expect(page.locator('#base-brand option')).toHaveText(['ทุกแบรนด์', 'Bebeplay', 'Hosttail']);
+        // ไม่มี dropdown แบรนด์ในหน้าแล้ว — ใช้แบรนด์ใหญ่ใน topbar
+        await expect(page.locator('#base-brand')).toHaveCount(0);
         if (INJECT) await page.addStyleTag({ content: INJECT });
         await unclipView(page);
         await expect.soft(page.locator('#view')).toHaveScreenshot(['app', `${path}-${s.tag}.png`], SELF);
       }
-      await page.locator('#base-brand').selectOption('hosttail');
+      if (s.tag === 'mobile') await page.locator('#brand-switch').selectOption('hosttail');
+      else await page.locator('[data-brand-pick=hosttail]').click();
       await expect(page.locator('#view tbody tr td:nth-child(9)').first()).toHaveText('Hosttail');
       expect(new Set(await page.locator('#view tbody tr td:nth-child(9)').allInnerTexts())).toEqual(new Set(['Hosttail']));
     });
@@ -568,6 +580,7 @@ async function openLegacyRoute(page: Page, hash: string, ready: string) {
 async function openAppRoute(page: Page, path: string, ready: string) {
   await page.goto(`${APP}${path}`);
   await expect(page.locator(ready).first()).toBeVisible({ timeout: 60_000 });
+  await expectAllBrands(page);
   if (INJECT) await page.addStyleTag({ content: INJECT });
   await settleWork(page);
 }
