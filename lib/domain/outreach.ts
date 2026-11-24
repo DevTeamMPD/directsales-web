@@ -55,8 +55,10 @@ export function pageCheckState(sel: Selection, rows: ReadonlyArray<Pick<SelRow, 
 }
 
 /* ---------- หน้า Direct Sale: ติ๊กลีดเพื่อส่งข้อความ ---------- */
-/** ติ๊กได้เฉพาะลีดที่ฉันเป็นเจ้าของ (ลีดแคมเปญที่ยังไม่จอง/ของคนอื่น enqueue จะข้ามเป็น taken อยู่ดี) */
-export const leadSelectable = (l: Pick<Lead, 'owner'>, meId: string): boolean => !!meId && l.owner === meId;
+/** เซลล์ติ๊กได้เฉพาะลีดที่ตัวเองเป็นเจ้าของ · หัวหน้าติ๊กลีดที่มีเจ้าของได้ทุกคน (ส่งแทน ลีดยังเป็นของเจ้าของเดิม —
+ *  migration 20261124090000) · ลีดที่ยังไม่มีเจ้าของติ๊กไม่ได้ (enqueue จะจองให้คนกดส่ง) */
+export const leadSelectable = (l: Pick<Lead, 'owner'>, meId: string, isAdmin = false): boolean =>
+  !!meId && !!l.owner && (isAdmin || l.owner === meId);
 
 /** ตัดเบอร์ที่ไม่ใช่ลีดของฉันแล้วออกจากที่เลือก (ไม่มีอะไรถูกตัด = คืนตัวเดิม เพื่อไม่ให้ React วาดใหม่) */
 export function pruneSelection(sel: ReadonlySet<string>, allowed: ReadonlySet<string>): ReadonlySet<string> {

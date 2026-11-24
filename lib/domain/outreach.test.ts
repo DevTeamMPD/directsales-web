@@ -211,6 +211,10 @@ describe('Direct Sale: tick leads to send a message', () => {
     expect(leadSelectable({ owner: null }, 'u1')).toBe(false);
     expect(leadSelectable(lead, '')).toBe(false);
   });
+  it('admins can tick any lead that has an owner (send on behalf, the lead stays with its owner)', () => {
+    expect(leadSelectable(lead, 'admin1', true)).toBe(true);
+    expect(leadSelectable({ owner: null }, 'admin1', true)).toBe(false);
+  });
   it('builds the selection row from the lead and its rooms (sendable brands only)', () => {
     const rooms = [room({ msId: 1 }), room({ msId: 2, brand: 'hosttail', sendable: false }), room({ msId: 3, brand: null, sendable: false })];
     expect(leadSelRow(lead, rooms)).toEqual({

@@ -41,13 +41,13 @@ export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts 
   const max = useOutreachMax(sel.size > 0);
   const headBox = useRef<HTMLInputElement>(null);
   // ลีดของฉันทั้งหมด (ไม่ใช่เฉพาะที่กรองอยู่) → ติ๊กคงอยู่ข้ามตัวกรอง/คำค้น แต่ลีดที่ยกเลิกจอง/ถูกโอนออกถูกตัดทิ้ง
-  const minePhones = useMemo(() => new Set(leads.filter((l) => leadSelectable(l, meId)).map((l) => l.phone)), [leads, meId]);
+  const minePhones = useMemo(() => new Set(leads.filter((l) => leadSelectable(l, meId, isAdmin)).map((l) => l.phone)), [leads, meId, isAdmin]);
   useEffect(() => {
     setSel((s) => pruneSelection(s, minePhones));
   }, [minePhones]);
   const pickable = useMemo(
-    () => (selectable ? list.filter((l) => leadSelectable(l, meId)).map((l) => l.phone) : []),
-    [selectable, list, meId],
+    () => (selectable ? list.filter((l) => leadSelectable(l, meId, isAdmin)).map((l) => l.phone) : []),
+    [selectable, list, meId, isAdmin],
   );
   const pageState = phoneCheckState(sel, pickable);
   useEffect(() => {
@@ -116,7 +116,7 @@ const LeadRow = memo(function LeadRow({ l, mode, ctx, checked }: { l: Lead; mode
     <tr className={checked ? 'sel' : undefined}>
       {selectable ? (
         <td className="sel-col">
-          {leadSelectable(l, meId) ? (
+          {leadSelectable(l, meId, isAdmin) ? (
             <input type="checkbox" data-lead-sel={l.phone} aria-label={`เลือก ${l.name}`} checked={checked} onChange={() => toggle(l.phone)} />
           ) : null}
         </td>
