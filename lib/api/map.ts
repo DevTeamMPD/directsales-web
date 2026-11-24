@@ -20,7 +20,10 @@ export function mapLead(j: LeadJson): Lead {
     purchases: [],
     claimedAt: localStamp(j.claimedAt),
     claimedAtIso: j.claimedAt,
-    interactions: (j.interactions || []).map((i) => ({ ...i, date: localStamp(i.date) || i.date, note: i.note || '', result: i.result || '' })),
+    interactions: (j.interactions || []).flatMap((i) =>
+      i.type === 'system' ? [] : [{ ...i, type: i.type, date: localStamp(i.date) || i.date, note: i.note || '', result: i.result || '' }]),
+    systemLog: (j.interactions || []).filter((i) => i.type === 'system')
+      .map((i) => ({ id: i.id, date: localStamp(i.date) || i.date, rep: i.rep, note: i.note || '' })),
   };
 }
 

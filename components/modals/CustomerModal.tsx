@@ -53,7 +53,11 @@ function CustomerDetail({ lead: l }: { lead: Lead }) {
   const rooms = leadRooms.get(l.phone) ?? [];
   const who = { phone: l.phone, name: l.name, chat: l.chatName, brand: l.brand };
   const lastBuy = l.lastBuy || l.purchases[0]?.date;
-  const hist = [...l.interactions].sort((a, b) => b.date.localeCompare(a.date));
+  // ประวัติการติดต่อ + บันทึกจากระบบ (คืนลีดอัตโนมัติ) เรียงใหม่→เก่า
+  const hist = [
+    ...l.interactions.map((i) => ({ sys: false as const, i, date: i.date })),
+    ...(l.systemLog ?? []).map((s) => ({ sys: true as const, s, date: s.date })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
   const logType = l.noCall ? 'chat' : 'call';
   const plDone = l._pl === 'done';
   // prototype สลับแท็บ / โหลดประวัติซื้อเสร็จ ด้วยการเปิด popup ใหม่ (L515, L483): popup ใหม่เริ่มบนสุด, #chk-body ยังว่าง
@@ -134,17 +138,28 @@ function CustomerDetail({ lead: l }: { lead: Lead }) {
           </div>
         ) : hist.length ? (
           <ul className="timeline">
-            {hist.map((i) => (
-              <li key={i.id}>
-                <span className={`feed-ic ${i.type}`}><svg viewBox="0 0 24 24"><path d={i.type === 'call' ? PATHS.phone : PATHS.chat} /></svg></span>
+            {hist.map((h) => h.sys ? (
+              <li key={h.s.id} className="tl-system">
+                <span className="feed-ic system"><svg viewBox="0 0 24 24"><path d={PATHS.clock} /></svg></span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="tl-head">
-                    <b>{i.type === 'call' ? 'โทร' : 'แชต'}</b>
-                    <span className="sub">{fmtDT(i.date)} · {repName(reps, i.rep) || ''}</span>
-                    <span className="tag">{i.result}</span>
-                    {i.due ? <span className="tag s-callback">นัดติดต่อ {fmtDate(i.due)}</span> : null}
+                    <b>ระบบ</b>
+                    <span className="sub">{fmtDT(h.s.date)}{h.s.rep ? ' · ' + (repName(reps, h.s.rep) || '') : ''}</span>
                   </div>
-                  <div className="tl-note">{i.note}</div>
+                  <div className="tl-note">{h.s.note}</div>
+                </div>
+              </li>
+            ) : (
+              <li key={h.i.id}>
+                <span className={`feed-ic ${h.i.type}`}><svg viewBox="0 0 24 24"><path d={h.i.type === 'call' ? PATHS.phone : PATHS.chat} /></svg></span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="tl-head">
+                    <b>{h.i.type === 'call' ? 'โทร' : 'แชต'}</b>
+                    <span className="sub">{fmtDT(h.i.date)} · {repName(reps, h.i.rep) || ''}</span>
+                    <span className="tag">{h.i.result}</span>
+                    {h.i.due ? <span className="tag s-callback">นัดติดต่อ {fmtDate(h.i.due)}</span> : null}
+                  </div>
+                  <div className="tl-note">{h.i.note}</div>
                 </div>
               </li>
             ))}

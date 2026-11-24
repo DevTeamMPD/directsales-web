@@ -5,7 +5,7 @@ import { SelectionBar } from '@/components/campaigns/SelectionBar';
 import { useOutreachMax } from '@/components/campaigns/useOutreachMax';
 import { CallButton, ContactBar, type OpenJst } from '@/components/leads/ContactBar';
 import { SendOutreachModal } from '@/components/modals/SendOutreachModal';
-import { DueTag, StatusBadge } from '@/components/ui/StatusBadge';
+import { DueTag, ReleaseTag, StatusBadge } from '@/components/ui/StatusBadge';
 import type { Campaign, ChatRoom, ClaimMode, Lead, Rep } from '@/lib/api/types';
 import { pageBrand } from '@/lib/domain/brand';
 import { bills, canUnclaim, lastSeller, repName, total } from '@/lib/domain/leads';
@@ -150,6 +150,7 @@ const LeadRow = memo(function LeadRow({ l, mode, ctx, checked }: { l: Lead; mode
       <td>
         <StatusBadge status={l.status} />
         <DueTag callback={l.callback} today={today} />
+        {l.owner ? <ReleaseTag dsSince={l.dsSince} status={l.status} today={today} /> : null}
         {l.chatCheck?.sent ? <div><span className="tag chat-ok">ทักแชทแล้ว ✓</span></div> : null}
         {l.noCall ? (
           <>

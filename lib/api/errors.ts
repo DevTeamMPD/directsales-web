@@ -1,6 +1,7 @@
 /** ข้อความไทยของ error จาก RPC ใน schema dsales (เทียบทั้ง token จึงไม่มี key ไหนทับกัน ต่างจาก prototype ที่เทียบ substring) */
 export const ERROR_TEXT: Readonly<Record<string, string>> = {
   taken: 'ลูกค้ารายนี้มีคนจองไปแล้ว',
+  release_cooldown: 'ลูกค้ารายนี้เพิ่งถูกคืนจาก Direct Sale ของคุณ (ครบ 30 วันยังไม่ปิดการขาย) จองซ้ำได้เมื่อพ้น 30 วัน',
   no_call: 'ลูกค้ารายนี้ไม่สะดวกให้โทร',
   forbidden: 'ไม่มีสิทธิ์ทำรายการนี้',
   bill_required: 'ใส่เลขบิลก่อนปิดการขาย',

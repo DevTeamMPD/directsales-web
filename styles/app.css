@@ -216,6 +216,7 @@ th.r, td.r { text-align: right; }
 .feed-ic svg { width: 14px; height: 14px; }
 .feed-ic.call { background: var(--ok-soft); color: var(--ok); }
 .feed-ic.chat { background: var(--info-soft); color: var(--info); }
+.feed-ic.system { background: var(--warn-soft); color: var(--warn); }
 .feed-body { min-width: 0; flex: 1; font-size: 13.5px; }
 
 /* ---------- settings ---------- */

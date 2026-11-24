@@ -7,14 +7,17 @@ export type ContactType = 'call' | 'chat';
 export interface Channel { shop?: string; chat?: string; chat_name?: string; platform?: string; ms_id?: number | string | null }
 
 /** รายการใน interactions ของ dsales_lead_json (ล่าสุด 30 รายการ เรียงเก่า→ใหม่) */
+/** 'system' = บันทึกจากระบบ (เช่น คืนลีดอัตโนมัติเมื่อครบ 30 วัน) — mapLead แยกไปไว้ที่ Lead.systemLog ไม่ปนกับประวัติการติดต่อ */
 export interface InteractionJson {
-  id: string; type: ContactType; date: string; rep: string | null;
+  id: string; type: ContactType | 'system'; date: string; rep: string | null;
   result: string | null; note: string | null; due: string | null; bills: string[] | null;
 }
 export interface Interaction {
   id: string; type: ContactType; date: string; rep: string | null;
   result: string; note: string; due?: string | null; bills?: string[] | null;
 }
+
+export interface SystemNote { id: string; date: string; rep: string | null; note: string }
 
 export interface Purchase { date: string; bill: string; sku: string; product: string; amount: number; seller: string | null }
 export interface ChatCheck { at: string; sent: boolean; count: number }
@@ -26,6 +29,8 @@ export interface LeadJson {
   interest: string | null; closedBills: string[] | null; closedAmount: number | null; closedAt: string | null;
   claimedBy: string | null; claimedAt: string | null; noCall: boolean; noCallBy: string | null; noCallAt: string | null;
   releasedBy: string[] | null; autoSkip: boolean; identityId: string | null;
+  /** เวลาที่เข้า Direct Sale ของเจ้าของปัจจุบัน (null = ไม่มีเจ้าของ) — ครบ 30 วันยังไม่ won ระบบคืนอัตโนมัติ */
+  dsSince?: string | null;
   bills: string[] | null; total: number | null; lastBuy: string | null; orders: number | null;
   interactions: InteractionJson[] | null;
 }
@@ -39,6 +44,7 @@ export interface Lead {
   noCall?: boolean; noCallBy?: string | null; noCallAt?: string | null; releasedBy?: string[]; autoSkip?: boolean; identityId?: string | null;
   bills?: string[]; total?: number | null; lastBuy?: string | null; orders?: number | null;
   interactions: Interaction[]; purchases: Purchase[];
+  dsSince?: string | null; systemLog?: SystemNote[];
   _pl?: 'loading' | 'done'; chatCheck?: ChatCheck | null;
 }
 

@@ -159,3 +159,19 @@ describe('mapPurchase / mapChannel', () => {
       .toEqual({ platform: 'line', shop: 'LOA_bebeplay', chat: '' });
   });
 });
+
+describe('mapLead system history', () => {
+  it('keeps system entries (auto-release) out of the contact history and exposes them separately', () => {
+    const j = leadJson({
+      dsSince: '2026-11-01T03:00:00+00:00',
+      interactions: [
+        { id: 'i1', type: 'call', date: '2026-11-04T03:00:00+00:00', rep: 'u1', result: null, note: null, due: null, bills: null },
+        { id: 's1', type: 'system', date: '2026-11-05T00:05:00+00:00', rep: 'u1', result: null, note: 'ครบ 30 วันยังไม่ปิดการขาย — คืนอัตโนมัติ', due: null, bills: null },
+      ],
+    });
+    const l = mapLead(j);
+    expect(l.interactions.map((i) => i.id)).toEqual(['i1']);
+    expect(l.systemLog).toEqual([{ id: 's1', date: '2026-11-05T07:05', rep: 'u1', note: 'ครบ 30 วันยังไม่ปิดการขาย — คืนอัตโนมัติ' }]);
+    expect(l.dsSince).toBe('2026-11-01T03:00:00+00:00');
+  });
+});

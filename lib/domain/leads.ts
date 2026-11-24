@@ -1,6 +1,6 @@
 import type { Campaign, Lead, Rep } from '@/lib/api/types';
 import { STATUS, type LeadStatus } from '@/lib/constants';
-import { fmtDate } from '@/lib/format';
+import { fmtDate, todayBangkok } from '@/lib/format';
 import type { Period, UiFilters } from '@/lib/state/reducer';
 import { hasPeriod, inPeriod } from './period';
 
@@ -121,3 +121,23 @@ export function claimBlock(
   }
   return null;
 }
+
+/** ระยะที่ลีดอยู่ใน Direct Sale ได้ก่อนระบบคืนอัตโนมัติ (setting ds_max_days ใน DB, migration 20261123130000) */
+export const DS_MAX_DAYS = 30;
+/** แสดงแท็ก "เหลือ N วัน" เมื่อเหลือไม่เกินกี่วัน */
+export const DS_WARN_DAYS = 7;
+
+const dayNo = (ymd: string): number => Date.UTC(+ymd.slice(0, 4), +ymd.slice(5, 7) - 1, +ymd.slice(8, 10)) / 86_400_000;
+
+/** วันที่เหลือก่อนคืนอัตโนมัติ (นับจากวันที่เข้า Direct Sale ตามเวลาไทย) — null = ไม่มีนาฬิกา หรือปิดการขายแล้ว */
+export function releaseInfo(
+  dsSince: string | null | undefined, status: LeadStatus, today: string, maxDays: number = DS_MAX_DAYS,
+): { days: number; cls: '' | 'today' | 'overdue'; text: string } | null {
+  if (!dsSince || status === 'won') return null;
+  const since = todayBangkok(new Date(dsSince));
+  const days = Math.max(0, maxDays - (dayNo(today) - dayNo(since)));
+  if (days === 0) return { days, cls: 'overdue', text: `ครบ ${maxDays} วัน รอคืนอัตโนมัติ` };
+  return { days, cls: days <= 3 ? 'overdue' : days <= DS_WARN_DAYS ? 'today' : '', text: `เหลือ ${days} วัน` };
+}
+
+export const releaseTagShown = (r: ReturnType<typeof releaseInfo>): boolean => !!r && r.days <= DS_WARN_DAYS;
