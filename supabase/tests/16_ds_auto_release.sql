@@ -5,9 +5,10 @@ begin;
 -- (c) cooldown: the released rep cannot claim it back for 30 days; others can; admin can assign
 -- (d) dsales_lead_json has dsSince
 -- (e) clients cannot call the release function or read dsales_lead_auto_releases
+-- (f) unclaim + re-claim by the same rep does not restart the clock · (g) admins are not blocked by the cooldown
 do $$
 declare
-  v_admin uuid; v_s1 uuid; v_s2 uuid; v_l1 uuid; v_l2 uuid; v_l3 uuid; v_l4 uuid;
+  v_admin uuid; v_s1 uuid; v_s2 uuid; v_l1 uuid; v_l2 uuid; v_l3 uuid; v_l4 uuid; v_l6 uuid;
   j jsonb; v_n int; v_err text; v_since timestamptz; l dsales.dsales_leads;
 begin
   select user_id into v_admin from dsales.dsales_members where role = 'admin' and active order by created_at limit 1;
@@ -97,6 +98,42 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', v_s1, 'role', 'authenticated')::text, true);
   j := dsales.dsales_claim_customer('0899999981', 'bebeplay');
   assert j ->> 'owner' = v_s1::text, 'cooldown over -> s1 can claim again';
+
+  -- (f) ยกเลิกจองแล้วจองใหม่ไม่เริ่มนับใหม่: L3 (s1, 20 วัน) -> s1 unclaim -> s1 claim = นาฬิกาเดิม
+  j := dsales.dsales_unclaim_lead(v_l3);
+  assert j -> 'dsSince' = 'null'::jsonb, format('unowned lead shows no dsSince, got %s', j -> 'dsSince');
+  j := dsales.dsales_claim_lead(v_l3);
+  assert (select ds_since::date = (now() - interval '20 days')::date from dsales.dsales_leads where id = v_l3),
+         'unclaim + re-claim by the same rep keeps the clock';
+  -- นาฬิกาหมดแล้ว (40 วัน) แต่ยกเลิกจองไว้ -> จองเองคืน = release_cooldown (เท่ากับถูกคืนตอนครบกำหนด)
+  perform dsales.dsales_unclaim_lead(v_l3);
+  reset role;
+  update dsales.dsales_leads set ds_since = now() - interval '40 days' where id = v_l3;
+  set local role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_s1, 'role', 'authenticated')::text, true);
+  v_err := 'no error';
+  begin perform dsales.dsales_claim_lead(v_l3); exception when others then v_err := sqlerrm; end;
+  assert v_err = 'release_cooldown', format('expired clock after unclaim -> release_cooldown, got %s', v_err);
+  -- เซลล์อื่นจอง -> นาฬิกาใหม่
+  perform set_config('request.jwt.claims', json_build_object('sub', v_s2, 'role', 'authenticated')::text, true);
+  perform dsales.dsales_claim_lead(v_l3);
+  assert (select ds_owner = v_s2 and abs(extract(epoch from ds_since - now())) < 5 from dsales.dsales_leads where id = v_l3),
+         'another rep claiming starts a new clock';
+
+  -- (g) หัวหน้าไม่ติด cooldown: L6 ของหัวหน้า ครบ 31 วัน ถูกคืน แล้วหัวหน้าจองเองได้ทันที
+  reset role;
+  insert into dsales.dsales_leads (source, brand, name, phone, phone_normalized, owner_id, claimed_by, claimed_at, created_by)
+    values ('self', 'bebeplay', 'ทดสอบคืน6', '0899999986', '0899999986', v_admin, v_admin, now(), v_admin) returning id into v_l6;
+  update dsales.dsales_leads set ds_since = now() - interval '31 days' where id = v_l6;
+  perform set_config('request.jwt.claims', '', true);
+  perform dsales.dsales_release_stale_leads();
+  assert (select owner_id is null and ds_since is null and ds_owner is null from dsales.dsales_leads where id = v_l6),
+         'release clears owner, ds_since, ds_owner';
+  set local role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  j := dsales.dsales_claim_lead(v_l6);
+  assert j ->> 'owner' = v_admin::text, 'admin is not blocked by the cooldown';
+  perform set_config('request.jwt.claims', json_build_object('sub', v_s1, 'role', 'authenticated')::text, true);
 
   -- (e) clients cannot run the release or read the release log (sales and admin)
   v_err := 'no error';

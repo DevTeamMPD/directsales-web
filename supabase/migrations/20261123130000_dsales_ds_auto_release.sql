@@ -5,6 +5,7 @@
 --   2) ลีด won ไม่ถูกคืน สถานะอื่นทั้งหมดถูกคืน (owner = null, status = new, ล้าง callback/claimed)
 --   3) หลังถูกคืน เซลล์คนเดิมจองลีดนั้นเองไม่ได้ 30 วัน (raise 'release_cooldown') — คนอื่นจองได้ หัวหน้ามอบหมายได้
 --   4) การคืนบันทึกในประวัติลีด (dsales_interactions.type = 'system', rep_id = เจ้าของเดิม)
+--   5) (review) ยกเลิกจองแล้วจองใหม่ไม่ทำให้เริ่มนับใหม่ · หัวหน้าไม่ติด cooldown (จองเองหรือมอบหมายได้เสมอ)
 -- โครงสร้าง:
 --   - dsales_leads.ds_since = เวลาที่เข้า Direct Sale ของเจ้าของปัจจุบัน ตั้งโดย trigger BEFORE INSERT OR UPDATE OF owner_id
 --     จึงครอบทุก RPC ที่ตั้งเจ้าของ (claim_customer / claim_lead / assign_lead / unclaim_lead / set_nocall / enqueue) โดยไม่ต้องแก้ RPC
@@ -19,12 +20,14 @@
 -- Rollback: drop trigger dsales_leads_ds_since on dsales.dsales_leads; drop function dsales.dsales_leads_ds_since(),
 --   dsales.dsales_release_stale_leads(); drop table dsales.dsales_lead_auto_releases; delete from dsales.dsales_interactions
 --   where type = 'system' แล้วคืน constraint dsales_interactions_type_check เป็น ('call','chat'); คืน dsales_lead_json เป็น
---   นิยามในข้อ 7 โดยตัด 'dsSince' ออก (= production ก่อน migration นี้); alter table dsales.dsales_leads drop column ds_since; delete setting ds_max_days
+--   นิยามในข้อ 7 โดยตัด 'dsSince' ออก (= production ก่อน migration นี้); alter table dsales.dsales_leads drop column ds_since, drop column ds_owner; delete setting ds_max_days
 
 -- 1) คอลัมน์ + backfill (ปิด trigger touch ชั่วคราวเพื่อไม่ให้ updated_at ของลีดเดิมเปลี่ยน)
+-- ds_owner = เจ้าของที่นาฬิกา ds_since เป็นของเขา (คงไว้หลังยกเลิกจอง เพื่อกันการยกเลิกแล้วจองใหม่เพื่อเริ่มนับใหม่)
 alter table dsales.dsales_leads add column if not exists ds_since timestamptz;
+alter table dsales.dsales_leads add column if not exists ds_owner uuid;
 alter table dsales.dsales_leads disable trigger dsales_leads_touch;
-update dsales.dsales_leads set ds_since = coalesce(claimed_at, created_at) where owner_id is not null and ds_since is null;
+update dsales.dsales_leads set ds_since = coalesce(claimed_at, created_at), ds_owner = owner_id where owner_id is not null and ds_since is null;
 alter table dsales.dsales_leads enable trigger dsales_leads_touch;
 
 -- 2) ประวัติการคืนอัตโนมัติ (ภายใน)
@@ -47,29 +50,46 @@ alter table dsales.dsales_interactions add constraint dsales_interactions_type_c
 
 -- 5) trigger: ตั้ง ds_since + cooldown ของเซลล์ที่เพิ่งถูกคืน
 -- security definer: หัวหน้าอัปเดต dsales_leads ตรงได้ (policy admin_write) ต้องอ่าน dsales_settings / auto_releases ที่ไม่มี grant
+-- กติกา (v_self = เซลล์จองเอง: auth.uid() = เจ้าของใหม่ และไม่ใช่หัวหน้า — หัวหน้า/cron/มอบหมาย ไม่ติดกติกานี้):
+--   owner -> null (ยกเลิกจอง/คืน): คง ds_since/ds_owner ไว้ (dsales_release_stale_leads ล้างเองหลังคืนอัตโนมัติ)
+--   owner เดิม: คงนาฬิกา
+--   v_self + เพิ่งถูกคืนลีดนี้อัตโนมัติภายใน ds_max_days -> 'release_cooldown'
+--   v_self + เป็นเจ้าของนาฬิกาเดิม (ยกเลิกแล้วจองใหม่): นาฬิกายังไม่หมด -> นับต่อ · หมดแล้วไม่เกิน ds_max_days -> 'release_cooldown'
+--     (เท่ากับถูกคืนตอนครบกำหนด) · เกินกว่านั้น -> เริ่มนับใหม่
+--   นอกนั้น: เริ่มนับใหม่ (now())
 create or replace function dsales.dsales_leads_ds_since() returns trigger
 language plpgsql security definer set search_path = dsales, public as $$
-declare v_days int;
+declare v_days int; v_self boolean;
 begin
   if new.owner_id is null then
-    new.ds_since := null;
     return new;
   end if;
   if tg_op = 'UPDATE' and old.owner_id is not distinct from new.owner_id then
     new.ds_since := coalesce(new.ds_since, old.ds_since, now());
+    new.ds_owner := new.owner_id;
     return new;
   end if;
-  -- เจ้าของใหม่: ถ้าจองเอง (auth.uid() = เจ้าของใหม่) และเพิ่งถูกคืนลีดนี้อัตโนมัติ -> ปฏิเสธ
-  -- หัวหน้ามอบหมาย (auth.uid() <> เจ้าของใหม่) และ cron/postgres (auth.uid() null) ผ่าน
-  if tg_op = 'UPDATE' and new.owner_id = auth.uid() then
+  v_self := auth.uid() is not null and new.owner_id = auth.uid() and not dsales.dsales_is_admin();
+  if tg_op = 'UPDATE' and v_self then
     select coalesce((value #>> '{}')::int, 30) into v_days from dsales.dsales_settings where key = 'ds_max_days';
+    v_days := coalesce(v_days, 30);
     if exists (select 1 from dsales.dsales_lead_auto_releases r
                where r.lead_id = new.id and r.user_id = new.owner_id
-                 and r.released_at > now() - make_interval(days => coalesce(v_days, 30))) then
+                 and r.released_at > now() - make_interval(days => v_days)) then
       raise exception 'release_cooldown';
+    end if;
+    if old.ds_owner = new.owner_id and old.ds_since is not null then
+      if old.ds_since > now() - make_interval(days => v_days) then
+        new.ds_since := old.ds_since;
+        new.ds_owner := new.owner_id;
+        return new;
+      elsif old.ds_since > now() - make_interval(days => 2 * v_days) then
+        raise exception 'release_cooldown';
+      end if;
     end if;
   end if;
   new.ds_since := now();
+  new.ds_owner := new.owner_id;
   return new;
 end $$;
 revoke all on function dsales.dsales_leads_ds_since() from public, anon, authenticated;
@@ -95,7 +115,8 @@ begin
     insert into dsales.dsales_interactions (lead_id, type, note, rep_id)
     select s.id, 'system', format('ครบ %s วันยังไม่ปิดการขาย — คืนอัตโนมัติ', v_days), s.owner_id from s
   ), up as (
-    update dsales.dsales_leads l set owner_id = null, claimed_by = null, claimed_at = null, status = 'new', callback_date = null, updated_at = now()
+    update dsales.dsales_leads l set owner_id = null, claimed_by = null, claimed_at = null, status = 'new', callback_date = null,
+        ds_since = null, ds_owner = null, updated_at = now()
     from s where l.id = s.id
     returning 1
   )
@@ -112,7 +133,7 @@ language sql stable security definer set search_path = dsales, public as $$
     'brand', l.brand, 'source', l.source, 'campaignId', l.campaign_id, 'owner', l.owner_id, 'status', l.status, 'callback', l.callback_date,
     'interest', coalesce(l.interest, ''), 'closedBills', to_jsonb(l.closed_bills), 'closedAmount', l.closed_amount, 'closedAt', l.closed_at,
     'claimedBy', l.claimed_by, 'claimedAt', l.claimed_at, 'noCall', l.no_call, 'noCallBy', l.no_call_by, 'noCallAt', l.no_call_at,
-    'releasedBy', to_jsonb(l.released_by), 'autoSkip', l.auto_skip, 'identityId', l.identity_id, 'dsSince', l.ds_since,
+    'releasedBy', to_jsonb(l.released_by), 'autoSkip', l.auto_skip, 'identityId', l.identity_id, 'dsSince', case when l.owner_id is not null then l.ds_since end,
     'bills', coalesce(pl.bills, '[]'::jsonb), 'total', coalesce(pl.total, 0), 'lastBuy', pl.last_buy, 'orders', coalesce(pl.orders, 0),
     'interactions', coalesce(ix.items, '[]'::jsonb))
   from (select 1) x
