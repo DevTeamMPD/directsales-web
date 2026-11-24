@@ -10,7 +10,8 @@ import { useShell } from './ShellContext';
 export function Topbar() {
   const { state } = useApp();
   const { openMenu, setActionsEl } = useShell();
-  const { title, sub } = routeMeta(usePathname(), state.campaigns);
+  const pathname = usePathname();
+  const { title, sub } = routeMeta(pathname, state.campaigns);
   return (
     <header className="topbar">
       <button className="icon-btn menu-btn" id="menu-btn" aria-label="เปิดเมนู" onClick={openMenu}>
@@ -21,7 +22,7 @@ export function Topbar() {
         <span id="page-sub" className="page-sub">{sub}</span>
       </div>
       {/* นอก #topbar-actions: หน้าต่าง ๆ portal ปุ่มของตัวเองเข้าไปที่นั่น */}
-      <BrandSwitch />
+      <BrandSwitch brandPage={pathname.startsWith('/campaigns/')} />
       <div className="topbar-actions" id="topbar-actions" ref={setActionsEl} />
     </header>
   );

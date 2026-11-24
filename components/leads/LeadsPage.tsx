@@ -22,7 +22,7 @@ export function LeadsPage() {
     <>
       <TopbarActions>
         <button className="btn primary" id="add-lead" onClick={() => openModal(<PickFromBucketModal />, 'sm')}>
-          <span className="lbl-long">+ เพิ่มลูกค้าจากถังลูกค้าทั้งหมด</span><span className="lbl-short">+ เพิ่มจากถัง</span>
+          <span className="lbl-long">+ เพิ่มลูกค้าจากถังลูกค้าทั้งหมด</span><span className="lbl-short">+ จากถัง</span>
         </button>
       </TopbarActions>
       <PeriodCard />

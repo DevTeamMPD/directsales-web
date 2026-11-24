@@ -88,10 +88,17 @@ for (const s of SIZES) {
     test('opening the Hosttail campaign page switches the brand; switching back goes to the Bebeplay campaign page', async ({ page }) => {
       await page.goto(`${APP}/campaigns/hosttail`);
       await expect(page.locator('#page-title')).toHaveText('แคมเปญ Hosttail', { timeout: 60_000 });
-      await expectSwitch(page, 'hosttail');
       expect(await storedBrand(page)).toBe('hosttail');
       await expect(page.locator('#sidebar .nav-item[data-route^="campaign-"]')).toHaveCount(1);
       await expect(page.locator('#sidebar .nav-item.active')).toHaveAttribute('data-route', 'campaign-hosttail');
+      if (mobile) {
+        // หน้าแคมเปญเป็นของแบรนด์เดียวอยู่แล้ว: บนมือถือซ่อนตัวสลับ ให้ชื่อหน้า + ปุ่มพอดีแถวเดียว
+        await expect(page.locator('.brand-switch')).toHaveAttribute('data-scope', 'hosttail');
+        await expect(page.locator('.brand-switch')).toBeHidden();
+        expect(await page.locator('#page-title').evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+        return;
+      }
+      await expectSwitch(page, 'hosttail');
 
       await pick(page, 'bebeplay');
       await expect(page).toHaveURL(`${APP}/campaigns/bebeplay`);
@@ -111,7 +118,9 @@ for (const s of SIZES) {
             topbar: (document.querySelector('.topbar') as HTMLElement).getBoundingClientRect().height,
             select: (document.querySelector('#brand-switch') as HTMLElement).getBoundingClientRect().height,
             overflow: document.documentElement.scrollWidth - window.innerWidth,
+            titleCut: (() => { const h = document.querySelector('#page-title') as HTMLElement; return h.scrollWidth - h.clientWidth; })(),
           }));
+          expect(m.titleCut, `page title cut off (${b})`).toBeLessThanOrEqual(0);
           expect(m.topbar, `topbar wraps (${b})`).toBeLessThanOrEqual(72);
           expect(m.select, `dropdown height (${b})`).toBeGreaterThanOrEqual(44);
           expect(m.overflow, `page scrolls sideways (${b})`).toBeLessThanOrEqual(0);

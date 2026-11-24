@@ -88,7 +88,7 @@ export function CampaignPage({ brand }: { brand: Brand }) {
             <span className="lbl-long">จัดสรรให้เซลล์ที่ขายล่าสุด</span><span className="lbl-short">จัดสรร</span>
           </button>
           <button className="btn primary" id="new-camp" onClick={() => openModal(<CampaignFormModal brand={brand} />)}>
-            <span className="lbl-long">+ สร้างแคมเปญ</span><span className="lbl-short">+ แคมเปญ</span>
+            <span className="lbl-long">+ สร้างแคมเปญ</span><span className="lbl-short">+ ใหม่</span>
           </button>
         </TopbarActions>
       ) : null}
