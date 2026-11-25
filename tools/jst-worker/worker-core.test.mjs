@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CaptchaRequired, JstError, LoginFailed, SessionExpired, ShapeError } from './jst-client.mjs';
-import { createWorker, extractMsgId, findAlreadySent, parseJstTime, QueueUnavailable } from './worker-core.mjs';
+import { createWatchdog, createWorker, extractMsgId, findAlreadySent, parseJstTime, QueueUnavailable } from './worker-core.mjs';
 
 const ENQ = '2026-11-20T03:00:00.000Z'; // = 10:00 เวลาไทย
 
@@ -586,4 +586,28 @@ test('run: after a lookup the worker waits linkIntervalMs, not pollSeconds', asy
   };
   await worker.run();
   assert.deepEqual(sleeps, [1500, 1500]);
+});
+
+/* ---------- watchdog (ลูปค้าง → ออกให้สคริปต์ run-worker.cmd เปิดใหม่) ---------- */
+
+test('run loop counts ticks for the watchdog', async () => {
+  const { worker } = setup();
+  assert.equal(worker.status.ticks, 0);
+  await worker.run({ once: true });
+  assert.equal(worker.status.ticks, 1);
+});
+
+test('watchdog: stall only after limit with no tick progress', () => {
+  let t = 0;
+  let ticks = 0;
+  const stalls = [];
+  const wd = createWatchdog({ getTicks: () => ticks, now: () => t, limitMs: 600_000, onStall: (ms) => stalls.push(ms) });
+  t = 300_000; wd.check();
+  ticks = 1; t = 599_000; wd.check(); // ขยับแล้ว → นับใหม่จากตรงนี้
+  t = 1_100_000; wd.check();
+  assert.deepEqual(stalls, []);
+  t = 1_199_001; wd.check();
+  assert.deepEqual(stalls, [600_001]);
+  wd.check(); // แจ้งครั้งเดียว
+  assert.equal(stalls.length, 1);
 });

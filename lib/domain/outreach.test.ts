@@ -3,7 +3,7 @@ import type { ChatRoom, DemoCustomer, WorkerStatus } from '@/lib/api/types';
 import {
   batchProgress, brandRoomCounts, brandRoomHint, channelLabel, countBadges, DEFAULT_MAX_BATCH, defaultOutreachBrand, demoPreview, hasPending, isWorkerOnline, itemErrorText, itemsPending, maxBatch,
   leadSelectable, leadSelRow, pageCheckState, phoneCheckState, pruneSelection, renderTemplate, roomLabel, selectionBar, setPageSelected, setPhones, shouldPoll, skipLabel, splitPreview, statusBadge, statusLabel,
-  skipReasonText, TEST_MODE_TEXT, togglePhone, toggleRoom, toggleSelect, toSelRow, upsertTemplate, validateSettings, validateTemplate, workerBanners, workerStateLabel, type SelRow,
+  skipReasonText, TEST_MODE_TEXT, togglePhone, toggleRoom, toggleSelect, toSelRow, upsertTemplate, validateSettings, validateTemplate, workerBadge, workerBanners, workerStateLabel, type SelRow,
 } from './outreach';
 
 const row = (phone: string, over: Partial<SelRow> = {}): SelRow => ({ phone, name: `ลูกค้า ${phone}`, brands: ['bebeplay'], chat: 'c', taken: null, mine: false, chatBrands: [], ...over });
@@ -106,6 +106,21 @@ describe('worker', () => {
     expect(workerBanners(status({}, [worker()]))).toEqual([]);
     expect(workerBanners(status({ test_mode: true, test_ms_ids: [1] }, [worker()]))).toEqual([{ kind: 'note', text: TEST_MODE_TEXT }]);
     expect(workerBanners(status({ test_mode: true }, [worker()]))[0]).toMatchObject({ kind: 'warn' });
+  });
+  it('worker badge: offline wins over the last reported state, with how long it has been silent', () => {
+    const now = Date.parse('2026-11-25T03:00:00Z');
+    expect(workerBadge(worker({ online: false, state: 'running', heartbeat_at: '2026-11-20T20:59:50Z' }), now))
+      .toEqual({ cls: 's-lost', text: 'ไม่ได้ทำงาน', hint: 'ขาดการติดต่อ 4 วัน — เปิด worker ใหม่ที่เครื่องนี้ (run-worker.cmd หรือ task "JST Outreach Worker")' });
+    expect(workerBadge(worker({ online: false, heartbeat_at: '2026-11-25T02:30:00Z' }), now).hint).toMatch(/^ขาดการติดต่อ 30 นาที/);
+    expect(workerBadge(worker({ online: false, heartbeat_at: '2026-11-24T22:00:00Z' }), now).hint).toMatch(/^ขาดการติดต่อ 5 ชั่วโมง/);
+    expect(workerBadge(worker({ online: true, state: 'paused' }), now)).toEqual({ cls: 's-callback', text: 'พักชั่วคราว', hint: null });
+  });
+  it('offline banner says when the worker was last seen (latest heartbeat)', () => {
+    const now = Date.parse('2026-11-25T03:00:00Z');
+    const off = (at: string | null) => worker({ online: false, heartbeat_at: at });
+    expect(workerBanners(status({}, [off('2026-11-20T06:07:09Z'), off('2026-11-20T20:59:50Z')]), now)[0].text)
+      .toBe('Worker ออฟไลน์ (ส่งสัญญาณล่าสุด 21/11/2026 03:59): ข้อความจะรอในคิวจนกว่า worker จะกลับมาทำงาน — แจ้ง dev ให้เปิดเครื่อง worker');
+    expect(workerBanners(status({}, [off(null)]), now)[0].text).toBe('Worker ออฟไลน์: ข้อความจะรอในคิวจนกว่า worker จะกลับมาทำงาน — แจ้ง dev ให้เปิดเครื่อง worker');
   });
   it('validates settings like the DB (interval 5–3600, cap ≥ 0)', () => {
     expect(validateSettings({ interval: '60', lineCap: '0' })).toBeNull();

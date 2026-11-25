@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
 import { createJstClient, DEFAULT_BASE_URL } from './jst-client.mjs';
 import { createQueueClient } from './queue-client.mjs';
-import { createWorker } from './worker-core.mjs';
+import { createWatchdog, createWorker } from './worker-core.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const LOG_DIR = join(ROOT, 'logs');
@@ -62,6 +62,8 @@ function loadConfig(path) {
     pollSeconds: Number(c.pollSeconds) > 0 ? Number(c.pollSeconds) : 5,
     // ผูกห้องด้วยรหัสผู้ซื้อตอนไม่มีงานส่ง — ปิดได้ด้วย "linkSync": false (เช่นเครื่องสำรอง)
     linkSync: c.linkSync !== false,
+    // ลูปไม่ขยับเกินกี่นาที = ค้าง → ออก (exit 3) ให้ run-worker.cmd เปิดใหม่ · 0 = ปิด
+    watchdogMinutes: typeof c.watchdogMinutes === 'number' && c.watchdogMinutes >= 0 ? c.watchdogMinutes : 10,
     jst: { baseUrl: c.jst?.baseUrl || DEFAULT_BASE_URL, accountId: c.jst?.accountId || '', password: c.jst?.password || '' },
     supabase: c.supabase,
   };
@@ -131,12 +133,26 @@ async function main() {
   process.on('SIGINT', () => onSignal('SIGINT'));
   process.on('SIGTERM', () => onSignal('SIGTERM'));
 
+  if (!args.once && config.watchdogMinutes > 0) {
+    const wd = createWatchdog({
+      getTicks: () => worker.status.ticks,
+      now: () => Date.now(),
+      limitMs: config.watchdogMinutes * 60_000,
+      onStall: (ms) => {
+        log('error', 'watchdog: main loop stalled — exiting so run-worker.cmd restarts', { stalledMs: ms });
+        process.exit(3);
+      },
+    });
+    setInterval(() => wd.check(), 60_000).unref();
+  }
+
   log('info', 'worker start', {
     workerId: config.workerId,
     once: !!args.once,
     jstSession: jst.hasSession() ? 'loaded' : 'none',
     jstAutoLogin: !!(config.jst.accountId && config.jst.password),
     linkSync: config.linkSync,
+    watchdogMinutes: args.once ? 0 : config.watchdogMinutes,
   });
   const last = await worker.run({ once: !!args.once });
   log('info', 'worker exit', { last, ...worker.status });

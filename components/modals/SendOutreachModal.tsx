@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { CloseButton } from '@/components/ui/CloseButton';
 import { errorMessage } from '@/lib/api/errors';
-import { enqueueOutreach, getMyLeads, getTemplates, previewOutreach } from '@/lib/api/rpc';
-import type { EnqueueResult, PreviewRow, Template } from '@/lib/api/types';
+import { enqueueOutreach, getMyLeads, getTemplates, getWorkerStatus, previewOutreach } from '@/lib/api/rpc';
+import type { EnqueueResult, PreviewRow, Template, WorkerStatus } from '@/lib/api/types';
 import { BRAND, FIXTURE_NO_WRITE, type Brand } from '@/lib/constants';
 import {
-  activeTemplates, brandRoomCounts, brandRoomHint, channelLabel, demoPreview, skipLabel, skipReasonText, splitPreview, type SelRow,
+  activeTemplates, brandRoomCounts, brandRoomHint, channelLabel, demoPreview, skipLabel, skipReasonText, splitPreview, workerBanners, type SelRow,
 } from '@/lib/domain/outreach';
 import { useActions, useAppState, useModalSeq } from '@/lib/state/AppProvider';
 
@@ -20,6 +20,7 @@ const EXPANDED = 5;
  * → "ส่ง N รายการ" (dsales_enqueue_outreach จองลูกค้าจากถังกลางในตัว) → toast + ลิงก์ไปหน้า /outreach, ล้างที่เลือก, โหลดถัง/ลีดใหม่
  * แบรนด์เริ่มต้นมาจาก BasePage (defaultOutreachBrand: แบรนด์ที่คนที่เลือกมีห้องแชตมากที่สุด) + บรรทัดบอกจำนวนคนที่มีห้องของแต่ละแบรนด์
  * แถวที่ถูกข้ามเพราะไม่มีห้อง/หมดช่วงของแบรนด์นี้แต่มีห้องของอีกแบรนด์ → "มีห้องแชตของ <แบรนด์> — เปลี่ยนแบรนด์ด้านบน"
+ * แถบเตือนสถานะ worker (ออฟไลน์ + เห็นล่าสุดเมื่อไร / ต้องล็อกอิน / หยุด) ทั้งก่อนและหลังกดส่ง — ข้อความจะค้างคิวถ้า worker ไม่ทำงาน
  * โหมด fixture: template ตัวอย่าง + preview จากลูกค้าตัวอย่าง ปุ่มส่งแสดง toast โหมด fixture
  */
 export function SendOutreachModal({ rows, defaultBrand, onSent }: { rows: SelRow[]; defaultBrand: Brand; onSent: () => void }) {
@@ -35,6 +36,26 @@ export function SendOutreachModal({ rows, defaultBrand, onSent }: { rows: SelRow
   const [result, setResult] = useState<EnqueueResult | null>(null);
   const phones = useMemo(() => rows.map((r) => r.phone), [rows]);
   const roomHint = useMemo(() => brandRoomHint(brandRoomCounts(rows)), [rows]);
+  const [liveWorker, setLiveWorker] = useState<WorkerStatus | null>(null);
+  const workerWarns = workerBanners(live ? liveWorker : outreachDemo?.worker).filter((b) => b.kind === 'warn').map((b) => b.text);
+
+  // สถานะ worker (โหลดครั้งเดียวตอนเปิด popup) — โหลดไม่ได้ = ไม่แสดงแถบเตือน
+  useEffect(() => {
+    if (!live) return;
+    let alive = true;
+    getWorkerStatus().then(
+      (w) => {
+        if (alive) setLiveWorker(w);
+      },
+      (e: unknown) => {
+        handleAuthError(e);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [live, handleAuthError]);
+  const warnBar = workerWarns.map((t) => <div key={t} className="warn" data-banner="warn">{t}</div>);
 
   // template ที่เปิดใช้ของแบรนด์ที่เลือก
   useEffect(() => {
@@ -120,6 +141,7 @@ export function SendOutreachModal({ rows, defaultBrand, onSent }: { rows: SelRow
       <>
         <div className="modal-h"><h3>เข้าคิวส่งข้อความแล้ว</h3><CloseButton /></div>
         <div className="modal-b" id="so-result">
+          {warnBar}
           <div className="stats3">
             <div className="stat hi"><b>{result.queued.toLocaleString('th-TH')}</b><span>เข้าคิว</span></div>
             <div className="stat"><b>{(result.skipped?.length ?? 0).toLocaleString('th-TH')}</b><span>ข้าม</span></div>
@@ -170,6 +192,7 @@ export function SendOutreachModal({ rows, defaultBrand, onSent }: { rows: SelRow
           </div>
         </div>
         <div className="sub" id="so-brand-hint">{roomHint}</div>
+        {warnBar}
         {err ? <div className="login-err">{err}</div> : null}
         {templates?.length === 0 ? (
           <div className="empty" style={{ padding: 24 }}>ยังไม่มี template ที่เปิดใช้ของ {BRAND[brand]} (หัวหน้าสร้างได้ที่เมนู ตั้งค่า)</div>

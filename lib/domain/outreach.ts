@@ -231,13 +231,30 @@ export function isWorkerOnline(w: Pick<WorkerRow, 'heartbeat_at'> & { online?: b
   return Number.isFinite(t) && now - t <= WORKER_ONLINE_MS;
 }
 
+/** ป้ายสถานะการ์ด Worker: ออฟไลน์ = "ไม่ได้ทำงาน" เสมอ (state ที่เห็นคือค่าสุดท้ายที่เครื่องส่งมาก่อนหายไป) + บอกว่าขาดการติดต่อนานเท่าไร */
+export function workerBadge(
+  w: Pick<WorkerRow, 'heartbeat_at' | 'state'> & { online?: boolean | null }, now: number = Date.now(),
+): { cls: string; text: string; hint: string | null } {
+  if (isWorkerOnline(w, now)) return { cls: workerStateBadge(w.state), text: workerStateLabel(w.state), hint: null };
+  const t = w.heartbeat_at ? Date.parse(w.heartbeat_at) : NaN;
+  const min = Number.isFinite(t) ? Math.max(0, Math.floor((now - t) / 60_000)) : null;
+  const ago = min === null ? '' : min < 60 ? `${min} นาที` : min < 1440 ? `${Math.floor(min / 60)} ชั่วโมง` : `${Math.floor(min / 1440)} วัน`;
+  return {
+    cls: 's-lost', text: 'ไม่ได้ทำงาน',
+    hint: `${ago ? `ขาดการติดต่อ ${ago} — ` : ''}เปิด worker ใหม่ที่เครื่องนี้ (run-worker.cmd หรือ task "JST Outreach Worker")`,
+  };
+}
+
 export interface Banner { kind: 'warn' | 'note'; text: string }
 /** แถบเตือนด้านบนของหน้า /outreach */
 export function workerBanners(s: WorkerStatus | null | undefined, now: number = Date.now()): Banner[] {
   if (!s) return [];
   const out: Banner[] = [];
   const online = (s.workers ?? []).filter((w) => isWorkerOnline(w, now));
-  if (!online.length) out.push({ kind: 'warn', text: 'Worker ออฟไลน์: ข้อความจะรอในคิวจนกว่า worker จะกลับมาทำงาน' });
+  if (!online.length) {
+    const last = (s.workers ?? []).map((w) => w.heartbeat_at).filter((x): x is string => !!x).sort().pop();
+    out.push({ kind: 'warn', text: `Worker ออฟไลน์${last ? ` (ส่งสัญญาณล่าสุด ${stamp(last)})` : ''}: ข้อความจะรอในคิวจนกว่า worker จะกลับมาทำงาน — แจ้ง dev ให้เปิดเครื่อง worker` });
+  }
   else if (online.every((w) => w.state === 'needs_login')) out.push({ kind: 'warn', text: 'Worker ต้องล็อกอิน JST ใหม่: ยังไม่ส่งข้อความจนกว่าจะล็อกอิน (คิวไม่หาย)' });
   else if (online.every((w) => w.state === 'stopped')) out.push({ kind: 'warn', text: 'Worker หยุดทำงาน: รอ dev ตรวจสอบ (คิวไม่หาย)' });
   else if (online.every((w) => w.state !== 'running')) out.push({ kind: 'warn', text: 'Worker พักชั่วคราว: จะกลับมาส่งเองภายใน 15 นาที' });

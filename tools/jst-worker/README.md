@@ -12,6 +12,8 @@
 | `jst-client.mjs` | คุยกับ JST ผ่าน fetch + cookie jar (`.session.json`) |
 | `queue-client.mjs` | คุยกับ Supabase schema `dsales` ด้วยบัญชี worker |
 | `import-session.mjs` | ดึง cookie JST จากโปรไฟล์ Chrome (Playwright ใช้เฉพาะไฟล์นี้) |
+| `run-worker.cmd` | รัน worker แล้วเปิดใหม่เองเมื่อออกด้วย error |
+| `install-task.ps1` | ตั้ง task ของ Windows ให้เปิด `run-worker.cmd` ตอนล็อกอิน + ตรวจทุก 15 นาที |
 
 ## ติดตั้ง (Windows, Node 20+)
 ```powershell
@@ -28,6 +30,7 @@ copy config.example.json config.json
 |---|---|
 | `workerId` | ชื่อเครื่อง worker (แสดงในการ์ด Worker หน้าตั้งค่า) |
 | `pollSeconds` | ตรวจคิวทุกกี่วินาทีเมื่อไม่มีงาน (ค่าเริ่ม 5) |
+| `watchdogMinutes` | ลูปค้างเกินกี่นาทีให้ออกเพื่อเปิดใหม่ (ค่าเริ่ม 10, 0 = ปิด) |
 | `linkSync` | ผูกห้องแชตด้วยรหัสผู้ซื้อตอนไม่มีงานส่ง (ค่าเริ่ม `true`) — เครื่องสำรองที่รันพร้อมกันให้ตั้ง `false` |
 | `jst.baseUrl` | `https://asia-web.jsterp.com` (รับเฉพาะ `https://*.jsterp.com`) |
 | `jst.accountId` / `jst.password` | บัญชี JST กลาง (User Dev) — **เว้นว่างได้** ถ้าจะใช้ session จาก `import-session.mjs` อย่างเดียว (worker จะล็อกอินเองไม่ได้ เมื่อ session หลุดจะเข้า `needs_login`) |
@@ -44,6 +47,17 @@ copy config.example.json config.json
    ได้ไฟล์ `.session.json` (cookie ของ JST = มีค่าเท่ารหัสผ่าน) · ปิดสคริปต์อื่นที่ใช้โปรไฟล์เดียวกันก่อน (เช่น `probe.mjs` ของ spike)
 2. **ทดลองหนึ่งงาน**: `node worker.mjs --once` (ทำงานไม่เกิน 1 รายการแล้วออก)
 3. **รันจริง**: `node worker.mjs` (กด Ctrl+C = ทำงานที่ค้างให้จบ ส่ง heartbeat `stopped` แล้วออก · กดซ้ำ = ออกทันที)
+
+4. **รันค้างไว้ถาวร (เครื่อง worker จริง — แนะนำ)**: ติดตั้ง task ของ Windows ครั้งเดียว (ไม่ต้องใช้สิทธิ์ admin)
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\install-task.ps1 -KeepAwake
+   ```
+   - task **"JST Outreach Worker"** เปิด `run-worker.cmd` ตอนล็อกอินเครื่อง และตรวจทุก 15 นาที: ถ้า worker ไม่ได้รันอยู่ (ปิดหน้าต่าง/เครื่องหลับแล้วตื่น/แครช) จะเปิดใหม่เอง · ตั้ง WakeToRun ให้ปลุกเครื่องจากโหมดหลับได้
+   - `run-worker.cmd` รัน `node worker.mjs` ซ้ำทุกครั้งที่ออกด้วย error (เน็ตหลุด, แครช, watchdog) หลังรอ 30 วินาที · ออกด้วย Ctrl+C = หยุด (task จะเปิดใหม่ภายใน 15 นาที) · ประวัติการเปิด/ปิดอยู่ที่ `logs/supervisor.log`
+   - watchdog: ลูปไม่ขยับเกิน `watchdogMinutes` (ค่าเริ่ม 10, ตั้ง 0 = ปิด) worker ออกเอง (exit 3) ให้สคริปต์เปิดใหม่
+   - `-KeepAwake` ตั้งเครื่องไม่ให้หลับ/hibernate ตอนเสียบไฟ (สาเหตุหลักที่ worker หายไปเงียบ ๆ)
+   - เลิกใช้: `.\install-task.ps1 -Remove` · เมื่อติดตั้ง task แล้วอย่ารัน `node worker.mjs` ซ้อนอีกหน้าต่าง
+   - task เริ่มเมื่อมีคนล็อกอินเครื่องเท่านั้น — หลัง Windows Update รีสตาร์ท ต้องล็อกอินเครื่องก่อน (หรือเปิด auto-logon ของ Windows)
 
 ให้เปิดโหมดทดสอบในหน้าตั้งค่าไว้ก่อนเสมอ (ค่าเริ่ม): ทุกงานจะถูกส่งไป "ห้องทดสอบ" (`target_ms_id`) พร้อมคำนำหน้า `[ทดสอบ → ชื่อลูกค้า]` แทนห้องลูกค้าจริง
 

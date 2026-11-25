@@ -8,7 +8,7 @@ import { BRAND, FIXTURE_NO_WRITE, type Brand } from '@/lib/constants';
 import { pageBrand } from '@/lib/domain/brand';
 import {
   isWorkerOnline, renderTemplate, roomLabel, SAMPLE_VALUES, stamp, TEMPLATE_VARS, toggleRoom, upsertTemplate, validateSettings, validateTemplate,
-  workerStateBadge, workerStateLabel,
+  workerBadge,
 } from '@/lib/domain/outreach';
 import { useActions, useAppState } from '@/lib/state/AppProvider';
 
@@ -261,6 +261,7 @@ export function WorkerPanel() {
             {status.workers.length ? (
               status.workers.map((w) => {
                 const on = isWorkerOnline(w);
+                const badge = workerBadge(w);
                 return (
                   <div key={w.worker_id} className="list-row" data-worker={w.worker_id}>
                     <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', flex: 'none', background: on ? 'var(--ok)' : 'var(--bad)' }} />
@@ -269,9 +270,10 @@ export function WorkerPanel() {
                       <div className="sub">
                         JST {w.jst_session_ok ? 'เชื่อมต่อแล้ว' : 'ยังไม่ได้ล็อกอิน'} · ส่งชั่วโมงนี้ {Number(w.sent_last_hour || 0).toLocaleString('th-TH')} · คิวรอ {Number(w.queue_waiting || 0).toLocaleString('th-TH')}
                       </div>
+                      {badge.hint ? <div className="sub" style={{ color: 'var(--bad)' }}>{badge.hint}</div> : null}
                       {w.last_error ? <div className="sub" style={{ color: 'var(--bad)' }}>error ล่าสุด: {w.last_error}</div> : null}
                     </div>
-                    <span className={`badge plain ${workerStateBadge(w.state)}`}>{workerStateLabel(w.state)}</span>
+                    <span className={`badge plain ${badge.cls}`}>{badge.text}</span>
                   </div>
                 );
               })

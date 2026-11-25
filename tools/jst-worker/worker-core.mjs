@@ -31,6 +31,32 @@ export class QueueUnavailable extends Error {
   }
 }
 
+/**
+ * ตัวจับลูปค้าง: ถ้า getTicks() ไม่ขยับเกิน limitMs → onStall(ms) ครั้งเดียว
+ * (worker.mjs เรียก check() ทุก 1 นาที แล้วออกจากโปรแกรม ให้ run-worker.cmd เปิดใหม่)
+ * ทุกสถานะปกติ (รอคิว / พัก / backoff ≤ 60 วิ / ต้องล็อกอิน) ลูปยังวนทุกไม่กี่วินาที จึงไม่ถูกตัด
+ */
+export function createWatchdog({ getTicks, now, limitMs, onStall }) {
+  let seen = getTicks();
+  let since = now();
+  let fired = false;
+  return {
+    check() {
+      const t = getTicks();
+      if (t !== seen) {
+        seen = t;
+        since = now();
+        return;
+      }
+      const ms = now() - since;
+      if (!fired && ms > limitMs) {
+        fired = true;
+        onStall(ms);
+      }
+    },
+  };
+}
+
 const clip = (s, n = 300) => String(s ?? '').slice(0, n);
 
 /**
@@ -97,6 +123,7 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
     pendingReports: [],
     backoffMs: 0,
     stopRequested: false,
+    ticks: 0, // รอบลูปที่ผ่านไป — watchdog ใน worker.mjs ใช้ดูว่าลูปค้างไหม
     sentCount: 0,
     linkTargets: [],
     linkPausedUntil: 0,
@@ -405,6 +432,7 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
     await heartbeat({ force: true });
     let last;
     while (!s.stopRequested) {
+      s.ticks++;
       try {
         last = await processOne();
         s.backoffMs = 0;
@@ -446,6 +474,7 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
         pausedUntil: s.pausedUntil,
         pendingReports: s.pendingReports.length,
         sentCount: s.sentCount,
+        ticks: s.ticks,
         backoffMs: s.backoffMs,
         linkLookups: s.linkLookups,
         linksWritten: s.linksWritten,
