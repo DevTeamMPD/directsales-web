@@ -121,6 +121,7 @@ a { color: var(--accent-strong); }
 .chip .dot { width: 8px; height: 8px; border-radius: 50%; }
 .chip.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
 .chip.active .dot { background: currentColor !important; }
+.chip .count { opacity: .7; font-size: 12px; }
 .select, .input, .textarea {
   border: 1px solid var(--border-strong); background: var(--surface); color: var(--fg); border-radius: var(--radius); padding: 7px 12px;
 }

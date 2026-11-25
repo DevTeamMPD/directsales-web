@@ -7,7 +7,8 @@ import { useJst } from '@/components/leads/useJst';
 import { useLeadActions } from '@/components/leads/useLeadActions';
 import { errorMessage } from '@/lib/api/errors';
 import { mapPoolRow, rowsTotal } from '@/lib/api/map';
-import { getBaseCustomers, getJstAdminTags } from '@/lib/api/rpc';
+import { getBaseCustomers, getBaseSegmentCounts, getJstAdminTags } from '@/lib/api/rpc';
+import { rfmCountMap, rfmRule } from '@/lib/domain/rfm';
 import type { PoolRow } from '@/lib/api/types';
 import { PAGE, PATHS, type Brand } from '@/lib/constants';
 import { pageBrand } from '@/lib/domain/brand';
@@ -101,6 +102,34 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
     };
   }, [live, isAdmin, handleAuthError]);
   const tags = useMemo(() => (live ? liveTags : tagOptions(customers.map((c) => c.ownerTag))), [live, liveTags, customers]);
+
+  // จำนวนลูกค้าต่อกลุ่ม RFM บนชิป (ตามขอบเขตหน้า + แบรนด์ใหญ่ ไม่ขึ้นกับตัวกรองอื่น) — โหลดไม่ได้ = ไม่แสดงตัวเลข
+  const [liveCounts, setLiveCounts] = useState<{ key: string; map: Record<string, number> } | null>(null);
+  const countKey = `${scope}|${b}|${poolVersion}`;
+  useEffect(() => {
+    if (!live) return;
+    let alive = true;
+    getBaseSegmentCounts(scope, b || null).then(
+      (rows) => {
+        if (alive) setLiveCounts({ key: countKey, map: rfmCountMap(rows || []) });
+      },
+      (e: unknown) => {
+        if (alive) handleAuthError(e);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [live, scope, b, countKey, handleAuthError]);
+  const demoCounts = useMemo(() => {
+    if (live) return null;
+    const map: Record<string, number> = {};
+    for (const o of RFM_OPTIONS) {
+      map[o.value] = demoBase(customers, leads, scope, { brand: b || null, q: '', page: 0, today, meId, filters: { ...EMPTY_FILTERS, rfm: [o.value] } }).total;
+    }
+    return map;
+  }, [live, customers, leads, scope, b, today, meId]);
+  const counts = live ? (liveCounts?.key === countKey ? liveCounts.map : null) : demoCounts;
 
   // ตัวกรองใน URL (รีเฟรช/ส่งลิงก์แล้วยังอยู่)
   useEffect(() => {
@@ -197,9 +226,12 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
           <span className="sub">กลุ่มลูกค้า</span>
           {RFM_OPTIONS.map((o) => {
             const on = f.filters.rfm.includes(o.value);
+            const n = counts ? (counts[o.value] ?? 0) : null;
+            if (!o.value && !on && !n) return null; // ยังไม่จัดกลุ่ม: แสดงเฉพาะเมื่อมีลูกค้า
             return (
-              <button key={o.value || 'none'} type="button" className={`chip ${on ? 'active' : ''}`} data-rfm={o.value} aria-pressed={on} onClick={() => setFilters((x) => toggleRfm(x, o.value))}>
-                {o.label}
+              <button key={o.value || 'none'} type="button" className={`chip ${on ? 'active' : ''}`} data-rfm={o.value} aria-pressed={on}
+                title={rfmRule(o.value) || 'ไม่มีจำนวนออเดอร์หรือวันซื้อล่าสุด'} onClick={() => setFilters((x) => toggleRfm(x, o.value))}>
+                <span className="lbl">{o.label}</span>{n !== null ? <span className="count num">{n.toLocaleString('th-TH')}</span> : null}
               </button>
             );
           })}
@@ -276,7 +308,7 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
                       <div>{dormantText(r.dormantDays)}</div>
                       {r.ownerTag ? <span className="tag">{r.ownerTag}</span> : null}
                     </td>
-                    <td>{r.segment ? <span className="tag">{r.segment}</span> : <span className="sub">—</span>}</td>
+                    <td>{r.segment ? <span className="tag" title={rfmRule(r.segment)}>{r.segment}</span> : <span className="sub">—</span>}</td>
                     <td className="r num">{r.ltv == null ? '—' : baht(Math.round(r.ltv))}</td>
                     <td className="r num">{r.orders ?? '—'}</td>
                     <td>{r.last ? fmtDate(r.last) : '—'}</td>

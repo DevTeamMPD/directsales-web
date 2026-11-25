@@ -64,9 +64,9 @@ describe('tagOptions / resultCountText', () => {
 
 describe('URL round trip', () => {
   it('writes only non-default values (no brand — it is the global brand now) and reads them back', () => {
-    const f = F({ rfm: ['At Risk', ''], dormant: '30-60', provider: 'line', tag: 'none', hasChat: true, sort: 'last_desc' });
+    const f = F({ rfm: ['Need Attention', ''], dormant: '30-60', provider: 'line', tag: 'none', hasChat: true, sort: 'last_desc' });
     const qs = filtersToQuery(f);
-    expect(qs).toBe('rfm=At+Risk&rfm=&dormant=30-60&provider=line&tag=none&chat=1&sort=last_desc');
+    expect(qs).toBe('rfm=Need+Attention&rfm=&dormant=30-60&provider=line&tag=none&chat=1&sort=last_desc');
     expect(filtersFromQuery('?' + qs)).toEqual({ brand: '', filters: f });
     expect(filtersToQuery(EMPTY_FILTERS)).toBe('');
   });

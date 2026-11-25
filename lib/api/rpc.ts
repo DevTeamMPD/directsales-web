@@ -82,6 +82,9 @@ export const getBaseCustomers = (scope: BaseScope, q: Omit<PoolQuery, 'from' | '
     p_scope: scope, p_search: normalizeSearchPhone(q.search ?? '') || null, p_limit: q.limit ?? PAGE, p_offset: q.offset ?? 0, p_brand: q.brand || null,
     p_filters: q.filters ?? {},
   });
+/** จำนวนลูกค้าต่อกลุ่ม RFM ตามขอบเขต + แบรนด์ ('' = ยังไม่จัดกลุ่ม) */
+export const getBaseSegmentCounts = (scope: BaseScope, brand: Brand | null) =>
+  call<Array<{ segment: string; n: number | string }>>('dsales_base_segment_counts', { p_scope: scope, p_brand: brand || null });
 export const getCustomerPurchases = (phone: string) => call<PurchaseRowJson[]>('dsales_customer_purchases', { p_phone: phone });
 export const getCustomerChannels = (phone: string) => call<ChannelRowJson[]>('dsales_customer_channels', { p_phone: phone });
 export const getCustomerChats = (phone: string, sinceIso: string | null) =>

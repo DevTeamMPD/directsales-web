@@ -1,4 +1,5 @@
 import type { Campaign, DemoCustomer, Lead, PoolRow, Rep } from '@/lib/api/types';
+import { rfmSegment } from './rfm';
 import { PAGE, type Brand } from '@/lib/constants';
 import { EMPTY_FILTERS, matchesFilters, sortBaseRows, type BaseFilters } from './baseFilters';
 import { canUnclaimAny, isDnc, releasedByMe, repName, type Viewer } from './leads';
@@ -197,7 +198,7 @@ export function demoBase(
         const last = c.purchases[0]?.date ?? null;
         const chatRooms = c.chatRooms ?? [];
         return {
-          id: c.id, name: c.name, phone: c.phone, segment: c.rfm ?? '', ltv: sumAmount(c), orders: c.purchases.length, last, brands: [c.brand],
+          id: c.id, name: c.name, phone: c.phone, segment: rfmSegment(c.purchases.length, last ? daysBetween(last, o.today) : null) ?? '', ltv: sumAmount(c), orders: c.purchases.length, last, brands: [c.brand],
           chat: c.chatName, leadId: l?.id ?? null, mine: owner === o.meId, noCall: !!l?.noCall, takenName: '',
           taken: owner ? (owner === o.meId ? o.meId : 'other') : null, dormantDays: last ? daysBetween(last, o.today) : null, ownerTag: c.ownerTag ?? null,
           chatRooms, chatBrands: [...new Set(chatRooms.filter((x) => x.sendable && x.brand).map((x) => x.brand as Brand))],

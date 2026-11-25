@@ -1,5 +1,6 @@
 import type { BaseFilterJson, Brand, ChatRoom, PoolRow } from '@/lib/api/types';
 import { PLAT } from '@/lib/constants';
+import { RFM_SEGMENTS } from './rfm';
 
 // ตัวกรองของ /mine และ /pool (dsales_base_customers.p_filters) — ฟังก์ชันล้วน
 
@@ -13,14 +14,9 @@ export const EMPTY_FILTERS: BaseFilters = { rfm: [], dormant: '', ltv: '', order
 
 export interface Option { value: string; label: string }
 
-/** กลุ่มลูกค้า (rfm_segment) — '' = ยังไม่จัดกลุ่ม (rfm_segment เป็น null ซึ่งเป็นแถวส่วนใหญ่) */
+/** กลุ่มลูกค้า RFM (dsales_customer_base.rfm — 20261125140000) — '' = ยังไม่จัดกลุ่ม (ไม่มีจำนวนออเดอร์/วันซื้อล่าสุด) */
 export const RFM_OPTIONS: ReadonlyArray<Option> = [
-  { value: 'Loyal', label: 'Loyal' },
-  { value: 'Potential', label: 'Potential' },
-  { value: 'Promising', label: 'Promising' },
-  { value: 'At Risk', label: 'At Risk' },
-  { value: 'Hibernating', label: 'Hibernating' },
-  { value: 'Unscored', label: 'Unscored' },
+  ...RFM_SEGMENTS.map((s) => ({ value: s.key, label: s.label })),
   { value: '', label: 'ยังไม่จัดกลุ่ม' },
 ];
 

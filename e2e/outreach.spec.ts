@@ -94,7 +94,9 @@ for (const s of SIZES) {
       await expect(page.locator('#view tbody tr')).toHaveCount(50, { timeout: 60_000 });
       await expect(page.locator('#base-count')).toHaveText('พบ 67 คน');
       await expect(page.locator('#base-clear')).toBeDisabled();
-      await expect(page.locator('[data-rfm]')).toHaveText(['Loyal', 'Potential', 'Promising', 'At Risk', 'Hibernating', 'Unscored', 'ยังไม่จัดกลุ่ม']);
+      // กลุ่ม RFM (20261125140000) + จำนวนคนบนชิป · "ยังไม่จัดกลุ่ม" แสดงเฉพาะเมื่อมีลูกค้า (ข้อมูลตัวอย่างมีประวัติซื้อทุกคน)
+      await expect(page.locator('[data-rfm] .lbl')).toHaveText(['Champion', 'Loyal', 'Promising', 'Need Attention', 'Warm', 'Cold', "Shouldn't Lose", 'Sleepers', 'Lost']);
+      await expect(page.locator('[data-rfm=Loyal]')).toHaveAttribute('title', 'ซื้อ 4 ครั้งขึ้นไป · ซื้อล่าสุดไม่เกิน 90 วัน');
       await expect(page.locator('#base-sort option')).toHaveText(['มูลค่าสูงสุด', 'หายนานสุด', 'เพิ่งหายไป', 'ซื้อล่าสุด', 'ซื้อบ่อยสุด']);
       await expect(page.locator('#base-tag')).toBeVisible(); // Dev MPD เป็นหัวหน้า
 
@@ -113,8 +115,8 @@ for (const s of SIZES) {
       await page.locator('#view tbody input[data-sel]').first().check();
       await page.locator('[data-rfm=Loyal]').click();
       await expect(page.locator('[data-rfm=Loyal]')).toHaveClass(/active/);
-      await expect(page.locator('#base-count')).toHaveText('พบ 3 คน');
-      await expect(page.locator('#view tbody tr')).toHaveCount(3);
+      await expect(page.locator('#base-count')).toHaveText('พบ 17 คน');
+      await expect(page.locator('#view tbody tr')).toHaveCount(17);
       expect(new Set(await page.locator('#view tbody tr td:nth-child(5)').allInnerTexts())).toEqual(new Set(['Loyal']));
       await expect(page).toHaveURL(/\/pool\?rfm=Loyal$/);
       await expect(page.locator('#sel-bar b')).toHaveText('เลือก 1 คน');
@@ -122,7 +124,7 @@ for (const s of SIZES) {
 
       await page.locator('#base-chat').click();
       await page.locator('#base-provider').selectOption('facebook');
-      await expect(page.locator('#base-count')).toHaveText('พบ 2 คน');
+      await expect(page.locator('#base-count')).toHaveText('พบ 5 คน');
       for (const tr of await page.locator('#view tbody tr').all()) await expect(tr.locator('[data-room] img[alt=Facebook]').first()).toBeVisible();
 
       await page.locator('#base-clear').click();
