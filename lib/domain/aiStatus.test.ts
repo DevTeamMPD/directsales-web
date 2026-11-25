@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AI_STATUS_TEXT, aiSkipText, aiTag, maskDigits, buildLeadPrompt, mergeFlags, planAnalysis, summaryText, type AiContext,
+  AI_STATUS_TEXT, aiSkipText, aiTag, guardResult, maskDigits, buildLeadPrompt, mergeFlags, planAnalysis, summaryText, type AiContext,
 } from './aiStatus';
 
 const ctx = (over: Partial<AiContext> = {}): AiContext => ({
@@ -59,6 +59,21 @@ describe('AI status analysis', () => {
     expect(maskDigits('โทร 091-6351651 บัญชี 050-2-60250-0 หรือ 0502602500')).toBe('โทร [ตัวเลข] บัญชี [ตัวเลข] หรือ [ตัวเลข]');
     expect(maskDigits('2180 เหลือ2,071 ค่ะ Order : #296563 ยอด 3,790.-')).toBe('2180 เหลือ2,071 ค่ะ Order : #296563 ยอด 3,790.-');
     expect(buildLeadPrompt(ctx({ chat: [{ at: 'x', who: 'ลูกค้า', text: 'เบอร์ 0812345678' }] }))).toContain('x ลูกค้า: เบอร์ [ตัวเลข]');
+  });
+  it('guardResult: no change without activity since the claim; unreachable needs 2+ attempts after the claim and no reply', () => {
+    const r = { status: 'unreachable' as const, callback_date: null, confidence: 0.8, interest: '', reason: 'ลูกค้าเงียบ', flags: [], next_action: '' };
+    const old = ctx({ logs: [], dsSince: '2026-11-23 16:27', chat: [{ at: '2026-10-09 22:09', who: 'แอดมิน', text: 'สนใจไหมคะ' }] });
+    expect(guardResult(old, r)).toMatchObject({ status: 'keep', reason: 'ลูกค้าเงียบ (ยังไม่มีการติดต่อหลังวันที่จอง — คงสถานะเดิม)' });
+    const once = ctx({ logs: [], dsSince: '2026-11-23 16:27', chat: [{ at: '2026-11-24 10:00', who: 'แอดมิน', text: 'สวัสดีค่ะ' }] });
+    expect(guardResult(once, r)).toMatchObject({ status: 'keep', reason: 'ลูกค้าเงียบ (ติดต่อหลังจองไม่ถึง 2 ครั้ง ยังไม่นับว่าติดต่อไม่ได้)' });
+    const twice = ctx({ dsSince: '2026-11-23 16:27', logs: [{ at: '2026-11-24 09:00', type: 'call', result: 'ไม่รับสาย', note: '', due: null, rep: 'x' }],
+      chat: [{ at: '2026-11-24 10:00', who: 'แอดมิน', text: 'สวัสดีค่ะ' }] });
+    expect(guardResult(twice, r).status).toBe('unreachable');
+    const replied = ctx({ dsSince: '2026-11-23 16:27', logs: twice.logs, chat: [...twice.chat, { at: '2026-11-24 11:00', who: 'ลูกค้า', text: 'ค่ะ' }] });
+    expect(guardResult(replied, r).status).toBe('keep');
+    const follow = { ...r, status: 'following' as const };
+    expect(guardResult(replied, follow).status).toBe('following');
+    expect(guardResult(old, { ...r, status: 'keep' as const })).toEqual({ ...r, status: 'keep' });
   });
   it('labels and summary text', () => {
     expect([AI_STATUS_TEXT.keep, AI_STATUS_TEXT.callback, AI_STATUS_TEXT.undo]).toEqual(['คงสถานะ', 'รอติดต่อ', 'ย้อนกลับผล AI']);

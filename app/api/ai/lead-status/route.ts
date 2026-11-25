@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 import {
-  AI_CONCURRENCY, AI_MAX_LEADS, AI_MODEL, AI_STATUSES, AI_SYSTEM_PROMPT, buildLeadPrompt, mergeFlags, planAnalysis,
+  AI_CONCURRENCY, AI_MAX_LEADS, AI_MODEL, AI_STATUSES, AI_SYSTEM_PROMPT, buildLeadPrompt, guardResult, mergeFlags, planAnalysis,
   type AiContext, type AiResult,
 } from '@/lib/domain/aiStatus';
 import { createClient } from '@/lib/supabase/server';
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
             send({ type: 'lead', id: c.id, ok: false, error: res.stop_reason === 'refusal' ? 'refusal' : 'ai_error' });
             return;
           }
-          const out: AiResult = { ...r, flags: mergeFlags(c, r.flags) };
+          const out: AiResult = guardResult(c, { ...r, flags: mergeFlags(c, r.flags) });
           results.push({ ...out, lead_id: c.id });
           send({ type: 'lead', id: c.id, ok: true, result: out });
         } catch (e) {
