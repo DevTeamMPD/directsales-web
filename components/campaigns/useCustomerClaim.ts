@@ -11,6 +11,7 @@ import type { SelRow } from '@/lib/domain/outreach';
 import { bulkFollowPlan, bulkFollowSummary } from '@/lib/domain/pool';
 import { channelsOf, jstTarget } from '@/lib/jst';
 import { useActions, useAppState } from '@/lib/state/AppProvider';
+import { useActor } from '@/lib/state/useActor';
 
 /**
  * จองลูกค้าจากถัง (poolClaimLive L961-970): dsales_claim_customer → ลีดใหม่เข้า state, ปิด popup, ถังโหลดใหม่, toast
@@ -19,6 +20,7 @@ import { useActions, useAppState } from '@/lib/state/AppProvider';
  */
 export function useCustomerClaim(): (r: PoolRow, brand: Brand, seq?: number, msg?: string, campaignId?: string | null) => Promise<void> {
   const { live } = useAppState();
+  const { forUser } = useActor();
   const { once, upsertLead, patchLead, dispatch, toast, toastError, closeModal } = useActions();
   const openJst = useJst();
   return useCallback(
@@ -29,7 +31,7 @@ export function useCustomerClaim(): (r: PoolRow, brand: Brand, seq?: number, msg
       }
       await once(`claim-customer:${r.phone}`, async () => {
         try {
-          const lj = await claimCustomer(r.phone, brand, campaignId);
+          const lj = await claimCustomer(r.phone, brand, campaignId, forUser);
           upsertLead(lj);
           closeModal(seq);
           dispatch({ type: 'invalidatePool' });
@@ -50,7 +52,7 @@ export function useCustomerClaim(): (r: PoolRow, brand: Brand, seq?: number, msg
         }
       });
     },
-    [live, once, upsertLead, patchLead, dispatch, toast, toastError, closeModal, openJst],
+    [live, forUser, once, upsertLead, patchLead, dispatch, toast, toastError, closeModal, openJst],
   );
 }
 
@@ -60,6 +62,7 @@ export function useCustomerClaim(): (r: PoolRow, brand: Brand, seq?: number, msg
  */
 export function useBulkFollow(): (rows: ReadonlyArray<SelRow>, pageBrand: string, onDone: () => void) => Promise<void> {
   const { live } = useAppState();
+  const { forUser } = useActor();
   const { once, upsertLead, dispatch, toast } = useActions();
   return useCallback(
     async (rows, pageBrand, onDone) => {
@@ -73,7 +76,7 @@ export function useBulkFollow(): (rows: ReadonlyArray<SelRow>, pageBrand: string
         let done = 0;
         for (const t of todo) {
           try {
-            upsertLead(await claimCustomer(t.phone, t.brand));
+            upsertLead(await claimCustomer(t.phone, t.brand, null, forUser));
             done++;
           } catch (e) {
             reasons.push(errorMessage(e));
@@ -84,6 +87,6 @@ export function useBulkFollow(): (rows: ReadonlyArray<SelRow>, pageBrand: string
         onDone();
       });
     },
-    [live, once, upsertLead, dispatch, toast],
+    [live, forUser, once, upsertLead, dispatch, toast],
   );
 }

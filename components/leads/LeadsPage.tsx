@@ -14,9 +14,13 @@ import { useVerifyMine } from './useVerifyMine';
 
 /** หน้า Direct Sale: หัวหน้าเห็นทุกลีด เซลล์เห็นเฉพาะของตัวเอง (mineOrAll) · เฉพาะแบรนด์ใหญ่ที่เลือกใน topbar */
 export function LeadsPage() {
-  const { leads, meId, isAdmin, ui, today, brand, live } = useAppState();
+  const { leads, meId, isAdmin, ui, today, brand, live, viewAs } = useAppState();
   const { openModal } = useActions();
-  const base = useMemo(() => leads.filter((l) => mineOrAll(l, { meId, isAdmin }) && inBrand(brand, l.brand)), [leads, meId, isAdmin, brand]);
+  // หัวหน้าดูในมุมมองเซลล์ = เฉพาะลีดของเซลล์คนนั้น
+  const base = useMemo(
+    () => leads.filter((l) => (viewAs ? l.owner === viewAs : mineOrAll(l, { meId, isAdmin })) && inBrand(brand, l.brand)),
+    [leads, meId, isAdmin, brand, viewAs],
+  );
   const list = useMemo(() => filtered(base, { ...ui, today }), [base, ui, today]);
   useVerifyMine();
   return (

@@ -91,6 +91,8 @@ export type BaseFilterJson = Partial<{
   rfm: string[]; dormant_min: number; dormant_max: number; ltv_min: number; ltv_max: number; orders_min: number; tag: string; has_chat: boolean; provider: string;
   /** แคมเปญ (20261125090000): เคยซื้อ — ทุกกลุ่มต้องเจอ (SKU ใดในกลุ่ม หรือคำค้น kw) · ช่วงวันที่ซื้อ · บิลขั้นต่ำ · ยอดรวมไม่เกิน (รวมค่าขอบ) */
   products: Array<{ skus?: string[]; kw?: string }>; bought_from: string; bought_to: string; bill_min: number; ltv_to: number;
+  /** หัวหน้าดูในมุมมองเซลล์ (scope mine = ลูกค้าของเซลล์คนนี้) — 20261125150000 */
+  as: string;
   sort: 'ltv' | 'dormant_asc' | 'dormant_desc' | 'last_desc' | 'orders_desc';
 }>;
 

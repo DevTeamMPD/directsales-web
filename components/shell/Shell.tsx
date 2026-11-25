@@ -9,6 +9,7 @@ import { ShellContext } from './ShellContext';
 import { Sidebar } from './Sidebar';
 import { Toast } from './Toast';
 import { Topbar } from './Topbar';
+import { ViewAsBar } from './ViewAsSwitch';
 
 export function Shell({ children }: { children: ReactNode }) {
   const { state, logout } = useApp();
@@ -41,6 +42,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <div className={`scrim${menuOpen ? ' open' : ''}`} id="scrim" onClick={shell.closeMenu} />
         <main className="main">
           <Topbar />
+          <ViewAsBar />
           <section className="content" id="view">{children}</section>
         </main>
       </div>

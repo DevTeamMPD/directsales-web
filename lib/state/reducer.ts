@@ -1,6 +1,7 @@
 import { upsertLead } from '@/lib/api/map';
 import type { Brand, Campaign, DemoCustomer, Lead, LeadJson, OutreachDemo, Rep } from '@/lib/api/types';
 import { effectiveBrand, type BrandScope } from '@/lib/domain/brand';
+import { effectiveViewAs } from '@/lib/domain/viewAs';
 import { upsertRep } from '@/lib/domain/setup';
 
 export type PeriodKey = 'all' | 'today' | '7d' | 'm0' | 'm1' | 'y0' | 'month' | 'year' | 'custom';
@@ -39,12 +40,15 @@ export type Phase = 'loading' | 'ready' | 'no-access' | 'inactive' | 'expired' |
 /**
  * poolVersion เพิ่มทุกครั้งที่ถังลูกค้าต้องโหลดใหม่ (prototype ui.pool.loaded = false)
  * brand = แบรนด์ใหญ่ที่เลือกใน topbar (จำใน localStorage, 'all' เฉพาะหัวหน้า)
+ * viewAs = หัวหน้ากำลังดู/ทำแทนเซลล์คนไหน (null = มุมมองทั้งทีม, จำใน localStorage dsales.viewAs)
  */
-export interface AppState extends LoadedPayload { phase: Phase; error: string; ui: UiFilters; poolVersion: number; pool: PoolUi; brand: BrandScope }
+export interface AppState extends LoadedPayload {
+  phase: Phase; error: string; ui: UiFilters; poolVersion: number; pool: PoolUi; brand: BrandScope; viewAs: string | null;
+}
 
 export const initialState: AppState = {
   phase: 'loading', error: '', email: '', meId: '', isAdmin: false, live: false, reps: [], campaigns: [], leads: [], customers: [], today: '',
-  ui: initialUi, poolVersion: 0, pool: initialPool, brand: 'bebeplay',
+  ui: initialUi, poolVersion: 0, pool: initialPool, brand: 'bebeplay', viewAs: null,
 };
 
 export type Action =
@@ -62,7 +66,9 @@ export type Action =
   | { type: 'setPool'; patch: Partial<PoolUi> }
   | { type: 'invalidatePool' }
   /** ไม่อยู่ใน DATA_ACTIONS: ตั้งจาก localStorage ได้ก่อนโหลดข้อมูลเสร็จ */
-  | { type: 'setBrand'; brand: BrandScope };
+  | { type: 'setBrand'; brand: BrandScope }
+  /** ไม่อยู่ใน DATA_ACTIONS เช่นกัน · ตอน loaded ปรับตามสิทธิ์/รายชื่อทีม */
+  | { type: 'setViewAs'; id: string | null };
 
 const DATA_ACTIONS: ReadonlySet<Action['type']> = new Set<Action['type']>([
   'upsertLead', 'patchLead', 'removeLead', 'upsertCampaign', 'upsertRep', 'setUi', 'setPool', 'invalidatePool',
@@ -73,7 +79,10 @@ export function reducer(state: AppState, action: Action): AppState {
   if (state.phase !== 'ready' && DATA_ACTIONS.has(action.type)) return state;
   switch (action.type) {
     case 'loaded':
-      return { ...state, ...action.payload, phase: 'ready', error: '', brand: effectiveBrand(state.brand, action.payload.isAdmin) };
+      return {
+        ...state, ...action.payload, phase: 'ready', error: '', brand: effectiveBrand(state.brand, action.payload.isAdmin),
+        viewAs: effectiveViewAs(state.viewAs, action.payload.isAdmin, action.payload.reps, action.payload.meId),
+      };
     case 'noAccess':
       return { ...initialState, phase: action.inactive ? 'inactive' : 'no-access', email: action.email, brand: state.brand };
     case 'failed':
@@ -107,5 +116,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, poolVersion: state.poolVersion + 1 };
     case 'setBrand':
       return { ...state, brand: action.brand };
+    case 'setViewAs':
+      return { ...state, viewAs: state.phase === 'ready' ? effectiveViewAs(action.id, state.isAdmin, state.reps, state.meId) : action.id };
   }
 }

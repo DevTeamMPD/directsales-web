@@ -62,8 +62,11 @@ export const logContact = (x: LogInput) =>
 
 /* ---------- ลูกค้า / ถัง ---------- */
 /** campaignId = จองจากการ์ดแคมเปญ (ลีดผูกแคมเปญ · campaign_closed / campaign_quota) */
-export const claimCustomer = (phone: string, brand: Brand, campaignId?: string | null) =>
-  call<LeadJson>('dsales_claim_customer', { p_phone: phone, p_brand: brand, ...(campaignId ? { p_campaign: campaignId } : {}) });
+/** campaignId = จองเข้าแคมเปญ · forUser = หัวหน้าจองให้เซลล์คนนั้น (โหมดดูในมุมมองเซลล์) */
+export const claimCustomer = (phone: string, brand: Brand, campaignId?: string | null, forUser?: string | null) =>
+  call<LeadJson>('dsales_claim_customer', {
+    p_phone: phone, p_brand: brand, ...(campaignId ? { p_campaign: campaignId } : {}), ...(forUser ? { p_for: forUser } : {}),
+  });
 /** ย้อนสถานะที่ AI เปลี่ยน (หัวหน้าเท่านั้น) */
 export const undoAiStatus = (leadId: string) => call<LeadJson>('dsales_ai_status_undo', { p_lead: leadId });
 export const searchProducts = (q: string) => call<ProductRow[]>('dsales_product_search', { p_q: q.trim(), p_limit: 100 });
@@ -83,8 +86,8 @@ export const getBaseCustomers = (scope: BaseScope, q: Omit<PoolQuery, 'from' | '
     p_filters: q.filters ?? {},
   });
 /** จำนวนลูกค้าต่อกลุ่ม RFM ตามขอบเขต + แบรนด์ ('' = ยังไม่จัดกลุ่ม) */
-export const getBaseSegmentCounts = (scope: BaseScope, brand: Brand | null) =>
-  call<Array<{ segment: string; n: number | string }>>('dsales_base_segment_counts', { p_scope: scope, p_brand: brand || null });
+export const getBaseSegmentCounts = (scope: BaseScope, brand: Brand | null, asUser?: string | null) =>
+  call<Array<{ segment: string; n: number | string }>>('dsales_base_segment_counts', { p_scope: scope, p_brand: brand || null, ...(asUser ? { p_as: asUser } : {}) });
 export const getCustomerPurchases = (phone: string) => call<PurchaseRowJson[]>('dsales_customer_purchases', { p_phone: phone });
 export const getCustomerChannels = (phone: string) => call<ChannelRowJson[]>('dsales_customer_channels', { p_phone: phone });
 export const getCustomerChats = (phone: string, sinceIso: string | null) =>
@@ -107,10 +110,11 @@ export async function setCampaignClaimMode(id: string, mode: ClaimMode): Promise
 export const getTemplates = (brand: Brand | null) => call<Template[]>('dsales_templates_list', { p_brand: brand || null });
 export const saveTemplate = (t: TemplateInput) =>
   call<Template>('dsales_template_save', { p_id: t.id, p_brand: t.brand, p_name: t.name.trim(), p_body: t.body, p_active: t.active });
-export const previewOutreach = (phones: string[], templateId: string) =>
-  call<PreviewRow[]>('dsales_outreach_preview', { p_phones: phones, p_template: templateId });
-export const enqueueOutreach = (phones: string[], templateId: string) =>
-  call<EnqueueResult>('dsales_enqueue_outreach', { p_phones: phones, p_template: templateId });
+/** forUser = หัวหน้าส่งในนามเซลล์คนนั้น (กติกาเหมือนเซลล์ส่งเอง, จองลูกค้าในถังให้เซลล์) */
+export const previewOutreach = (phones: string[], templateId: string, forUser?: string | null) =>
+  call<PreviewRow[]>('dsales_outreach_preview', { p_phones: phones, p_template: templateId, ...(forUser ? { p_for: forUser } : {}) });
+export const enqueueOutreach = (phones: string[], templateId: string, forUser?: string | null) =>
+  call<EnqueueResult>('dsales_enqueue_outreach', { p_phones: phones, p_template: templateId, ...(forUser ? { p_for: forUser } : {}) });
 export const getOutreachBatches = (limit = PAGE, offset = 0) => call<BatchRow[]>('dsales_outreach_batches_mine', { p_limit: limit, p_offset: offset });
 export const getOutreachBatch = (batchId: string) => call<BatchDetail>('dsales_outreach_batch', { p_batch: batchId });
 export const cancelOutreach = (ids: string[]) => call<number>('dsales_outreach_cancel', { p_ids: ids });

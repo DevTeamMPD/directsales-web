@@ -9,7 +9,8 @@ import { SendOutreachModal } from '@/components/modals/SendOutreachModal';
 import { AiTag, DueTag, ReleaseTag, StatusBadge } from '@/components/ui/StatusBadge';
 import type { Campaign, ChatRoom, ClaimMode, Lead, Rep } from '@/lib/api/types';
 import { pageBrand } from '@/lib/domain/brand';
-import { bills, canUnclaim, lastSeller, repName, total } from '@/lib/domain/leads';
+import { bills, lastSeller, repName, total } from '@/lib/domain/leads';
+import { canUnclaimAs } from '@/lib/domain/viewAs';
 import {
   defaultOutreachBrand, leadSelectable, leadSelRow, phoneCheckState, pruneSelection, selectionBar, setPhones, togglePhone,
 } from '@/lib/domain/outreach';
@@ -189,7 +190,7 @@ const LeadRow = memo(function LeadRow({ l, mode, ctx, checked }: { l: Lead; mode
             {l.noCall ? 'บันทึกแชต' : 'บันทึก'}
           </button>
           <ClaimCell l={l} mode={mode} ctx={ctx} />
-          {canUnclaim(l, meId) ? (
+          {canUnclaimAs(l, meId, isAdmin) ? (
             <button className="btn sm danger" data-act="unclaim" data-id={l.id} onClick={() => act.confirmUnclaim(l.id)}>ยกเลิกจอง</button>
           ) : null}
           {isAdmin && l.noCall ? (

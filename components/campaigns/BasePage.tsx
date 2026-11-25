@@ -22,6 +22,7 @@ import {
 import { defaultOutreachBrand, pageCheckState, selectionBar, setPageSelected, toggleSelect, type SelRow } from '@/lib/domain/outreach';
 import { baht, fmtDate } from '@/lib/format';
 import { useActions, useAppState } from '@/lib/state/AppProvider';
+import { useActor } from '@/lib/state/useActor';
 import { BrandTags } from './BrandTags';
 import { ChannelCell } from './ChannelCell';
 import { POOL_DEBOUNCE_MS } from './PoolPanel';
@@ -57,7 +58,9 @@ function initialFilter(): BaseFilter {
  *   popup เริ่มที่แบรนด์ที่คนที่เลือกมีห้องแชตมากที่สุด แล้ว preview แสดงรายการที่ถูกข้าม
  */
 export function BasePage({ scope }: { scope: BaseScopeKey }) {
-  const { live, customers, leads, meId, today, poolVersion, isAdmin, brand: scopeBrand } = useAppState();
+  const { live, customers, leads, today, poolVersion, isAdmin, brand: scopeBrand } = useAppState();
+  // โหมดหัวหน้าดูในมุมมองเซลล์: meId ของหน้านี้ = เซลล์ที่เลือก (ลูกค้าของฉัน = ของเซลล์คนนั้น, จอง/ส่ง = ในนามเซลล์)
+  const { actorId: meId, forUser } = useActor();
   const { openModal, toast, handleAuthError, setBrand } = useActions();
   const b = pageBrand(scopeBrand);
   const act = useLeadActions();
@@ -105,11 +108,11 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
 
   // จำนวนลูกค้าต่อกลุ่ม RFM บนชิป (ตามขอบเขตหน้า + แบรนด์ใหญ่ ไม่ขึ้นกับตัวกรองอื่น) — โหลดไม่ได้ = ไม่แสดงตัวเลข
   const [liveCounts, setLiveCounts] = useState<{ key: string; map: Record<string, number> } | null>(null);
-  const countKey = `${scope}|${b}|${poolVersion}`;
+  const countKey = `${scope}|${b}|${poolVersion}|${forUser ?? ''}`;
   useEffect(() => {
     if (!live) return;
     let alive = true;
-    getBaseSegmentCounts(scope, b || null).then(
+    getBaseSegmentCounts(scope, b || null, scope === 'mine' ? forUser : null).then(
       (rows) => {
         if (alive) setLiveCounts({ key: countKey, map: rfmCountMap(rows || []) });
       },
@@ -120,7 +123,7 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
     return () => {
       alive = false;
     };
-  }, [live, scope, b, countKey, handleAuthError]);
+  }, [live, scope, b, countKey, forUser, handleAuthError]);
   const demoCounts = useMemo(() => {
     if (live) return null;
     const map: Record<string, number> = {};
@@ -156,7 +159,10 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
     let alive = true;
     setLoading(true);
     setData((d) => ({ ...d, err: '' }));
-    getBaseCustomers(scope, { search: qKey, offset: f.page * PAGE, brand: b || null, filters: buildFilterJson(f.filters) })
+    getBaseCustomers(scope, {
+      search: qKey, offset: f.page * PAGE, brand: b || null,
+      filters: { ...buildFilterJson(f.filters), ...(scope === 'mine' && forUser ? { as: forUser } : {}) },
+    })
       .then((rows) => {
         if (alive && clampPage(f.page, rows.length) !== f.page) {
           setF((x) => (x.page === f.page ? { ...x, page: clampPage(x.page, 0) } : x)); // หน้าท้ายว่าง → ถอยหนึ่งหน้า (โหลดซ้ำเอง)
@@ -173,7 +179,7 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
     return () => {
       alive = false;
     };
-  }, [live, scope, qKey, f.page, b, f.filters, poolVersion, meId, handleAuthError]);
+  }, [live, scope, qKey, f.page, b, f.filters, poolVersion, meId, forUser, handleAuthError]);
 
   const demo = useMemo(
     () => (live ? null : demoBase(customers, leads, scope, { brand: b || null, q: qKey, page: f.page, today, meId, filters: f.filters })),

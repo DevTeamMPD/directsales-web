@@ -8,6 +8,7 @@ import { buildReps, mapCampaign, mapLead } from '@/lib/api/map';
 import { getMe, getMyLeads, getTeam, listCampaigns } from '@/lib/api/rpc';
 import type { Lead, LeadJson } from '@/lib/api/types';
 import { readStoredBrand, writeStoredBrand, type BrandScope } from '@/lib/domain/brand';
+import { readStoredViewAs, writeStoredViewAs } from '@/lib/domain/viewAs';
 import { todayBangkok } from '@/lib/format';
 import { supabase } from '@/lib/supabase/client';
 import { createBusyGuard } from './busy';
@@ -52,6 +53,8 @@ export interface AppActions {
   setPool: (patch: Partial<PoolUi>) => void;
   /** แบรนด์ใหญ่ใน topbar — จำไว้ใน localStorage (dsales.brand) */
   setBrand: (b: BrandScope) => void;
+  /** หัวหน้าดู/ทำแทนเซลล์ (null = ทั้งทีม) — จำไว้ใน localStorage (dsales.viewAs) */
+  setViewAs: (id: string | null) => void;
 }
 
 const StateContext = createContext<AppState | null>(null);
@@ -95,6 +98,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // แบรนด์ที่จำไว้ในเครื่อง — ตั้งก่อนโหลดข้อมูล (setBrand ไม่ถูกทิ้งก่อน phase ready; ตอน loaded ปรับตามสิทธิ์)
     dispatch({ type: 'setBrand', brand: readStoredBrand(browserStorage()) });
+    dispatch({ type: 'setViewAs', id: readStoredViewAs(browserStorage()) });
     let cancelled = false;
     (async () => {
       let action: Action | 'login';
@@ -171,6 +175,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBrand: (b) => {
         writeStoredBrand(browserStorage(), b);
         dispatch({ type: 'setBrand', brand: b });
+      },
+      setViewAs: (id) => {
+        writeStoredViewAs(browserStorage(), id);
+        dispatch({ type: 'setViewAs', id });
+        dispatch({ type: 'invalidatePool' });
       },
     };
   }, [toaster]);

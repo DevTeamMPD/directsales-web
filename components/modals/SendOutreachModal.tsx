@@ -11,6 +11,7 @@ import {
   activeTemplates, brandRoomCounts, brandRoomHint, channelLabel, demoPreview, skipLabel, skipReasonText, splitPreview, workerBanners, type SelRow,
 } from '@/lib/domain/outreach';
 import { useActions, useAppState, useModalSeq } from '@/lib/state/AppProvider';
+import { useActor } from '@/lib/state/useActor';
 
 /** แสดงข้อความเต็มของ 5 รายการแรก ที่เหลือพับไว้ (กดเปิดดูทีละรายการ) */
 const EXPANDED = 5;
@@ -27,6 +28,7 @@ export function SendOutreachModal({ rows, defaultBrand, onSent }: { rows: SelRow
   const { live, outreachDemo, customers, meId } = useAppState();
   const { toast, toastError, handleAuthError, once, upsertLead, dispatch, closeModal } = useActions();
   const seq = useModalSeq();
+  const { forUser, viewName } = useActor();
   const [brand, setBrand] = useState<Brand>(defaultBrand);
   const [liveTemplates, setLiveTemplates] = useState<{ brand: Brand; list: Template[] } | null>(null);
   const [templateId, setTemplateId] = useState('');
@@ -89,7 +91,7 @@ export function SendOutreachModal({ rows, defaultBrand, onSent }: { rows: SelRow
     if (!live || !template) return;
     let alive = true;
     setErr('');
-    previewOutreach(phones, template.id).then(
+    previewOutreach(phones, template.id, forUser).then(
       (r) => {
         if (alive) setLivePreview({ key: `${template.id}|${phones.join(',')}`, rows: r || [] });
       },
@@ -102,7 +104,7 @@ export function SendOutreachModal({ rows, defaultBrand, onSent }: { rows: SelRow
     return () => {
       alive = false;
     };
-  }, [live, template, phones, handleAuthError]);
+  }, [live, template, phones, forUser, handleAuthError]);
 
   const preview = useMemo<PreviewRow[] | null>(() => {
     if (!template) return null;
@@ -122,7 +124,7 @@ export function SendOutreachModal({ rows, defaultBrand, onSent }: { rows: SelRow
     await once('enqueue-outreach', async () => {
       setSending(true);
       try {
-        const res = await enqueueOutreach(send.map((r) => r.phone), template.id);
+        const res = await enqueueOutreach(send.map((r) => r.phone), template.id, forUser);
         setResult(res);
         toast(`เข้าคิวส่งข้อความ ${res.queued.toLocaleString('th-TH')} รายการ${res.skipped?.length ? ` · ข้าม ${res.skipped.length.toLocaleString('th-TH')} รายการ` : ''}`);
         onSent();
@@ -192,6 +194,7 @@ export function SendOutreachModal({ rows, defaultBrand, onSent }: { rows: SelRow
           </div>
         </div>
         <div className="sub" id="so-brand-hint">{roomHint}</div>
+        {viewName ? <div className="demo-note" id="so-as">ส่งในนาม <b>{viewName}</b> · ลูกค้าในถังจะถูกจองให้เซลล์คนนี้</div> : null}
         {warnBar}
         {err ? <div className="login-err">{err}</div> : null}
         {templates?.length === 0 ? (

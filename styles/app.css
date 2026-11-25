@@ -60,6 +60,13 @@ a { color: var(--accent-strong); }
   text-overflow: ellipsis; -webkit-appearance: none; appearance: none;
 }
 .me-select option { color: var(--fg); background: var(--surface); }
+.view-as { margin-top: 12px; padding: 0 4px; display: grid; gap: 4px; }
+.view-as .select { width: 100%; }
+.view-as.on .select { border-color: var(--warn); background: var(--warn-soft); color: var(--warn); font-weight: 600; }
+.view-as-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between;
+  margin: 12px 24px 0; padding: 10px 14px; border-radius: 12px; background: var(--warn-soft); color: var(--warn); font-size: 13.5px;
+}
 
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100%; overflow-y: auto; }
 .topbar {

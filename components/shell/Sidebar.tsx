@@ -15,7 +15,7 @@ export function Sidebar() {
   const { state } = useApp();
   const { menuOpen } = useShell();
   const active = routeKey(usePathname());
-  const badges = badgeCounts(state.leads, state.meId, state.brand);
+  const badges = badgeCounts(state.leads, state.viewAs ?? state.meId, state.brand);
   // เมนูแคมเปญแสดงเฉพาะแบรนด์ใหญ่ที่เลือก — กลุ่มที่ไม่เหลือเมนูซ่อนทั้งกลุ่ม
   const groups = NAV.filter((g) => !g.adminOnly || state.isAdmin)
     .map((g) => ({ ...g, items: g.items.filter((it) => navVisible(it.key, state.brand)) }))
