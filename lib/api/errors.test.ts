@@ -13,6 +13,8 @@ describe('toThaiError', () => {
   });
   it('maps every prototype LIVE_ERR key', () => {
     expect(toThaiError('taken')).toBe('ลูกค้ารายนี้มีคนจองไปแล้ว');
+    expect(toThaiError('campaign_closed')).toBe('แคมเปญนี้ปิดหรือสิ้นสุดแล้ว จองลูกค้าเข้าแคมเปญไม่ได้');
+    expect(toThaiError('campaign_quota')).toBe('คุณจองลูกค้าในแคมเปญนี้ครบจำนวนสูงสุดแล้ว');
     expect(toThaiError('release_cooldown')).toBe('ลูกค้ารายนี้เพิ่งถูกคืนจาก Direct Sale ของคุณ (ครบ 30 วันยังไม่ปิดการขาย) จองซ้ำได้เมื่อพ้น 30 วัน');
     expect(toThaiError('no_call')).toBe('ลูกค้ารายนี้ไม่สะดวกให้โทร');
     expect(toThaiError('forbidden')).toBe('ไม่มีสิทธิ์ทำรายการนี้');

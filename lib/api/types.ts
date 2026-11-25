@@ -48,7 +48,11 @@ export interface Lead {
   _pl?: 'loading' | 'done'; chatCheck?: ChatCheck | null;
 }
 
-export interface CampaignCriterion { type: CritType; kw?: string; min?: string; max?: string; from?: string; to?: string }
+/** SKU ที่ติ๊กในเงื่อนไข "เคยซื้อสินค้า" (เก็บชื่อไว้แสดงชิป) */
+export interface ProductItem { sku: string; name: string }
+export interface CampaignCriterion { type: CritType; kw?: string; min?: string; max?: string; from?: string; to?: string; items?: ProductItem[] }
+/** แถวของ dsales_product_search */
+export interface ProductRow { sku: string; product_name: string | null; buyers: number; last_bought: string | null }
 export interface CampaignRow {
   id: string; brand: Brand; name: string; description: string | null; start_date: string | null; end_date: string | null;
   claim_mode: ClaimMode; max_per_rep: number | null; active: boolean | null; criteria: CampaignCriterion[] | null; created_at?: string;
@@ -78,6 +82,8 @@ export interface RoomsForPhoneRow { phone: string; rooms: ChatRoomJson[] | null 
 /** p_filters ของ dsales_base_customers (สร้างจาก UI ด้วย lib/domain/baseFilters.ts buildFilterJson) — ไม่มีตัวกรอง = {} */
 export type BaseFilterJson = Partial<{
   rfm: string[]; dormant_min: number; dormant_max: number; ltv_min: number; ltv_max: number; orders_min: number; tag: string; has_chat: boolean; provider: string;
+  /** แคมเปญ (20261125090000): เคยซื้อ — ทุกกลุ่มต้องเจอ (SKU ใดในกลุ่ม หรือคำค้น kw) · ช่วงวันที่ซื้อ · บิลขั้นต่ำ · ยอดรวมไม่เกิน (รวมค่าขอบ) */
+  products: Array<{ skus?: string[]; kw?: string }>; bought_from: string; bought_to: string; bill_min: number; ltv_to: number;
   sort: 'ltv' | 'dormant_asc' | 'dormant_desc' | 'last_desc' | 'orders_desc';
 }>;
 

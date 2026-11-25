@@ -4,6 +4,7 @@ import { db } from '@/lib/supabase/client';
 import { RpcError } from './errors';
 import { rowsTotal } from './map';
 import type {
+  ProductRow,
   BaseFilterJson, BatchDetail, BatchRow, CampaignRow, ChannelRowJson, ChatSessionJson, ContactType, EnqueueResult, JstTagRow, LeadJson, LeadStatus, MeRow,
   MemberJson, MemberTagsRow, NewCampaign, PoolRowJson, PreviewRow, PurchaseRowJson, RoomsForPhoneRow, TeamRow, Template, TemplateInput, WorkerRoom,
   WorkerSettingsInput, WorkerStatus,
@@ -60,7 +61,10 @@ export const logContact = (x: LogInput) =>
   });
 
 /* ---------- ลูกค้า / ถัง ---------- */
-export const claimCustomer = (phone: string, brand: Brand) => call<LeadJson>('dsales_claim_customer', { p_phone: phone, p_brand: brand });
+/** campaignId = จองจากการ์ดแคมเปญ (ลีดผูกแคมเปญ · campaign_closed / campaign_quota) */
+export const claimCustomer = (phone: string, brand: Brand, campaignId?: string | null) =>
+  call<LeadJson>('dsales_claim_customer', { p_phone: phone, p_brand: brand, ...(campaignId ? { p_campaign: campaignId } : {}) });
+export const searchProducts = (q: string) => call<ProductRow[]>('dsales_product_search', { p_q: q.trim(), p_limit: 100 });
 export async function getPoolGrandTotal(brand: Brand | null): Promise<number> {
   return rowsTotal(await call<PoolRowJson[]>('dsales_customer_pool_v3', { p_limit: 1, p_offset: 0, p_brand: brand || null }));
 }

@@ -316,6 +316,18 @@ td .select { margin-top: 6px; max-width: 170px; font-size: 13px; padding: 4px 8p
 .crit-row { display: flex; gap: 8px; align-items: center; border: 1px solid var(--border); border-radius: 12px; padding: 8px; background: var(--surface-2); flex-wrap: wrap; }
 .crit-row .select { flex: 1 1 210px; min-width: 0; }
 .crit-row .input { flex: 1 1 110px; min-width: 0; width: auto; }
+.crit-row .sku-pick { order: 3; flex: 1 1 100%; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.crit-row .sku-pick .input { width: 100%; flex: none; }
+.sku-list { max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.sku-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 13.5px; }
+.sku-row:last-child { border-bottom: 0; }
+.sku-row:hover { background: var(--fill); }
+.sku-row.head { position: sticky; top: 0; z-index: 1; background: var(--surface-2); font-weight: 600; }
+.sku-row input { flex: none; width: 18px; height: 18px; }
+.sku-row .sku-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.sku-picked { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sku-picked .chip { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.aud-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
 .crit-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .rep-name { font-weight: 600; }
 .camp-cell { font-size: 13.5px; }
@@ -369,6 +381,7 @@ tr.total td { border-top: 2px solid var(--border); background: var(--surface-2);
   .grid-2 { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
+  .sku-row { min-height: var(--tap); }
   .sidebar {
     position: fixed; z-index: 40; left: 0; top: 0; bottom: 0; width: min(300px, 86vw); transform: translateX(-100%); transition: transform .2s;
     padding-top: max(20px, env(safe-area-inset-top, 0px)); padding-left: max(14px, env(safe-area-inset-left, 0px));

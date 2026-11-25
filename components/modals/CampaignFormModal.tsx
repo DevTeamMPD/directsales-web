@@ -9,10 +9,12 @@ import { createCampaign } from '@/lib/api/rpc';
 import type { CampaignCriterion } from '@/lib/api/types';
 import { BRAND, CRIT, FIXTURE_NO_WRITE, MODES, PATHS, type Brand, type ClaimMode, type CritType } from '@/lib/constants';
 import {
-  funnel, initialCampaignForm, MODE_HELP, namePlaceholder, newCampaignRow, nextTab, type CampaignForm, type CampaignTab,
+  funnel, initialCampaignForm, liveSteps, MODE_HELP, namePlaceholder, newCampaignRow, nextTab, type CampaignForm, type CampaignTab,
 } from '@/lib/domain/campaigns';
 import { baht } from '@/lib/format';
 import { useActions, useAppState, useModalSeq } from '@/lib/state/AppProvider';
+import { ProductPicker } from './ProductPicker';
+import { useAudienceCounts } from './useAudienceCounts';
 
 const TABS: ReadonlyArray<readonly [CampaignTab, string]> = [['base', 'ข้อมูลพื้นฐาน'], ['set', 'การตั้งค่า'], ['aud', 'กลุ่มลูกค้า']];
 type CritKey = 'kw' | 'min' | 'max' | 'from' | 'to';
@@ -21,8 +23,9 @@ type CritKey = 'kw' | 'min' | 'max' | 'from' | 'to';
  * popup F ตัวสร้างแคมเปญ (campaignForm L782-871) หัวหน้าเท่านั้น
  * - พิมพ์/เลือกในช่องอัปเดตค่าโดยไม่ "วาดใหม่" (โฟกัสอยู่ที่เดิม); สลับแท็บ / ถัดไป / ย้อนกลับ / เพิ่ม-ลบ-เปลี่ยนชนิดเงื่อนไข / ดูตัวอย่าง
  *   = prototype วาด popup ใหม่ → เลื่อนกลับบนสุดแล้วโฟกัสช่องแรก (input/select/textarea/button.btn) เหมือน openModal
- * - funnel นับจาก state.customers (ล็อกอินจริง = [] จึงเป็น 0 เหมือน prototype)
- * - สร้าง: insert dsales_campaigns (ไม่สร้างลีด) → เลือกแคมเปญใหม่ → ไปหน้าแบรนด์ของแคมเปญ
+ * - เงื่อนไข "เคยซื้อสินค้า" = ProductPicker (ค้นแล้วติ๊ก SKU / เลือกทั้งหมด)
+ * - funnel: ล็อกอินจริงนับจากฐานลูกค้า (useAudienceCounts → dsales_base_customers) · โหมด fixture นับจาก state.customers
+ * - สร้าง: insert dsales_campaigns (ไม่สร้างลีด — เซลล์จองลูกค้าที่ตรงเงื่อนไขจากการ์ดแคมเปญ) → เลือกแคมเปญใหม่ → ไปหน้าแบรนด์ของแคมเปญ
  */
 export function CampaignFormModal({ brand }: { brand: Brand }) {
   const { customers, leads, live } = useAppState();
@@ -47,7 +50,11 @@ export function CampaignFormModal({ brand }: { brand: Brand }) {
     m?.querySelector<HTMLElement>('input,select,textarea,button.btn')?.focus();
   }, [draws]);
 
-  const { steps, result } = useMemo(() => funnel(customers, leads, f.brand, f.crits), [customers, leads, f.brand, f.crits]);
+  const demo = useMemo(() => funnel(customers, leads, f.brand, f.crits), [customers, leads, f.brand, f.crits]);
+  const aud = useAudienceCounts(f.brand, f.crits, live && f.tab === 'aud');
+  const steps = live ? liveSteps(f.brand, aud.filterBrand, f.crits, aud.counts) : demo.steps;
+  const result = demo.result;
+  const fmtN = (n: number | null) => (n === null ? '…' : n.toLocaleString('th-TH'));
 
   async function create() {
     if (!f.name.trim()) {
@@ -66,7 +73,7 @@ export function CampaignFormModal({ brand }: { brand: Brand }) {
         setUi({ selCamp: c.id, status: 'all' });
         closeModal(seq);
         router.push(`/campaigns/${c.brand}`);
-        toast('สร้างแคมเปญแล้ว · เลือกลูกค้าเข้าแคมเปญจากถัง "ลูกค้าทั้งหมด" ด้วยปุ่ม จอง');
+        toast('สร้างแคมเปญแล้ว · ลูกค้าที่ตรงเงื่อนไขอยู่ในการ์ดแคมเปญนี้ เซลล์กด จอง ได้เลย');
       } catch (e) {
         if (handleAuthError(e)) return;
         toast('สร้างแคมเปญไม่สำเร็จ: ' + errorMessage(e));
@@ -140,18 +147,48 @@ export function CampaignFormModal({ brand }: { brand: Brand }) {
           </>
         ) : (
           <>
-            <p className="help">กำหนดเงื่อนไขกรองลูกค้าที่จะเข้าแคมเปญนี้ ถ้าไม่กำหนดจะใช้ลูกค้าทั้งหมดของ {BRAND[f.brand]}</p>
+            <p className="help">กำหนดเงื่อนไขกรองลูกค้าที่จะเข้าแคมเปญนี้ ถ้าไม่กำหนดจะใช้ลูกค้าทั้งหมดของ {BRAND[f.brand]}{live ? ' · เลือกสินค้าแล้วนับลูกค้าทุกแบรนด์ที่เคยซื้อสินค้านั้น' : ''}</p>
             <div id="funnel">
               <div className="funnel">
                 {steps.map((s, i) => (
                   <div key={i} className={`funnel-row ${i === 0 ? 'first' : ''}`}>
                     <span>{s.label}</span>
-                    <b className="num">{s.n.toLocaleString('th-TH')} คน</b>
+                    <b className="num">{fmtN(s.n)} คน</b>
                     <div className="bar"><i style={{ width: `${s.pct}%` }} /></div>
                   </div>
                 ))}
               </div>
-              {f.prev ? (
+              {live ? (
+                <div className="sub" id="aud-claimable">
+                  {aud.err ? <span className="login-err">{aud.err}</span> : <>ยังไม่มีเจ้าของ (เซลล์จองได้) <b>{fmtN(aud.claimable)}</b> คน</>}
+                </div>
+              ) : null}
+              {f.prev && live ? (
+                aud.sample === null ? (
+                  <div className="sub">กำลังโหลดตัวอย่าง…</div>
+                ) : aud.sample.length ? (
+                  <>
+                    <div className="mini-table table-wrap">
+                      <table>
+                        <thead><tr><th>ชื่อ</th><th>เบอร์</th><th className="r">ยอดซื้อรวม</th><th className="r">ซื้อ (ครั้ง)</th></tr></thead>
+                        <tbody>
+                          {aud.sample.map((c) => (
+                            <tr key={c.phone}>
+                              <td>{c.name}</td>
+                              <td className="mono">{c.phone}</td>
+                              <td className="r num">{c.ltv == null ? '—' : baht(Math.round(Number(c.ltv)))}</td>
+                              <td className="r num">{c.order_count ?? '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="sub">แสดง {aud.sample.length} จาก {fmtN(aud.counts[aud.counts.length - 1] ?? null)} คน</div>
+                  </>
+                ) : (
+                  <div className="empty">ไม่มีลูกค้าที่ตรงเงื่อนไขทั้งหมด</div>
+                )
+              ) : f.prev ? (
                 result.length ? (
                   <>
                     <div className="mini-table table-wrap">
@@ -182,7 +219,10 @@ export function CampaignFormModal({ brand }: { brand: Brand }) {
                   onChange={(e) => setCrits((cs) => cs.map((x, j) => (j === i ? { type: e.target.value as CritType } : x)), true)}>
                   {(Object.keys(CRIT) as CritType[]).map((k) => <option key={k} value={k}>{CRIT[k].label}</option>)}
                 </select>
-                {CRIT[cr.type].fields.map(([t, n, ph]) => (
+                {cr.type === 'product' ? (
+                  <ProductPicker crit={cr} live={live} customers={customers}
+                    onChange={(patch) => setCrits((cs) => cs.map((x, j) => (j === i ? { ...x, ...patch } : x)), false)} />
+                ) : CRIT[cr.type].fields.map(([t, n, ph]) => (
                   <input key={n} className="input" type={t} min={t === 'number' ? '0' : undefined} data-cf={`${i}:${n}`} placeholder={ph} aria-label={ph}
                     value={cr[n as CritKey] ?? ''}
                     onChange={(e) => setCrits((cs) => cs.map((x, j) => (j === i ? { ...x, [n]: e.target.value } : x)), false)} />

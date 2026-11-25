@@ -86,6 +86,7 @@ docs/                           # spec, plan, DATABASE.md
   - `20261123080000_dsales_customer_rooms_name.sql` / `20261123090000_dsales_rooms_for_phones.sql` — `dsales_customer_rooms` คืนชื่อของแต่ละห้อง (`name`) และ RPC `dsales_rooms_for_phones(p_phones)` ห้องของหลายเบอร์สำหรับหน้า Direct Sale (เซลล์ = ลีดของตัวเอง, หัวหน้า = ทุกเบอร์, ≤ 100 เบอร์/ครั้ง); test `11_customer_rooms_name.sql`, `12_rooms_for_phones.sql`
   - `20261123130000_dsales_ds_auto_release.sql` — ลีดใน Direct Sale ครบ `ds_max_days` (30) วันยังไม่ won → คืนอัตโนมัติ (`dsales_release_stale_leads()` รันต้น job `dsales-refresh-customer-base`, แก้ command ใน production 2026-11-24) · `ds_since`/`ds_owner` ตั้งโดย trigger `dsales_leads_ds_since` (ครอบทุก RPC ที่ตั้งเจ้าของ) · เซลล์ที่ถูกคืนจองลีดนั้นเองไม่ได้ 30 วัน (`release_cooldown`), ยกเลิกจองแล้วจองใหม่ไม่เริ่มนับใหม่, หัวหน้าไม่ติด · บันทึกประวัติเป็น interaction `type = 'system'` · `dsales_lead_json.dsSince` (เฉพาะลีดที่มีเจ้าของ); test `16_ds_auto_release.sql`
   - `20261124090000_dsales_admin_send_on_behalf.sql` — หัวหน้าส่งข้อความแทนเจ้าของลีดได้ (`dsales_outreach_plan`: หัวหน้า + ลีดมีเจ้าของ → ไม่ taken, enqueue ไม่จองแทน ลีดคงเป็นของเจ้าของเดิม) · ลูกค้าที่เป็นของเซลล์อื่นตาม tag แต่ไม่มีลีด ยัง taken · หน้า Direct Sale หัวหน้าติ๊กลีดที่มีเจ้าของได้ทุกแถว; test `18_admin_send_on_behalf.sql`
+  - `20261125090000_dsales_campaign_segments.sql` — แคมเปญใช้ได้จริง: `dsales_product_search(p_q)` ค้น SKU + ชื่อ + จำนวนผู้ซื้อจาก `public.lendi_purchase_lines` (ครอบคลุมเฉพาะลูกค้าที่มีประวัติซื้อในตารางนี้ ~7.5k จาก ~18.9k) · `dsales_base_customers` รับตัวกรองเพิ่ม `products` (กลุ่ม `{skus|kw}` ทุกกลุ่มต้องเจอ), `bought_from/to`, `bill_min`, `ltv_to` (เว็บแปลง criteria → ตัวกรองเองใน `criteriaFilters` — DB ไม่อ่าน criteria) · `dsales_claim_customer(p_phone, p_brand, p_campaign default null)` จองจากการ์ดแคมเปญ = ลีดผูกแคมเปญ (`campaign_closed`, `campaign_quota` ตาม `max_per_rep`) · เลือกสินค้าแล้วไม่กรองแบรนด์ซ้ำ (`audienceBrand`); test `19_campaign_segments.sql`
   - `20261123140000_dsales_reset_trial_data.sql` — **ช่วงทดลองใช้เท่านั้น:** `select dsales.dsales_reset_trial_data('RESET DSALES TRIAL');` ลบถาวร ลีด/ประวัติ/แคมเปญ/ชุดส่ง+คิว/ประวัติคืนลีด เก็บสมาชิก ตั้งค่า template ฐานลูกค้า ห้องแชต · เรียกจาก SQL เท่านั้น (ไม่ grant ให้เว็บ) · รันจริงต้องถามผู้ใช้ก่อนทุกครั้ง · เริ่มใช้จริงแล้วให้ drop function นี้; test `17_reset_trial_data.sql`
 - cron `dsales-refresh-customer-base` รันวันละ 3 รอบ 07:05, 12:05, 16:05 น. (`5 0,5,9 * * *` UTC, เปลี่ยนใน production 2026-11-19) และเขียนเฉพาะแถวที่เปลี่ยน — DB ใช้ร่วมหลายแอป อย่าเพิ่มรอบโดยไม่จำเป็น (ดู `docs/DATABASE.md` หัวข้อ 3)
 - `iim_messages.time` เร็วกว่าจริง 7 ชม. ให้ใช้ view `dsales.dsales_chat_messages_v`
@@ -150,6 +151,7 @@ TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtu
 - ส่งข้อความเป็นชุดผ่าน JST worker: spec `docs/superpowers/specs/2026-11-20-jst-outreach-worker-design.md`, แผน DB `docs/superpowers/plans/2026-11-20-outreach-d1-capture-db.md`, สัญญา DB/worker/เว็บ `docs/superpowers/plans/2026-11-20-outreach-contract.md`
 - ฐานข้อมูล: `docs/DATABASE.md` (schema `dsales`, สิทธิ์สมาชิก, RPC ทั้งหมด)
 - ตัวช่วยเปิดแชต JST บนเครื่องเซลล์: `tools/jst-helper/README.md`
+- JST worker บนเครื่อง office: `tools/jst-worker/README.md` — รันถาวรด้วย `install-task.ps1` (task เปิด `run-worker.cmd` ตอนล็อกอิน + ตรวจทุก 15 นาที, สคริปต์เปิดใหม่เมื่อ worker ออก, watchdog 10 นาที)
 
 ## Coding Conventions
 
@@ -165,7 +167,8 @@ TZ=Asia/Bangkok node tools/port-legacy.mjs fixtures  # สร้าง lib/fixtu
 
 ## งานค้าง (หลังแผน C)
 
-- funnel ของตัวสร้างแคมเปญเป็น 0 ตอนล็อกอินจริง และแคมเปญยังไม่สร้างลีดจาก `criteria` (ต้องมี RPC ใหม่ — เฟส 2)
+- แคมเปญ: funnel/แผง "ลูกค้าตามเงื่อนไข" ใช้ฐานลูกค้าจริงแล้ว (20261125090000) แต่การส่งข้อความเป็นชุด (enqueue) ยังจองแบบ self ไม่ผูกแคมเปญ และโหมด fixture ยังแสดงตารางลีดแบบ prototype (ไม่มีแผงลูกค้าตามเงื่อนไข)
+- test `05_base_rpcs.sql` ล้มกับข้อมูลปัจจุบัน (`tag_taken: Admin_Sao` — tag ถูกผูกกับสมาชิกอื่นแล้ว) ไม่เกี่ยวกับ migration ล่าสุด ต้องแก้ test ให้เลือก tag ที่ยังว่าง
 - โหมด `auto` ยังอ่านเป็น `self` และปุ่ม "จัดสรรให้เซลล์ที่ขายล่าสุด" ขึ้น "ไม่มีลีดที่ต้องจัดสรร" เสมอ (ยังไม่มีการผูกผู้ขายล่าสุดกับเซลล์)
 - ผลตรวจทักแชตไม่ถูกบันทึกลง DB (ดู `docs/DATABASE.md` ข้อ 5.5)
 - `dsales_set_member_tags` / `dsales_set_member_active` ยังไม่ถือ advisory lock ของ refresh: ถ้าหัวหน้าบันทึกตรงกับช่วง ~3 วินาทีที่ cron รัน owner_id อาจถูกเขียนทับด้วยค่าเก่าจนถึงรอบถัดไป (เติม `pg_advisory_xact_lock(hashtext('dsales_refresh_customer_base'))`) และ `set_member_tags` ยังไม่ถือ `dsales_admin_guard` lock
