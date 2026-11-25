@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { AI_STATUS_TEXT } from '@/lib/domain/aiStatus';
 import { CallButton, ChannelRow, ContactBar } from '@/components/leads/ContactBar';
 import { RoomChips, RoomIcons } from '@/components/leads/RoomIcons';
 import { useLeadRooms } from '@/components/leads/useLeadRooms';
@@ -139,12 +140,14 @@ function CustomerDetail({ lead: l }: { lead: Lead }) {
         ) : hist.length ? (
           <ul className="timeline">
             {hist.map((h) => h.sys ? (
-              <li key={h.s.id} className="tl-system">
-                <span className="feed-ic system"><svg viewBox="0 0 24 24"><path d={PATHS.clock} /></svg></span>
+              <li key={h.s.id} className={h.s.kind === 'ai' ? 'tl-ai' : 'tl-system'}>
+                {h.s.kind === 'ai' ? <span className="feed-ic ai">AI</span>
+                  : <span className="feed-ic system"><svg viewBox="0 0 24 24"><path d={PATHS.clock} /></svg></span>}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="tl-head">
-                    <b>ระบบ</b>
+                    <b>{h.s.kind === 'ai' ? 'AI วิเคราะห์สถานะ' : 'ระบบ'}</b>
                     <span className="sub">{fmtDT(h.s.date)}{h.s.rep ? ' · ' + (repName(reps, h.s.rep) || '') : ''}</span>
+                    {h.s.kind === 'ai' && h.s.result ? <span className="tag">{AI_STATUS_TEXT[h.s.result] ?? h.s.result}</span> : null}
                   </div>
                   <div className="tl-note">{h.s.note}</div>
                 </div>

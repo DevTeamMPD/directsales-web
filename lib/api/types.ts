@@ -9,7 +9,7 @@ export interface Channel { shop?: string; chat?: string; chat_name?: string; pla
 /** รายการใน interactions ของ dsales_lead_json (ล่าสุด 30 รายการ เรียงเก่า→ใหม่) */
 /** 'system' = บันทึกจากระบบ (เช่น คืนลีดอัตโนมัติเมื่อครบ 30 วัน) — mapLead แยกไปไว้ที่ Lead.systemLog ไม่ปนกับประวัติการติดต่อ */
 export interface InteractionJson {
-  id: string; type: ContactType | 'system'; date: string; rep: string | null;
+  id: string; type: ContactType | 'system' | 'ai'; date: string; rep: string | null;
   result: string | null; note: string | null; due: string | null; bills: string[] | null;
 }
 export interface Interaction {
@@ -17,7 +17,13 @@ export interface Interaction {
   result: string; note: string; due?: string | null; bills?: string[] | null;
 }
 
-export interface SystemNote { id: string; date: string; rep: string | null; note: string }
+/** kind 'ai' = ผลวิเคราะห์สถานะด้วย AI (result = สถานะที่ตั้ง / keep / undo) */
+export interface SystemNote { id: string; date: string; rep: string | null; note: string; kind?: 'ai'; result?: string }
+/** dsales_leads.ai — ผลวิเคราะห์สถานะด้วย AI ครั้งล่าสุด (20261125130000) */
+export interface LeadAi {
+  at: string; status: string; applied: boolean; confidence: number; prevStatus: string; prevCallback: string | null; callback: string | null;
+  interest: string; reason: string; flags: string[]; nextAction: string; undoneAt?: string;
+}
 
 export interface Purchase { date: string; bill: string; sku: string; product: string; amount: number; seller: string | null }
 export interface ChatCheck { at: string; sent: boolean; count: number }
@@ -31,6 +37,7 @@ export interface LeadJson {
   releasedBy: string[] | null; autoSkip: boolean; identityId: string | null;
   /** เวลาที่เข้า Direct Sale ของเจ้าของปัจจุบัน (null = ไม่มีเจ้าของ) — ครบ 30 วันยังไม่ won ระบบคืนอัตโนมัติ */
   dsSince?: string | null;
+  ai?: LeadAi | null;
   bills: string[] | null; total: number | null; lastBuy: string | null; orders: number | null;
   interactions: InteractionJson[] | null;
 }
@@ -44,7 +51,7 @@ export interface Lead {
   noCall?: boolean; noCallBy?: string | null; noCallAt?: string | null; releasedBy?: string[]; autoSkip?: boolean; identityId?: string | null;
   bills?: string[]; total?: number | null; lastBuy?: string | null; orders?: number | null;
   interactions: Interaction[]; purchases: Purchase[];
-  dsSince?: string | null; systemLog?: SystemNote[];
+  dsSince?: string | null; systemLog?: SystemNote[]; ai?: LeadAi | null;
   _pl?: 'loading' | 'done'; chatCheck?: ChatCheck | null;
 }
 

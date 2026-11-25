@@ -174,4 +174,13 @@ describe('mapLead system history', () => {
     expect(l.systemLog).toEqual([{ id: 's1', date: '2026-11-05T07:05', rep: 'u1', note: 'ครบ 30 วันยังไม่ปิดการขาย — คืนอัตโนมัติ' }]);
     expect(l.dsSince).toBe('2026-11-01T03:00:00+00:00');
   });
+  it('AI entries go to the system history with kind ai and the status it set', () => {
+    const l = mapLead(leadJson({
+      interactions: [
+        { id: 'a1', type: 'ai', date: '2026-11-25T03:00:00+00:00', rep: 'u9', result: 'callback', note: 'ลูกค้าขอให้ติดต่อพรุ่งนี้', due: '2026-11-26', bills: null },
+      ],
+    }));
+    expect(l.interactions).toEqual([]);
+    expect(l.systemLog).toEqual([{ id: 'a1', date: '2026-11-25T10:00', rep: 'u9', note: 'ลูกค้าขอให้ติดต่อพรุ่งนี้', kind: 'ai', result: 'callback' }]);
+  });
 });

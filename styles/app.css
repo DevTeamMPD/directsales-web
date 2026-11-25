@@ -217,6 +217,11 @@ th.r, td.r { text-align: right; }
 .feed-ic.call { background: var(--ok-soft); color: var(--ok); }
 .feed-ic.chat { background: var(--info-soft); color: var(--info); }
 .feed-ic.system { background: var(--warn-soft); color: var(--warn); }
+.feed-ic.ai { background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 700; }
+.tl-ai .tl-note { white-space: pre-wrap; }
+.tag.ai-tag { background: var(--accent-soft); color: var(--accent); font-weight: 600; cursor: help; }
+.tag.ai-tag.warn { background: var(--warn-soft); color: var(--warn); }
+.ai-row .ai-flag { color: var(--warn); }
 .feed-body { min-width: 0; flex: 1; font-size: 13.5px; }
 
 /* ---------- settings ---------- */

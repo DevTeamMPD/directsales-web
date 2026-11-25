@@ -13,6 +13,8 @@ describe('toThaiError', () => {
   });
   it('maps every prototype LIVE_ERR key', () => {
     expect(toThaiError('taken')).toBe('ลูกค้ารายนี้มีคนจองไปแล้ว');
+    expect(toThaiError('ai_daily_limit')).toMatch(/^วิเคราะห์ด้วย AI ครบเพดาน/);
+    expect(toThaiError('ai_nothing_to_undo')).toMatch(/^ไม่มีผล AI ให้ย้อนกลับ/);
     expect(toThaiError('campaign_closed')).toBe('แคมเปญนี้ปิดหรือสิ้นสุดแล้ว จองลูกค้าเข้าแคมเปญไม่ได้');
     expect(toThaiError('campaign_quota')).toBe('คุณจองลูกค้าในแคมเปญนี้ครบจำนวนสูงสุดแล้ว');
     expect(toThaiError('cs_customer')).toBe('ลูกค้ารายนี้เป็นเคสบริการ/เคลม หรือลูกค้า B2B — ไม่ดึงเข้า Direct Sale');

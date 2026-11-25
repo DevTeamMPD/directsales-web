@@ -1,5 +1,6 @@
-import type { LeadStatus } from '@/lib/api/types';
+import type { LeadAi, LeadStatus } from '@/lib/api/types';
 import { STATUS } from '@/lib/constants';
+import { aiTag } from '@/lib/domain/aiStatus';
 import { dueInfo, releaseInfo, releaseTagShown } from '@/lib/domain/leads';
 
 export function StatusBadge({ status }: { status: LeadStatus }) {
@@ -17,4 +18,10 @@ export function ReleaseTag({ dsSince, status, today }: { dsSince: string | null 
   return releaseTagShown(r) && r ? (
     <div className={`due ${r.cls}`} title="ครบ 30 วันใน Direct Sale แล้วยังไม่ปิดการขาย ระบบจะคืนลูกค้ารายนี้อัตโนมัติ">{r.text}</div>
   ) : null;
+}
+
+/** ผลวิเคราะห์ AI ล่าสุด (วางเมาส์ดูความสนใจ/คำเตือน/ขั้นต่อไป) */
+export function AiTag({ ai }: { ai: LeadAi | null | undefined }) {
+  const t = aiTag(ai);
+  return t ? <div><span className={`tag ai-tag ${t.warn ? 'warn' : ''}`} title={t.title}>{t.text}</span></div> : null;
 }

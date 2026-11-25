@@ -21,9 +21,12 @@ export function mapLead(j: LeadJson): Lead {
     claimedAt: localStamp(j.claimedAt),
     claimedAtIso: j.claimedAt,
     interactions: (j.interactions || []).flatMap((i) =>
-      i.type === 'system' ? [] : [{ ...i, type: i.type, date: localStamp(i.date) || i.date, note: i.note || '', result: i.result || '' }]),
-    systemLog: (j.interactions || []).filter((i) => i.type === 'system')
-      .map((i) => ({ id: i.id, date: localStamp(i.date) || i.date, rep: i.rep, note: i.note || '' })),
+      i.type === 'system' || i.type === 'ai' ? [] : [{ ...i, type: i.type, date: localStamp(i.date) || i.date, note: i.note || '', result: i.result || '' }]),
+    systemLog: (j.interactions || []).filter((i) => i.type === 'system' || i.type === 'ai')
+      .map((i) => ({
+        id: i.id, date: localStamp(i.date) || i.date, rep: i.rep, note: i.note || '',
+        ...(i.type === 'ai' ? { kind: 'ai' as const, result: i.result || '' } : {}),
+      })),
   };
 }
 

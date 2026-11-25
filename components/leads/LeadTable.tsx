@@ -2,10 +2,11 @@
 
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SelectionBar } from '@/components/campaigns/SelectionBar';
+import { AiStatusModal } from '@/components/modals/AiStatusModal';
 import { useOutreachMax } from '@/components/campaigns/useOutreachMax';
 import { CallButton, ContactBar, type OpenJst } from '@/components/leads/ContactBar';
 import { SendOutreachModal } from '@/components/modals/SendOutreachModal';
-import { DueTag, ReleaseTag, StatusBadge } from '@/components/ui/StatusBadge';
+import { AiTag, DueTag, ReleaseTag, StatusBadge } from '@/components/ui/StatusBadge';
 import type { Campaign, ChatRoom, ClaimMode, Lead, Rep } from '@/lib/api/types';
 import { pageBrand } from '@/lib/domain/brand';
 import { bills, canUnclaim, lastSeller, repName, total } from '@/lib/domain/leads';
@@ -30,7 +31,7 @@ interface RowCtx {
 }
 
 export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts }) {
-  const { reps, campaigns, meId, isAdmin, today, leads, brand } = useAppState();
+  const { reps, campaigns, meId, isAdmin, today, leads, brand, live } = useAppState();
   const { openModal } = useActions();
   const act = useLeadActions();
   const openJst = useJst();
@@ -100,7 +101,14 @@ export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts 
           </tbody>
         </table>
       </div>
-      {selectable ? <SelectionBar count={sel.size} max={max} onClear={() => setSel(new Set())} onSend={openSend} /> : null}
+      {selectable ? (
+        <SelectionBar count={sel.size} max={max} onClear={() => setSel(new Set())} onSend={openSend}
+          extra={isAdmin && live ? (
+            <button className="btn" id="sel-ai" onClick={() => openModal(<AiStatusModal leads={leads.filter((l) => sel.has(l.phone))} scopeText="ลีดที่ติ๊กไว้" />)}>
+              <span className="lbl-long">วิเคราะห์สถานะ (AI)</span><span className="lbl-short">AI</span>
+            </button>
+          ) : undefined} />
+      ) : null}
     </>
   );
 }
@@ -152,6 +160,7 @@ const LeadRow = memo(function LeadRow({ l, mode, ctx, checked }: { l: Lead; mode
         <DueTag callback={l.callback} today={today} />
         {l.owner ? <ReleaseTag dsSince={l.dsSince} status={l.status} today={today} /> : null}
         {l.chatCheck?.sent ? <div><span className="tag chat-ok">ทักแชทแล้ว ✓</span></div> : null}
+        <AiTag ai={l.ai} />
         {l.noCall ? (
           <>
             <div><span className="tag nocall">ห้ามโทร · แชตเท่านั้น</span></div>

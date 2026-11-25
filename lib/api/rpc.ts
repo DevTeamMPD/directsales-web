@@ -64,6 +64,8 @@ export const logContact = (x: LogInput) =>
 /** campaignId = จองจากการ์ดแคมเปญ (ลีดผูกแคมเปญ · campaign_closed / campaign_quota) */
 export const claimCustomer = (phone: string, brand: Brand, campaignId?: string | null) =>
   call<LeadJson>('dsales_claim_customer', { p_phone: phone, p_brand: brand, ...(campaignId ? { p_campaign: campaignId } : {}) });
+/** ย้อนสถานะที่ AI เปลี่ยน (หัวหน้าเท่านั้น) */
+export const undoAiStatus = (leadId: string) => call<LeadJson>('dsales_ai_status_undo', { p_lead: leadId });
 export const searchProducts = (q: string) => call<ProductRow[]>('dsales_product_search', { p_q: q.trim(), p_limit: 100 });
 export async function getPoolGrandTotal(brand: Brand | null): Promise<number> {
   return rowsTotal(await call<PoolRowJson[]>('dsales_customer_pool_v3', { p_limit: 1, p_offset: 0, p_brand: brand || null }));

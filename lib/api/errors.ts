@@ -34,6 +34,11 @@ export const ERROR_TEXT: Readonly<Record<string, string>> = {
   claim_failed: 'จองลูกค้าไม่สำเร็จ',
   invalid_state: 'สถานะของรายการเปลี่ยนไปแล้ว',
   invalid_status: 'สถานะไม่ถูกต้อง',
+  // วิเคราะห์สถานะด้วย AI
+  ai_not_configured: 'ยังไม่ได้ตั้งค่า AI (ANTHROPIC_API_KEY) บนเซิร์ฟเวอร์',
+  ai_daily_limit: 'วิเคราะห์ด้วย AI ครบเพดานของวันนี้แล้ว ลองใหม่พรุ่งนี้ (หรือให้ dev ปรับ ai_daily_limit)',
+  ai_nothing_to_undo: 'ไม่มีผล AI ให้ย้อนกลับ (สถานะถูกเปลี่ยนไปแล้ว หรือย้อนกลับไปแล้ว)',
+  invalid_input: 'ข้อมูลที่ส่งไม่ถูกต้อง',
 };
 
 /** fetch ล้ม / offline: Chrome "Failed to fetch", Firefox "NetworkError when attempting…", Safari "Load failed", Node "fetch failed" */
