@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AI_STATUS_TEXT, aiSkipText, aiTag, guardResult, maskDigits, buildLeadPrompt, mergeFlags, planAnalysis, summaryText, type AiContext,
+  AI_STATUS_TEXT, aiSkipText, aiTag, guardResult, maskDigits, buildLeadPrompt, mergeFlags, planAnalysis, summaryText, closedText, type AiContext,
 } from './aiStatus';
 
 const ctx = (over: Partial<AiContext> = {}): AiContext => ({
@@ -81,5 +81,11 @@ describe('AI status analysis', () => {
     expect(aiSkipText('changed_meanwhile')).toBe('มีคนบันทึกการติดต่อระหว่างวิเคราะห์');
     expect(aiSkipText('อื่น ๆ')).toBe('อื่น ๆ');
     expect(summaryText({ changed: 3, kept: 5, skipped: 2 }, 0.0123)).toBe('เปลี่ยนสถานะ 3 · คงเดิม 5 · ข้าม 2 · ค่าใช้จ่าย ~$0.0123');
+    expect(summaryText({ changed: 0, kept: 1, skipped: 0, closed: 2 }, 0)).toBe('ปิดการขายอัตโนมัติ 2 · เปลี่ยนสถานะ 0 · คงเดิม 1 · ข้าม 0 · ค่าใช้จ่าย ~$0.0000');
+  });
+  it('auto-closed-from-order text (bill, Thai date, amount)', () => {
+    expect(closedText({ id: 'x', name: 'Nantaporn Chaiphet', bills: ['2125065364729147392'], amount: 3636, date: '2026-11-24' }))
+      .toBe('พบบิล 2125065364729147392 วันที่ 24/11/2026 ยอด 3,636 บาท');
+    expect(closedText({ id: 'x', name: 'n', bills: ['A', 'B'], amount: 398.5, date: '2026-01-05' })).toBe('พบบิล A, B วันที่ 05/01/2026 ยอด 399 บาท');
   });
 });

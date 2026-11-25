@@ -3,14 +3,14 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 import {
   AI_CONCURRENCY, AI_MAX_LEADS, AI_MODEL, AI_STATUSES, AI_SYSTEM_PROMPT, buildLeadPrompt, guardResult, mergeFlags, planAnalysis,
-  type AiContext, type AiResult,
+  type AiClosed, type AiContext, type AiResult,
 } from '@/lib/domain/aiStatus';
 import { createClient } from '@/lib/supabase/server';
 
 /**
  * POST /api/ai/lead-status  { leadIds: string[], force?: boolean, dryRun?: boolean }  (dryRun = เรียก AI แต่ไม่บันทึกผล ใช้ทดสอบ)  (หัวหน้าเท่านั้น — ตรวจใน dsales_ai_status_context)
- * อ่านข้อมูลลีด → ข้ามลีดที่ไม่มีข้อมูล/ไม่มีอะไรใหม่ → Claude Haiku 5.5 ทีละลีด (พร้อมกัน 5) → dsales_ai_status_apply
- * ตอบเป็น NDJSON ทีละบรรทัด: start → lead (ทุกลีดที่วิเคราะห์) → done (หรือ error)
+ * ปิดการขายให้ก่อนเมื่อพบบิล/ออเดอร์หลังวันที่จอง (dsales_ai_close_orders — ไม่ทำตอน dryRun) → อ่านข้อมูลลีดที่เหลือ → ข้ามลีดที่ไม่มีข้อมูล/ไม่มีอะไรใหม่ → Claude Haiku 5.5 ทีละลีด (พร้อมกัน 5) → dsales_ai_status_apply
+ * ตอบเป็น NDJSON ทีละบรรทัด: start (มี closed = ลีดที่ปิดการขายอัตโนมัติ) → lead (ทุกลีดที่วิเคราะห์) → done (หรือ error)
  * key อ่านจาก ANTHROPIC_API_KEY ฝั่ง server เท่านั้น (ไม่ส่งไปหน้าเว็บ)
  */
 export const runtime = 'nodejs';
@@ -27,7 +27,7 @@ const Result = z.object({
 });
 
 type Line =
-  | { type: 'start'; total: number; todo: number; skipped: Array<{ id: string; reason: string }> }
+  | { type: 'start'; total: number; todo: number; skipped: Array<{ id: string; reason: string }>; closed: AiClosed[] }
   | { type: 'lead'; id: string; ok: true; result: AiResult }
   | { type: 'lead'; id: string; ok: false; error: string }
   | { type: 'done'; summary: unknown; usage: { input_tokens: number; output_tokens: number; analysed: number } }
@@ -54,6 +54,12 @@ export async function POST(req: Request) {
   if (!auth.user) return json(401, 'not_authenticated');
   const db = supabase.schema('dsales');
 
+  let closed: AiClosed[] = [];
+  if (!dryRun) {
+    const closeRes = await db.rpc('dsales_ai_close_orders', { p_leads: ids });
+    if (closeRes.error) return json(closeRes.error.message === 'forbidden' ? 403 : 400, closeRes.error.message);
+    closed = (closeRes.data ?? []) as AiClosed[];
+  }
   const contextAt = new Date().toISOString();
   const ctxRes = await db.rpc('dsales_ai_status_context', { p_leads: ids });
   if (ctxRes.error) return json(ctxRes.error.message === 'forbidden' ? 403 : 400, ctxRes.error.message);
@@ -65,7 +71,7 @@ export async function POST(req: Request) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (l: Line) => controller.enqueue(enc.encode(JSON.stringify(l) + '\n'));
-      send({ type: 'start', total: list.length, todo: todo.length, skipped });
+      send({ type: 'start', total: list.length + closed.length, todo: todo.length, skipped, closed });
       const results: Array<AiResult & { lead_id: string }> = [];
       let input = 0;
       let output = 0;

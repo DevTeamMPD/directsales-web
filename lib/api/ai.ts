@@ -1,9 +1,9 @@
-import type { AiResult } from '@/lib/domain/aiStatus';
+import type { AiClosed, AiResult } from '@/lib/domain/aiStatus';
 import { RpcError } from './errors';
 
 /** บรรทัด NDJSON จาก POST /api/ai/lead-status */
 export type AiLine =
-  | { type: 'start'; total: number; todo: number; skipped: Array<{ id: string; reason: string }> }
+  | { type: 'start'; total: number; todo: number; skipped: Array<{ id: string; reason: string }>; closed?: AiClosed[] }
   | { type: 'lead'; id: string; ok: true; result: AiResult }
   | { type: 'lead'; id: string; ok: false; error: string }
   | { type: 'done'; summary: { changed: number; kept: number; skipped: Array<{ id: string; reason: string }> }; usage: { input_tokens: number; output_tokens: number; analysed: number } }

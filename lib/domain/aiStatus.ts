@@ -122,8 +122,15 @@ export const aiSkipText = (reason: string): string => SKIP_TEXT[reason] ?? reaso
 
 export const aiCost = (input: number, output: number): number => (input * AI_PRICE.input + output * AI_PRICE.output) / 1e6;
 
-export function summaryText(s: { changed: number; kept: number; skipped: number }, costUsd: number): string {
-  return `เปลี่ยนสถานะ ${s.changed} · คงเดิม ${s.kept} · ข้าม ${s.skipped} · ค่าใช้จ่าย ~$${costUsd.toFixed(4)}`;
+/** ลีดที่ระบบปิดการขายให้ก่อนส่ง AI (dsales_ai_close_orders, 20261125160000): พบบิล/ออเดอร์หลังวันที่จอง */
+export interface AiClosed { id: string; name: string; bills: string[]; amount: number; date: string }
+export function closedText(c: AiClosed): string {
+  const [y, m, d] = c.date.slice(0, 10).split('-');
+  return `พบบิล ${c.bills.join(', ')} วันที่ ${d}/${m}/${y} ยอด ${Math.round(c.amount).toLocaleString('en-US')} บาท`;
+}
+
+export function summaryText(s: { changed: number; kept: number; skipped: number; closed?: number }, costUsd: number): string {
+  return `${s.closed ? `ปิดการขายอัตโนมัติ ${s.closed} · ` : ''}เปลี่ยนสถานะ ${s.changed} · คงเดิม ${s.kept} · ข้าม ${s.skipped} · ค่าใช้จ่าย ~$${costUsd.toFixed(4)}`;
 }
 
 /** ป้ายในตาราง Direct Sale: มีคำเตือน = "⚠ AI n" ไม่มี = "AI" · ย้อนกลับแล้ว/ไม่มีผล = ไม่แสดง · title = ความสนใจ + คำเตือน + ขั้นต่อไป */

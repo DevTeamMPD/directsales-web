@@ -5,7 +5,7 @@ import { CloseButton } from '@/components/ui/CloseButton';
 import { runAiStatus, type AiLine } from '@/lib/api/ai';
 import { getMyLeads, undoAiStatus } from '@/lib/api/rpc';
 import type { Lead } from '@/lib/api/types';
-import { AI_MAX_LEADS, AI_STATUS_TEXT, aiCost, aiSkipText, summaryText, type AiResult } from '@/lib/domain/aiStatus';
+import { AI_MAX_LEADS, AI_STATUS_TEXT, aiCost, aiSkipText, closedText, summaryText, type AiClosed, type AiResult } from '@/lib/domain/aiStatus';
 import { useActions, useAppState } from '@/lib/state/AppProvider';
 
 type Phase = 'ready' | 'running' | 'done';
@@ -13,7 +13,7 @@ type Row = { ok: true; result: AiResult } | { ok: false; error: string };
 
 /**
  * popup "วิเคราะห์สถานะ (AI)" (หัวหน้า, ล็อกอินจริงเท่านั้น): ลีดที่ส่งมา (ติ๊กไว้ หรือรายการที่กรองอยู่) เฉพาะที่มีเจ้าของและยังไม่ปิดการขาย ≤ 50
- * → POST /api/ai/lead-status (NDJSON) แสดงผลทีละลีด → จบแล้วโหลดลีดใหม่ แสดงว่าเปลี่ยนจริงหรือคงเดิม + ปุ่มย้อนกลับ
+ * → POST /api/ai/lead-status (NDJSON): ลีดที่พบบิล/ออเดอร์หลังวันที่จอง ระบบปิดการขายให้ก่อน (แสดงด้านบน) → แสดงผล AI ทีละลีด → จบแล้วโหลดลีดใหม่ แสดงว่าเปลี่ยนจริงหรือคงเดิม + ปุ่มย้อนกลับ
  */
 export function AiStatusModal({ leads, scopeText }: { leads: Lead[]; scopeText: string }) {
   const { leads: all } = useAppState();
@@ -25,6 +25,7 @@ export function AiStatusModal({ leads, scopeText }: { leads: Lead[]; scopeText: 
   const [todo, setTodo] = useState(0);
   const [rows, setRows] = useState<Record<string, Row>>({});
   const [skipped, setSkipped] = useState<Array<{ id: string; reason: string }>>([]);
+  const [closed, setClosed] = useState<AiClosed[]>([]);
   const [summary, setSummary] = useState('');
   const byId = useMemo(() => new Map(all.map((l) => [l.id, l])), [all]);
   const nameOf = (id: string) => byId.get(id)?.name ?? id;
@@ -34,19 +35,23 @@ export function AiStatusModal({ leads, scopeText }: { leads: Lead[]; scopeText: 
       setPhase('running');
       setRows({});
       setSkipped([]);
+      setClosed([]);
       setSummary('');
+      let closedN = 0;
       let skipList: Array<{ id: string; reason: string }> = [];
       const onLine = (l: AiLine) => {
         if (l.type === 'start') {
           setTodo(l.todo);
           skipList = l.skipped;
           setSkipped(l.skipped);
+          closedN = l.closed?.length ?? 0;
+          setClosed(l.closed ?? []);
         } else if (l.type === 'lead') {
           setRows((r) => ({ ...r, [l.id]: l.ok ? { ok: true, result: l.result } : { ok: false, error: l.error } }));
         } else if (l.type === 'done') {
           const all2 = [...skipList, ...l.summary.skipped];
           setSkipped(all2);
-          setSummary(summaryText({ changed: l.summary.changed, kept: l.summary.kept, skipped: all2.length }, aiCost(l.usage.input_tokens, l.usage.output_tokens)));
+          setSummary(summaryText({ changed: l.summary.changed, kept: l.summary.kept, skipped: all2.length, closed: closedN }, aiCost(l.usage.input_tokens, l.usage.output_tokens)));
         } else {
           toast('บันทึกผล AI ไม่สำเร็จ: ' + l.error);
         }
@@ -84,7 +89,7 @@ export function AiStatusModal({ leads, scopeText }: { leads: Lead[]; scopeText: 
           {scopeText} · วิเคราะห์ <b>{targets.length.toLocaleString('th-TH')}</b> ลีด (เฉพาะที่มีเจ้าของและยังไม่ปิดการขาย สูงสุด {AI_MAX_LEADS} ลีดต่อครั้ง)
           {over > 0 ? ` · ที่เหลือ ${over.toLocaleString('th-TH')} ลีดกดอีกรอบ` : ''}
         </p>
-        <p className="help">AI อ่านแชตและบันทึกล่าสุดแล้วเปลี่ยนสถานะให้เมื่อมั่นใจตั้งแต่ 70% ขึ้นไป (ไม่ปิดการขายให้) ทุกการเปลี่ยนมีบันทึกในประวัติลูกค้าและย้อนกลับได้</p>
+        <p className="help">AI อ่านแชตและบันทึกล่าสุดแล้วเปลี่ยนสถานะให้เมื่อมั่นใจตั้งแต่ 70% ขึ้นไป · ลีดที่พบบิล/ออเดอร์หลังวันที่จอง ระบบปิดการขายให้อัตโนมัติก่อน (AI ไม่ปิดการขายเอง) · ทุกการเปลี่ยนมีบันทึกในประวัติลูกค้าและย้อนกลับได้</p>
         {phase === 'ready' ? (
           <label className="switch">
             <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
@@ -97,6 +102,18 @@ export function AiStatusModal({ leads, scopeText }: { leads: Lead[]; scopeText: 
               <b className="num">{analysed.length.toLocaleString('th-TH')} / {todo.toLocaleString('th-TH')}</b>
               <div className="bar"><i style={{ width: `${pct}%` }} /></div>
             </div>
+            {closed.length ? (
+              <div id="ai-closed">
+                {closed.map((c) => (
+                  <div key={c.id} className="list-row ai-row" data-ai-closed={c.id}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <b>{c.name}</b> <span className="tag s-won">ปิดการขายอัตโนมัติ</span>
+                      <div className="sub">{closedText(c)} หลังวันที่จอง</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <div id="ai-rows">
               {analysed.map((id) => {
                 const r = rows[id];
