@@ -125,7 +125,7 @@ export interface MemberTagsRow { user_id: string; jst_tags: string[] }
 
 /* ---------- ส่งข้อความผ่าน JST worker (docs/superpowers/plans/2026-11-20-outreach-contract.md) ---------- */
 /** เหตุผลที่ preview ข้ามลูกค้า (dsales_outreach_preview.skip) */
-export type OutreachSkip = 'customer_not_found' | 'taken' | 'already_queued' | 'no_chat_room' | 'window_closed';
+export type OutreachSkip = 'customer_not_found' | 'taken' | 'already_queued' | 'no_chat_room' | 'window_closed' | 'cs_customer';
 /** เหตุผลที่ enqueue ข้าม (preview + no_call / claim_failed) */
 export type EnqueueSkipReason = OutreachSkip | 'no_call' | 'claim_failed';
 export type OutreachStatus = 'queued' | 'sending' | 'sent' | 'failed' | 'cancelled';

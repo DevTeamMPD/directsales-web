@@ -149,6 +149,7 @@ export const SKIP_TEXT: Readonly<Record<EnqueueSkipReason, string>> = {
   window_closed: 'หมดช่วงส่งข้อความ (ลูกค้าไม่ได้ทักมาเกิน 7 วัน)',
   no_call: 'ลูกค้าไม่สะดวกให้ติดต่อ',
   claim_failed: 'จองลูกค้าไม่สำเร็จ',
+  cs_customer: 'ลูกค้าเคสบริการ/เคลม หรือ B2B (ไม่ทักขาย)',
 };
 export const skipLabel = (reason: string | null | undefined): string =>
   (reason && (SKIP_TEXT as Readonly<Record<string, string>>)[reason]) || reason || '—';
@@ -177,6 +178,7 @@ export function itemErrorText(error: string | null | undefined): string {
   if (e === 'room_mismatch') return 'ห้องแชตไม่ตรงกับที่บันทึกไว้ (ไม่ได้ส่ง)';
   if (e === 'window_closed') return 'หมดช่วงส่งข้อความ (ลูกค้าไม่ได้ทักมาเกิน 7 วัน) — โทรหาแทน';
   if (e === 'stale_sending') return 'ส่งค้างนานเกินไป ระบบคืนเข้าคิว';
+  if (e === 'cs_customer') return 'ยกเลิก: ลูกค้าเคสบริการ/เคลม หรือ B2B';
   const jst = /^jst_error:\s*([\s\S]*)$/.exec(e);
   if (jst) return `JST ส่งไม่สำเร็จ${jst[1] ? ': ' + jst[1] : ''}`;
   return e;

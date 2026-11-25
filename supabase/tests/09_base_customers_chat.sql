@@ -14,6 +14,7 @@ begin
   join dsales.dsales_customer_base b on b.phone_normalized = l.phone_normalized
   where s.page = 'Host Tail' and lower(s.channel) = 'line' and b.eligible and b.owner_id is null
     and not exists (select 1 from dsales.dsales_leads x where x.phone_normalized = l.phone_normalized and x.owner_id is not null)
+    and not exists (select 1 from dsales.dsales_excluded_customers(l.phone_normalized))
     and not exists (select 1 from dsales.dsales_chat_links l2 join public.iim_sessions s2 on s2.ms_id = l2.ms_id
                     where l2.phone_normalized = l.phone_normalized and s2.page <> 'Host Tail')
   limit 1;

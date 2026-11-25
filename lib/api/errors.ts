@@ -5,6 +5,7 @@ export const ERROR_TEXT: Readonly<Record<string, string>> = {
   no_call: 'ลูกค้ารายนี้ไม่สะดวกให้โทร',
   campaign_closed: 'แคมเปญนี้ปิดหรือสิ้นสุดแล้ว จองลูกค้าเข้าแคมเปญไม่ได้',
   campaign_quota: 'คุณจองลูกค้าในแคมเปญนี้ครบจำนวนสูงสุดแล้ว',
+  cs_customer: 'ลูกค้ารายนี้เป็นเคสบริการ/เคลม หรือลูกค้า B2B — ไม่ดึงเข้า Direct Sale',
   forbidden: 'ไม่มีสิทธิ์ทำรายการนี้',
   bill_required: 'ใส่เลขบิลก่อนปิดการขาย',
   not_found: 'ไม่พบข้อมูลรายการนี้',

@@ -33,13 +33,13 @@ begin
     jsonb_build_object('products', jsonb_build_array(jsonb_build_object('skus', jsonb_build_array(v_sku)))));
   reset role;
   select count(distinct b.phone_normalized) into v_exp from dsales.dsales_customer_base b
-    where b.eligible and exists (select 1 from public.lendi_purchase_lines l where l.phone = b.phone_normalized and l.sku = v_sku);
+    where b.eligible and b.phone_normalized not in (select x.phone from dsales.dsales_excluded_customers() x) and exists (select 1 from public.lendi_purchase_lines l where l.phone = b.phone_normalized and l.sku = v_sku);
   insert into _r values ('buyers', v_n::text);
   assert v_n = v_exp and v_n > 0, format('sku filter: got %s expected %s', v_n, v_exp);
 
   -- หลายกลุ่ม = ต้องซื้อครบทุกกลุ่ม · SKU หลายตัวในกลุ่มเดียว = ตัวใดก็ได้
   select count(distinct b.phone_normalized) into v_exp from dsales.dsales_customer_base b
-    where b.eligible and exists (select 1 from public.lendi_purchase_lines l where l.phone = b.phone_normalized and l.sku = v_sku)
+    where b.eligible and b.phone_normalized not in (select x.phone from dsales.dsales_excluded_customers() x) and exists (select 1 from public.lendi_purchase_lines l where l.phone = b.phone_normalized and l.sku = v_sku)
       and exists (select 1 from public.lendi_purchase_lines l where l.phone = b.phone_normalized and l.sku = v_sku2);
   set local role authenticated;
   perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
@@ -50,12 +50,12 @@ begin
     jsonb_build_object('products', jsonb_build_array(jsonb_build_object('skus', jsonb_build_array(v_sku, v_sku2)))));
   reset role;
   select count(distinct b.phone_normalized) into v_exp from dsales.dsales_customer_base b
-    where b.eligible and exists (select 1 from public.lendi_purchase_lines l where l.phone = b.phone_normalized and l.sku in (v_sku, v_sku2));
+    where b.eligible and b.phone_normalized not in (select x.phone from dsales.dsales_excluded_customers() x) and exists (select 1 from public.lendi_purchase_lines l where l.phone = b.phone_normalized and l.sku in (v_sku, v_sku2));
   assert v_n = v_exp, format('one group OR: got %s expected %s', v_n, v_exp);
 
   -- kw (ชื่อ/SKU มีคำค้น) · กลุ่มว่างไม่นับเป็นเงื่อนไข
   select count(distinct b.phone_normalized) into v_exp from dsales.dsales_customer_base b
-    where b.eligible and exists (select 1 from public.lendi_purchase_lines l where l.phone = b.phone_normalized
+    where b.eligible and b.phone_normalized not in (select x.phone from dsales.dsales_excluded_customers() x) and exists (select 1 from public.lendi_purchase_lines l where l.phone = b.phone_normalized
       and position(v_kw in lower(coalesce(l.sku, '') || ' ' || coalesce(l.product_name, ''))) > 0);
   set local role authenticated;
   perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
@@ -71,10 +71,10 @@ begin
     jsonb_build_object('bought_from', '2026-10-01', 'bought_to', '2026-10-31'));
   reset role;
   select count(distinct b.phone_normalized) into v_exp from dsales.dsales_customer_base b
-    where b.eligible and exists (select 1 from public.lendi_purchase_lines l where l.phone = b.phone_normalized and l.txn_date between '2026-10-01' and '2026-10-31');
+    where b.eligible and b.phone_normalized not in (select x.phone from dsales.dsales_excluded_customers() x) and exists (select 1 from public.lendi_purchase_lines l where l.phone = b.phone_normalized and l.txn_date between '2026-10-01' and '2026-10-31');
   assert v_n = v_exp, format('bought range: got %s expected %s', v_n, v_exp);
   select count(distinct b.phone_normalized) into v_exp from dsales.dsales_customer_base b
-    where b.eligible and exists (select 1 from public.lendi_purchase_lines l where l.phone = b.phone_normalized
+    where b.eligible and b.phone_normalized not in (select x.phone from dsales.dsales_excluded_customers() x) and exists (select 1 from public.lendi_purchase_lines l where l.phone = b.phone_normalized
       group by coalesce(nullif(l.bill_no, ''), nullif(l.order_no, ''), l.sale_id::text) having sum(coalesce(l.amount, l.estimated_amount, 0)) >= 5000);
   set local role authenticated;
   perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
@@ -94,6 +94,7 @@ begin
     where b.eligible and b.owner_id is null
       and not exists (select 1 from dsales.dsales_leads x where x.phone_normalized = b.phone_normalized)
       and exists (select 1 from public.customer_identities ci where ci.primary_phone = b.phone_normalized)
+      and b.phone_normalized not in (select x.phone from dsales.dsales_excluded_customers() x)
     order by b.phone_normalized limit 3) t;
   assert cardinality(v_ph) = 3, 'need 3 pool phones';
 

@@ -43,6 +43,7 @@ describe('labels', () => {
     expect(skipLabel('no_chat_room')).toBe('ไม่พบห้องแชตของแบรนด์นี้');
     expect(skipLabel('window_closed')).toBe('หมดช่วงส่งข้อความ (ลูกค้าไม่ได้ทักมาเกิน 7 วัน)');
     expect(skipLabel('claim_failed')).toBe('จองลูกค้าไม่สำเร็จ');
+    expect(skipLabel('cs_customer')).toBe('ลูกค้าเคสบริการ/เคลม หรือ B2B (ไม่ทักขาย)');
     expect(skipLabel('something_new')).toBe('something_new');
     expect(statusLabel('queued')).toBe('รอส่ง');
     expect(statusBadge('sent')).toBe('s-won');
@@ -53,6 +54,7 @@ describe('labels', () => {
     expect(itemErrorText(null)).toBe('');
     expect(itemErrorText('room_mismatch')).toBe('ห้องแชตไม่ตรงกับที่บันทึกไว้ (ไม่ได้ส่ง)');
     expect(itemErrorText('window_closed')).toContain('โทรหาแทน');
+    expect(itemErrorText('cs_customer')).toBe('ยกเลิก: ลูกค้าเคสบริการ/เคลม หรือ B2B');
     expect(itemErrorText('jst_error: ห้องถูกปิด')).toBe('JST ส่งไม่สำเร็จ: ห้องถูกปิด');
     expect(itemErrorText('stale_sending')).toBe('ส่งค้างนานเกินไป ระบบคืนเข้าคิว');
   });

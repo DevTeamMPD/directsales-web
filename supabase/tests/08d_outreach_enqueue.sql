@@ -17,6 +17,7 @@ begin
     join dsales.dsales_customer_base b on b.phone_normalized = l.phone_normalized
     where s.page in ('Bebeplayofficial', 'SH_bebeplay', 'LA_bebeplay') and b.owner_id is null
       and not exists (select 1 from dsales.dsales_leads x where x.phone_normalized = l.phone_normalized)
+      and not exists (select 1 from dsales.dsales_excluded_customers(l.phone_normalized)) -- ลูกค้าเคส CS/B2B ถูกข้ามตั้งแต่ 20261125120000
     limit 20) t;
   assert cardinality(v_phones) >= 3, 'need pool phones with Bebeplay rooms';
   v_pool := v_phones[1];
