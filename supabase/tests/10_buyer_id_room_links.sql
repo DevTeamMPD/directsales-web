@@ -19,6 +19,7 @@ begin
   update dsales.dsales_settings set value = jsonb_build_array(v_worker::text) where key = 'worker_user_ids';
   insert into dsales.dsales_settings (key, value) values ('meta_page_ids', '{"Bebeplay": "111222333"}'::jsonb)
     on conflict (key) do update set value = excluded.value;
+  update dsales.dsales_settings set value = '""'::jsonb where key = 'worker_primary'; -- no primary: every worker may claim (20261126100000)
   select min(dsales.dsales_norm_phone(o.phone)) into v_phone from public.order_tracking o where btrim(o.buyer_account_no) = v_bid;
   assert v_phone is not null and (select count(distinct dsales.dsales_norm_phone(o.phone)) from public.order_tracking o
                                    where btrim(o.buyer_account_no) = v_bid) = 1, 'fixture: buyer id with one phone';
