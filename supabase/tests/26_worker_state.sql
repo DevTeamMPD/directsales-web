@@ -43,13 +43,15 @@ begin
   begin perform dsales.dsales_worker_state_reset('t26'); exception when others then v_ok := sqlerrm = 'worker_busy'; end;
   assert v_ok, 'reset while a tick holds the lease -> worker_busy';
   perform set_config('request.jwt.claims', json_build_object('sub', v_w, 'role', 'authenticated')::text, true);
-  perform dsales.dsales_worker_state_end('t26', '{"state":"needs_login"}'::jsonb, null);
+  perform dsales.dsales_worker_state_end('t26', '{"state":"needs_login","failures":4,"loginTimes":[1]}'::jsonb, null);
 
-  -- session upload (no lease held): new cookies, needs_login -> running
+  -- session upload (no lease held): new cookies, needs_login -> running, failure counters reset
   perform dsales.dsales_worker_session_put('t26', '[{"name":"b","value":"2"}]'::jsonb);
   reset role;
   select runtime ->> 'state' into v_t from dsales.dsales_worker_state where worker_id = 't26';
   assert v_t = 'running', format('session upload clears needs_login, got %s', v_t);
+  assert (select runtime -> 'failures' = '0'::jsonb and runtime -> 'loginTimes' = '[]'::jsonb
+            from dsales.dsales_worker_state where worker_id = 't26'), 'session upload resets failures and loginTimes';
   select count(*) into v_n from vault.secrets where name = 'dsales_jst_session_t26';
   assert v_n = 1, 'upload updates the same Vault secret';
   set local role authenticated;

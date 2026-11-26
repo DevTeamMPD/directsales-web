@@ -210,7 +210,7 @@ begin
   perform dsales.dsales_worker_session_write(v_id, p_cookies);
   update dsales.dsales_worker_state
      set runtime = case when runtime ->> 'state' = 'needs_login'
-                        then (runtime - 'lastError') || '{"state":"running","sessionOk":null}'::jsonb
+                        then (runtime - 'lastError') || '{"state":"running","sessionOk":null,"failures":0,"loginTimes":[]}'::jsonb
                         else runtime end,
          updated_at = now()
    where worker_id = v_id;
