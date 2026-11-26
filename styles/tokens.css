@@ -45,6 +45,18 @@
   --bebe: #A3204E;    --bebe-soft: #FFE9F0;
   --host: #0F7A5C;    --host-soft: #E6F6F1;
 
+  /* RFM groups on the /rfm map (.rfm-seg-<slug>) — neighbours differ in lightness, not only hue */
+  --rfm-champion: #0E2A5E;        --rfm-champion-fg: #FFFFFF;
+  --rfm-shouldn-t-lose: #6A3FB5;  --rfm-shouldn-t-lose-fg: #FFFFFF;
+  --rfm-loyal: #1557C0;           --rfm-loyal-fg: #FFFFFF;
+  --rfm-sleepers: #DCCBF5;        --rfm-sleepers-fg: #2C1A57;
+  --rfm-promising: #BCD3FA;       --rfm-promising-fg: #0E2A5E;
+  --rfm-need-attention: #F6D9EC;  --rfm-need-attention-fg: #561A40;
+  --rfm-hot: #157F3D;             --rfm-hot-fg: #FFFFFF;
+  --rfm-warm: #8FD3A8;            --rfm-warm-fg: #0E3D20;
+  --rfm-cold: #DDF2E4;            --rfm-cold-fg: #0E3D20;
+  --rfm-lost: #FDECC8;            --rfm-lost-fg: #4A2B05;
+
   /* shape */
   --radius-sm: 6px;
   --radius: 10px;
@@ -71,6 +83,11 @@
     --bebe: #F28AB0; --bebe-soft: #3A1D29; --host: #6FD3B6; --host-soft: #15322A;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4); --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
     --scrim: rgba(0, 0, 0, .55);
+    --rfm-champion: #A9C4F7; --rfm-champion-fg: #0B1B3A; --rfm-shouldn-t-lose: #B79AF0; --rfm-shouldn-t-lose-fg: #1F1140;
+    --rfm-loyal: #4C8DF6; --rfm-loyal-fg: #06132B; --rfm-sleepers: #3D2C6B; --rfm-sleepers-fg: #E6DAFB;
+    --rfm-promising: #24406F; --rfm-promising-fg: #D6E4FD; --rfm-need-attention: #5A2748; --rfm-need-attention-fg: #F8DDEE;
+    --rfm-hot: #6FD69A; --rfm-hot-fg: #06281A; --rfm-warm: #2E6B46; --rfm-warm-fg: #DFF5E7;
+    --rfm-cold: #1D3A29; --rfm-cold-fg: #CFEBD9; --rfm-lost: #4A3A1A; --rfm-lost-fg: #FBE7BF;
     color-scheme: dark;
   }
 }
@@ -85,5 +102,10 @@
   --bebe: #F28AB0; --bebe-soft: #3A1D29; --host: #6FD3B6; --host-soft: #15322A;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4); --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
   --scrim: rgba(0, 0, 0, .55);
+  --rfm-champion: #A9C4F7; --rfm-champion-fg: #0B1B3A; --rfm-shouldn-t-lose: #B79AF0; --rfm-shouldn-t-lose-fg: #1F1140;
+  --rfm-loyal: #4C8DF6; --rfm-loyal-fg: #06132B; --rfm-sleepers: #3D2C6B; --rfm-sleepers-fg: #E6DAFB;
+  --rfm-promising: #24406F; --rfm-promising-fg: #D6E4FD; --rfm-need-attention: #5A2748; --rfm-need-attention-fg: #F8DDEE;
+  --rfm-hot: #6FD69A; --rfm-hot-fg: #06281A; --rfm-warm: #2E6B46; --rfm-warm-fg: #DFF5E7;
+  --rfm-cold: #1D3A29; --rfm-cold-fg: #CFEBD9; --rfm-lost: #4A3A1A; --rfm-lost-fg: #FBE7BF;
   color-scheme: dark;
 }
