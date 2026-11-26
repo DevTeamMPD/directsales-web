@@ -408,7 +408,7 @@ export function createJstClient({
     ping,
     recentMessages,
     send,
-    /** โหลด cookie จากไฟล์ใหม่ (หลัง import-session.mjs) */
+    /** โหลด cookie จาก session store ใหม่ (เช่นหลัง import-session.mjs เขียนไฟล์) */
     reloadSession: loadSession,
     sessionMtime,
     hasSession: () => jar.size > 0,

@@ -35,3 +35,9 @@ test('memoryStore: starts clean, becomes dirty on save, hands out copies', () =>
   assert.deepEqual(s.cookies(), [{ name: 'a', value: '2' }]);
   assert.equal(s.mtime(), 0);
 });
+
+test('memoryStore: saving identical cookies does not mark dirty', () => {
+  const s = memoryStore([{ name: 'a', value: '1' }]);
+  s.save([{ name: 'a', value: '1', path: '/' }]);
+  assert.equal(s.dirty, false);
+});

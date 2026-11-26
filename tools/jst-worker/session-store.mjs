@@ -39,8 +39,9 @@ export function memoryStore(initial = []) {
   return {
     load: () => cookies.map((c) => ({ ...c })),
     save(next) {
-      cookies = cleanCookies(next);
-      dirty = true;
+      const cleaned = cleanCookies(next);
+      if (JSON.stringify(cleaned) !== JSON.stringify(cookies)) dirty = true;
+      cookies = cleaned;
     },
     mtime: () => 0,
     cookies: () => cookies.map((c) => ({ ...c })),

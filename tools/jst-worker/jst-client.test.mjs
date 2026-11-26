@@ -306,4 +306,7 @@ test('ping: asks for one session with no ids; 401 → SessionExpired; bad shape 
 
   const odd = createJstClient({ sessionStore: memoryStore(), fetch: fakeFetch({ 'POST /iim/getSessions': () => res({ success: true, data: {} }) }) });
   await assert.rejects(odd.ping(), ShapeError);
+
+  const busy = createJstClient({ sessionStore: memoryStore(), fetch: fakeFetch({ 'POST /iim/getSessions': () => res({ success: false, message: 'busy' }) }) });
+  await assert.rejects(busy.ping(), (e) => e instanceof JstError && e.message === 'busy');
 });
