@@ -117,6 +117,6 @@ begin
          'session_write is internal';
   assert not has_function_privilege('authenticated', 'dsales.dsales_worker_is_standby(text)', 'execute'),
          'is_standby is internal';
-  raise notice 'OK 26_worker_state';
+  raise notice 'OK 29_worker_state';
 end $$;
 rollback;

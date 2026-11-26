@@ -26,6 +26,6 @@ begin
   assert v_ok, 'authenticated cannot call the kick';
   reset role;
   assert not has_function_privilege('anon', 'dsales.dsales_tick_kick()', 'execute'), 'anon cannot call the kick';
-  raise notice 'OK 27_tick_kick';
+  raise notice 'OK 30_tick_kick';
 end $$;
 rollback;

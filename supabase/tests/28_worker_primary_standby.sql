@@ -4,7 +4,7 @@ begin;
 -- with no worker_primary the old behaviour is kept
 do $$
 declare
-  v_admin uuid; v_w uuid; v_tpl uuid; v_b uuid; c jsonb; v_n int; s jsonb;
+  v_admin uuid; v_w uuid; v_tpl uuid; v_b uuid; c jsonb; v_n int; s jsonb; v_st text;
 begin
   select user_id into v_admin from dsales.dsales_members where role = 'admin' and active order by created_at limit 1;
   select (x #>> '{}')::uuid into v_w from jsonb_array_elements(dsales.dsales_setting('worker_user_ids')) x limit 1;
@@ -37,6 +37,19 @@ begin
   c := dsales.dsales_worker_claim('t25-primary');
   assert (c ->> 'ms_id')::bigint = 711 and (c ->> 'attempts')::int = 1, format('the primary claims, got %s', c);
   perform dsales.dsales_worker_report((c ->> 'id')::uuid, 'requeue', 'x', null);
+
+  -- the primary keeps heartbeating but never reports: a row stuck in sending for > 10 minutes
+  -- is still requeued by a standby's claim, even though the standby itself gets nothing
+  reset role;
+  update dsales.dsales_outreach_queue
+     set status = 'sending', locked_at = now() - interval '11 minutes', locked_by = 't25-primary'
+   where id = (c ->> 'id')::uuid;
+  set local role authenticated;
+  assert dsales.dsales_worker_claim('t25-standby') is null, 'standby still gets nothing while the primary is fresh and running';
+  reset role;
+  select status into v_st from dsales.dsales_outreach_queue where id = (c ->> 'id')::uuid;
+  assert v_st = 'queued', format('a standby claim requeues a row stuck in sending, got %s', v_st);
+  set local role authenticated;
 
   -- stale heartbeat -> the standby takes over
   reset role;
@@ -76,6 +89,6 @@ begin
   c := dsales.dsales_worker_claim('t25-standby');
   assert (c ->> 'ms_id')::bigint = 712, format('no primary -> any worker claims, got %s', c);
   reset role;
-  raise notice 'OK 25_worker_primary_standby';
+  raise notice 'OK 28_worker_primary_standby';
 end $$;
 rollback;

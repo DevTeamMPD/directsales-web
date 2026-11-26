@@ -73,13 +73,13 @@ pg_cron (ทุกนาที) → dsales.dsales_tick_kick() → net.http_post 
 
 ### 4.3 RPC ที่แก้
 - ฟังก์ชันภายใน `dsales_worker_is_standby(p_worker text) returns boolean` — จริงเมื่อ `worker_primary` มีค่า, ไม่ใช่ `p_worker`, และแถวของตัวหลักใน `dsales_worker_status` มี `state = 'running'` กับ `heartbeat_at > now() - interval '3 minutes'`
-- `dsales_worker_claim(p_worker)` — ถ้า `dsales_worker_is_standby(p_worker)` คืน `null` ก่อนทำอย่างอื่น (ส่วนที่เหลือเหมือนเดิม)
+- `dsales_worker_claim(p_worker)` — ถ้า `dsales_worker_is_standby(p_worker)` คืน `null` หลังจากถือ advisory lock และคืนแถว `sending` ที่ค้างเกิน 10 นาทีเข้าคิวแล้ว (ตัวสำรองจึงยังกู้แถวที่ค้าง เมื่อตัวหลักส่ง heartbeat แต่ไม่รายงานผล) ส่วนที่เหลือเหมือนเดิม
 - `dsales_worker_link_targets(p_worker, p_limit)` — ถ้าเป็นตัวสำรอง คืนชุดว่าง (สองตัวจะไม่ค้นรหัสซ้ำกัน)
 - `dsales_worker_status_get()` — เพิ่ม `primary` (ค่า `worker_primary`) ในผลลัพธ์ และ `is_primary` ต่อ worker
 
 ### 4.4 RPC ใหม่ของเว็บ (หัวหน้าเท่านั้น)
-- `dsales_worker_state_reset(p_worker text) returns void` — ตั้ง `runtime` เป็น `{}` และล้าง lease · ใช้แทน "รีสตาร์ท worker" เมื่อ worker บน Vercel อยู่ในสถานะ `stopped` (JST เปลี่ยนรูปแบบ response) หลัง dev ตรวจแล้ว
-- `dsales_worker_primary_set(p_worker text) returns void` — ตั้ง `worker_primary` (รับเฉพาะ worker_id ที่มีใน `dsales_worker_status` หรือค่าว่าง)
+- `dsales_worker_state_reset(p_worker text) returns jsonb` (สถานะแบบเดียวกับ `dsales_worker_status_get()`) — ตั้ง `runtime` เป็น `{}` และล้าง lease · ตอบ `worker_busy` ขณะรอบหนึ่งถือ lease (ลองใหม่หลังรอบนั้นจบ) · ใช้แทน "รีสตาร์ท worker" เมื่อ worker บน Vercel อยู่ในสถานะ `stopped` (JST เปลี่ยนรูปแบบ response) หลัง dev ตรวจแล้ว
+- `dsales_worker_primary_set(p_worker text) returns jsonb` (สถานะแบบเดียวกับ `dsales_worker_status_get()`) — ตั้ง `worker_primary` (รับเฉพาะ worker_id ที่มีใน `dsales_worker_status` หรือค่าว่าง)
 
 ### 4.5 ตัวปลุก
 `dsales_tick_kick() returns bigint` (security definer, `search_path = ''`, ไม่ grant ให้ใคร): ถ้า `worker_tick_enabled` ไม่เป็น true หรือไม่มี secret ครบสองตัว คืน `null` · ไม่เช่นนั้น `net.http_post(url := <dsales_app_url> || '/api/cron/outreach-tick', headers := Authorization Bearer <dsales_cron_secret>, body := '{}', timeout_milliseconds := 55000)`
@@ -128,7 +128,7 @@ components/setup/OutreachPanels.tsx   การ์ด Worker: ป้าย "ต�
 
 ## 8. การทดสอบ
 
-- **DB** (ขั้นตอน migration ใน `CLAUDE.md`): `25_worker_primary_standby.sql` (ตัวสำรองไม่ได้งานเมื่อตัวหลักสด/running, ได้งานเมื่อ heartbeat เก่าหรือ state อื่น, ไม่มี `worker_primary` = พฤติกรรมเดิม, `link_targets` ว่างสำหรับตัวสำรอง) · `26_worker_state.sql` (lease กันซ้อน/หมดอายุเอง, cookie ไป-กลับผ่าน Vault, `session_put` ปลด `needs_login`, `state_reset` และ `primary_set` เฉพาะหัวหน้า, เซลล์และผู้ที่ไม่ใช่ worker เรียกไม่ได้, ตารางอ่านตรงไม่ได้) · `27_tick_kick.sql` (ปิดสวิตช์/ไม่มี secret = ไม่ยิง, ไม่มีใครเรียกได้นอกจาก cron)
+- **DB** (ขั้นตอน migration ใน `CLAUDE.md`): `28_worker_primary_standby.sql` (ตัวสำรองไม่ได้งานเมื่อตัวหลักสด/running, ได้งานเมื่อ heartbeat เก่าหรือ state อื่น, ไม่มี `worker_primary` = พฤติกรรมเดิม, `link_targets` ว่างสำหรับตัวสำรอง) · `29_worker_state.sql` (lease กันซ้อน/หมดอายุเอง, cookie ไป-กลับผ่าน Vault, `session_put` ปลด `needs_login`, `state_reset` และ `primary_set` เฉพาะหัวหน้า, เซลล์และผู้ที่ไม่ใช่ worker เรียกไม่ได้, ตารางอ่านตรงไม่ได้) · `30_tick_kick.sql` (ปิดสวิตช์/ไม่มี secret = ไม่ยิง, ไม่มีใครเรียกได้นอกจาก cron)
 - **worker** (`node --test`): session store สองแบบ · `exportState` → `initialState` ได้พฤติกรรมเดียวกับลูปต่อเนื่อง (paused, needs_login, จำกัดล็อกอิน, pendingReports) · `tick` หยุดตามเวลาและจำนวนรหัส, ข้ามเมื่อ lease ไม่ว่าง, ไม่เขียน cookie เมื่อไม่เปลี่ยน · test เดิมทั้งหมดต้องผ่านโดยไม่แก้
 - **เว็บ**: unit test ของ `lib/cron/auth.ts` และข้อความ/ป้ายของการ์ด Worker · e2e โหมด fixture ของการ์ด (ป้ายตัวหลัก/ตัวสำรอง, ปุ่ม)
 - **ทดสอบจริง**: ตามข้อ 9 ในโหมดทดสอบ (ส่งเข้าห้องทดสอบเท่านั้น)

@@ -24,8 +24,8 @@
 
 | ไฟล์ | หน้าที่ |
 |---|---|
-| `supabase/migrations/20261126100000_dsales_worker_tick.sql` | สร้าง: ตารางสถานะ, RPC ใหม่, กติกาตัวสำรอง, ตัวปลุก + cron |
-| `supabase/tests/25_worker_primary_standby.sql` / `26_worker_state.sql` / `27_tick_kick.sql` | สร้าง: SQL test |
+| `supabase/migrations/20261126120000_dsales_worker_tick.sql` | สร้าง: ตารางสถานะ, RPC ใหม่, กติกาตัวสำรอง, ตัวปลุก + cron |
+| `supabase/tests/28_worker_primary_standby.sql` / `29_worker_state.sql` / `30_tick_kick.sql` | สร้าง: SQL test |
 | `tools/jst-worker/session-store.mjs` (+ `.test.mjs`) | สร้าง: ที่เก็บ cookie แบบไฟล์และแบบหน่วยความจำ |
 | `tools/jst-worker/jst-client.mjs` | แก้: รับ `sessionStore`, เพิ่ม `ping()` |
 | `tools/jst-worker/worker-core.mjs` | แก้: `initialState`, `exportState()`, `tick()` |
@@ -62,10 +62,10 @@ Expected: ทุกไฟล์ผ่าน
 ### Task 1: ฐานข้อมูล — ตารางสถานะ, กติกาตัวสำรอง, ตัวปลุก
 
 **Files:**
-- Create: `supabase/tests/25_worker_primary_standby.sql`, `supabase/tests/26_worker_state.sql`, `supabase/tests/27_tick_kick.sql`
-- Create: `supabase/migrations/20261126100000_dsales_worker_tick.sql`
+- Create: `supabase/tests/28_worker_primary_standby.sql`, `supabase/tests/29_worker_state.sql`, `supabase/tests/30_tick_kick.sql`
+- Create: `supabase/migrations/20261126120000_dsales_worker_tick.sql`
 
-- [ ] **Step 1: เขียน test `supabase/tests/25_worker_primary_standby.sql`**
+- [ ] **Step 1: เขียน test `supabase/tests/28_worker_primary_standby.sql`**
 
 ```sql
 begin;
@@ -141,12 +141,12 @@ begin
   c := dsales.dsales_worker_claim('t25-standby');
   assert (c ->> 'ms_id')::bigint = 712, format('no primary -> any worker claims, got %s', c);
   reset role;
-  raise notice 'OK 25_worker_primary_standby';
+  raise notice 'OK 28_worker_primary_standby';
 end $$;
 rollback;
 ```
 
-- [ ] **Step 2: เขียน test `supabase/tests/26_worker_state.sql`**
+- [ ] **Step 2: เขียน test `supabase/tests/29_worker_state.sql`**
 
 ```sql
 begin;
@@ -245,12 +245,12 @@ begin
   r := dsales.dsales_worker_primary_set('');
   assert r ->> 'primary' is null, 'empty clears the primary';
   reset role;
-  raise notice 'OK 26_worker_state';
+  raise notice 'OK 29_worker_state';
 end $$;
 rollback;
 ```
 
-- [ ] **Step 3: เขียน test `supabase/tests/27_tick_kick.sql`**
+- [ ] **Step 3: เขียน test `supabase/tests/30_tick_kick.sql`**
 
 ```sql
 begin;
@@ -280,7 +280,7 @@ begin
   begin perform dsales.dsales_tick_kick(); exception when insufficient_privilege then v_ok := true; end;
   assert v_ok, 'authenticated cannot call the kick';
   reset role;
-  raise notice 'OK 27_tick_kick';
+  raise notice 'OK 30_tick_kick';
 end $$;
 rollback;
 ```
@@ -288,9 +288,11 @@ rollback;
 - [ ] **Step 4: รัน test ทั้งสามให้เห็นว่าล้ม**
 
 รันทีละไฟล์ด้วย MCP `execute_sql` (`project_id = "nroyacasuchqniaiuirk"`)
-Expected: 25 ล้มที่ `standby gets nothing…` หรือ `function … does not exist` · 26 ล้มที่ `function dsales.dsales_worker_state_begin(unknown, integer) does not exist` · 27 ล้มที่ `function dsales.dsales_tick_kick() does not exist`
+Expected: 28 ล้มที่ `standby gets nothing…` หรือ `function … does not exist` · 29 ล้มที่ `function dsales.dsales_worker_state_begin(unknown, integer) does not exist` · 30 ล้มที่ `function dsales.dsales_tick_kick() does not exist`
 
-- [ ] **Step 5: เขียน migration `supabase/migrations/20261126100000_dsales_worker_tick.sql`**
+- [ ] **Step 5: เขียน migration `supabase/migrations/20261126120000_dsales_worker_tick.sql`**
+
+> ไฟล์ migration ใน repo เป็นตัวจริง (authoritative) ถ้าโค้ดด้านล่างต่างจากไฟล์ ให้ยึดไฟล์ · `dsales_worker_claim` ตรวจตัวสำรองหลังจากถือ advisory lock และปล่อยแถว `sending` ที่ค้างเกิน 10 นาทีกลับคิวแล้ว (ตัวสำรองจึงยังช่วยปล่อยงานค้างได้)
 
 ```sql
 -- Worker on Vercel woken every minute + office PC as standby (spec 2026-11-26-cloud-tick-worker-design.md).
@@ -332,7 +334,8 @@ language sql stable security definer set search_path = dsales, public as $$
 $$;
 revoke all on function dsales.dsales_worker_is_standby(text) from public, anon, authenticated;
 
--- same as 20261120100500 plus the standby rule on the first line of the body
+-- same as 20261120100500 plus the standby rule, checked after the stale-'sending' requeue so a standby still
+-- requeues rows stuck in 'sending' when the primary keeps heartbeating but never reports
 create or replace function dsales.dsales_worker_claim(p_worker text) returns jsonb
 language plpgsql security definer set search_path = dsales, public as $$
 declare
@@ -345,13 +348,13 @@ declare
   v_line_cap int := coalesce((dsales.dsales_setting('line_monthly_cap') #>> '{}')::int, 0);
   v_line_sent int; v_id uuid; q dsales.dsales_outreach_queue;
 begin
-  if dsales.dsales_worker_is_standby(p_worker) then return null; end if;
   perform pg_advisory_xact_lock(hashtext('dsales_worker_claim'));
   update dsales.dsales_outreach_queue
      set status = case when attempts >= 3 then 'failed' else 'queued' end,
          error = case when attempts >= 3 then coalesce(error, 'stale_sending') else error end,
          locked_at = null, locked_by = null
    where status = 'sending' and locked_at < now() - interval '10 minutes';
+  if dsales.dsales_worker_is_standby(p_worker) then return null; end if;
   if v_test and cardinality(v_test_ids) = 0 then return null; end if;
   if exists (select 1 from dsales.dsales_outreach_queue where status = 'sending') then return null; end if;
   if v_interval > 0 and exists (select 1 from dsales.dsales_outreach_queue where sent_at > now() - make_interval(secs => v_interval)) then
@@ -556,9 +559,9 @@ select cron.schedule('dsales-outreach-tick', '* * * * *', $cron$select dsales.ds
 
 - [ ] **Step 6: Dry run**
 
-`execute_sql` ครั้งเดียว = `begin;` + migration ทั้งไฟล์ + ตัว test 25, 26, 27 (ตัด `begin;`/`rollback;` ของแต่ละ test) + `rollback;`
-Expected: ไม่มี error และเห็น notice `OK 25_…`, `OK 26_…`, `OK 27_…`
-ถ้า test 26 ล้มที่ `vault.create_secret` / `vault.update_secret` (สิทธิ์เขียน Vault) → **หยุด** แจ้งผู้ใช้และกลับไปทบทวน spec ข้อ 4.1 ก่อนทำต่อ
+`execute_sql` ครั้งเดียว = `begin;` + migration ทั้งไฟล์ + ตัว test 28, 29, 30 (ตัด `begin;`/`rollback;` ของแต่ละ test) + `rollback;`
+Expected: ไม่มี error และเห็น notice `OK 28_…`, `OK 29_…`, `OK 30_…`
+ถ้า test 29 ล้มที่ `vault.create_secret` / `vault.update_secret` (สิทธิ์เขียน Vault) → **หยุด** แจ้งผู้ใช้และกลับไปทบทวน spec ข้อ 4.1 ก่อนทำต่อ
 
 - [ ] **Step 7: ถามผู้ใช้ แล้ว apply**
 
@@ -567,14 +570,14 @@ Expected: ไม่มี error และเห็น notice `OK 25_…`, `OK 26
 
 - [ ] **Step 8: รัน test ใหม่และ regression**
 
-รันทีละไฟล์: `25_worker_primary_standby.sql`, `26_worker_state.sql`, `27_tick_kick.sql`, `08f_worker_rpcs.sql`, `08g_worker_settings.sql`, `10_buyer_id_room_links.sql`
+รันทีละไฟล์: `28_worker_primary_standby.sql`, `29_worker_state.sql`, `30_tick_kick.sql`, `08f_worker_rpcs.sql`, `08g_worker_settings.sql`, `10_buyer_id_room_links.sql`
 Expected: ทุกไฟล์ผ่าน (notice `OK …`)
 ตรวจหลัง apply ด้วย `execute_sql`: `select state, heartbeat_at > now() - interval '3 minutes' as online from dsales.dsales_worker_status where worker_id = 'office-1';` → `office-1` ยัง `running` / online
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add supabase/migrations/20261126100000_dsales_worker_tick.sql supabase/tests/25_worker_primary_standby.sql supabase/tests/26_worker_state.sql supabase/tests/27_tick_kick.sql
+git add supabase/migrations/20261126120000_dsales_worker_tick.sql supabase/tests/28_worker_primary_standby.sql supabase/tests/29_worker_state.sql supabase/tests/30_tick_kick.sql
 git commit -m "feat(db): worker state, primary/standby rule and per-minute tick kick
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -2134,7 +2137,7 @@ JST เปลี่ยนรูปแบบ response — ให้ dev ตรว
 (ก) ในรายการ "Migration เพิ่มเติมที่มีอยู่แล้ว" เพิ่มบรรทัดก่อนบรรทัด `20261123140000_dsales_reset_trial_data.sql`:
 
 ```markdown
-  - `20261126100000_dsales_worker_tick.sql` — **worker ตัวหลักบน Vercel + `office-1` เป็นตัวสำรอง** (spec `docs/superpowers/specs/2026-11-26-cloud-tick-worker-design.md`): cron `dsales-outreach-tick` ทุกนาที → `dsales_tick_kick()` → `POST /api/cron/outreach-tick` (`app/api/cron/outreach-tick/route.ts` → `tools/jst-worker/tick.mjs`) · ทำงานเมื่อ `worker_tick_enabled = true` และ Vault มี `dsales_app_url` + `dsales_cron_secret` · สถานะข้ามรอบ: ตาราง `dsales_worker_state` (ภายใน ไม่มี grant) + cookie JST ใน Vault `dsales_jst_session_<worker>` ผ่าน `dsales_worker_state_begin` / `_state_end` / `_session_put` (worker เท่านั้น) · `worker_primary`: ตัวที่ไม่ใช่ตัวหลักได้ `claim` = null และ `link_targets` ว่าง ตราบที่ตัวหลัก `running` + heartbeat < 3 นาที (`dsales_worker_is_standby`) · หัวหน้า: `dsales_worker_primary_set` / `dsales_worker_state_reset` (ปุ่มบนการ์ด Worker); test `25_worker_primary_standby.sql`, `26_worker_state.sql`, `27_tick_kick.sql`
+  - `20261126120000_dsales_worker_tick.sql` — **worker ตัวหลักบน Vercel + `office-1` เป็นตัวสำรอง** (spec `docs/superpowers/specs/2026-11-26-cloud-tick-worker-design.md`): cron `dsales-outreach-tick` ทุกนาที → `dsales_tick_kick()` → `POST /api/cron/outreach-tick` (`app/api/cron/outreach-tick/route.ts` → `tools/jst-worker/tick.mjs`) · ทำงานเมื่อ `worker_tick_enabled = true` และ Vault มี `dsales_app_url` + `dsales_cron_secret` · สถานะข้ามรอบ: ตาราง `dsales_worker_state` (ภายใน ไม่มี grant) + cookie JST ใน Vault `dsales_jst_session_<worker>` ผ่าน `dsales_worker_state_begin` / `_state_end` / `_session_put` (worker เท่านั้น) · `worker_primary`: ตัวที่ไม่ใช่ตัวหลักได้ `claim` = null และ `link_targets` ว่าง ตราบที่ตัวหลัก `running` + heartbeat < 3 นาที (`dsales_worker_is_standby`) · หัวหน้า: `dsales_worker_primary_set` / `dsales_worker_state_reset` (ปุ่มบนการ์ด Worker); test `28_worker_primary_standby.sql`, `29_worker_state.sql`, `30_tick_kick.sql`
 ```
 
 (ข) ในกฎความปลอดภัย เพิ่ม `dsales_worker_state` ในวงเล็บรายการตารางภายในที่ห้าม grant (ต่อจาก `dsales_worker_status`)
@@ -2232,7 +2235,10 @@ PR body ระบุ: migration ลง production แล้ว (ค่าเร�
 ```sql
 select worker_id, state, jst_session_ok, now() - heartbeat_at as age, left(coalesce(last_error, ''), 120) as last_error
 from dsales.dsales_worker_status where worker_id in ('vercel', 'office-1');
-select status_code, left(content, 200) as body, created from net._http_response order by created desc limit 3;
+-- net._http_response holds the responses of every system that posts through pg_net (others post every minute): keep this route's only
+select status_code, left(content, 200) as body, created from net._http_response
+ where content like '%cookiesSaved%' or content like '%"skipped"%' or content ~ 'unauthorized|not_configured|tick_failed'
+ order by created desc limit 3;
 ```
 Expected: `vercel` = `running`, `jst_session_ok = true`, age < 1 นาที · response ล่าสุด `status_code = 200` และ body มี `"ok":true` กับ `"region":"icn1"` · `office-1` ยัง `running`
 ถ้า `vercel` เป็น `needs_login` (JST ขอ captcha จาก IP ของโซล) → ทำตาม README หัวข้อ "เมื่อ `vercel` ขึ้น `needs_login`"

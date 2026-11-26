@@ -42,7 +42,8 @@ language sql stable security definer set search_path = dsales, public as $$
 $$;
 revoke all on function dsales.dsales_worker_is_standby(text) from public, anon, authenticated;
 
--- same as 20261120100500 plus the standby rule on the first line of the body
+-- same as 20261120100500 plus the standby rule, checked after the stale-'sending' requeue so a standby still
+-- requeues rows stuck in 'sending' when the primary keeps heartbeating but never reports
 create or replace function dsales.dsales_worker_claim(p_worker text) returns jsonb
 language plpgsql security definer set search_path = dsales, public as $$
 declare
@@ -55,13 +56,13 @@ declare
   v_line_cap int := coalesce((dsales.dsales_setting('line_monthly_cap') #>> '{}')::int, 0);
   v_line_sent int; v_id uuid; q dsales.dsales_outreach_queue;
 begin
-  if dsales.dsales_worker_is_standby(p_worker) then return null; end if;
   perform pg_advisory_xact_lock(hashtext('dsales_worker_claim'));
   update dsales.dsales_outreach_queue
      set status = case when attempts >= 3 then 'failed' else 'queued' end,
          error = case when attempts >= 3 then coalesce(error, 'stale_sending') else error end,
          locked_at = null, locked_by = null
    where status = 'sending' and locked_at < now() - interval '10 minutes';
+  if dsales.dsales_worker_is_standby(p_worker) then return null; end if;
   if v_test and cardinality(v_test_ids) = 0 then return null; end if;
   if exists (select 1 from dsales.dsales_outreach_queue where status = 'sending') then return null; end if;
   if v_interval > 0 and exists (select 1 from dsales.dsales_outreach_queue where sent_at > now() - make_interval(secs => v_interval)) then
