@@ -140,20 +140,32 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
 
   const num = (v) => typeof v === 'number' && Number.isFinite(v);
   /** รับค่าที่ exportState() ของรอบก่อนบันทึกไว้ — ค่าที่รูปแบบผิดถูกข้าม */
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   function importState(src) {
     if (!src || typeof src !== 'object') return;
+    const now = clock.now();
     if (Object.values(STATES).includes(src.state)) s.state = src.state;
     if (typeof src.sessionOk === 'boolean') s.sessionOk = src.sessionOk;
     if (typeof src.lastError === 'string') s.lastError = src.lastError;
-    for (const k of ['failures', 'pausedUntil', 'linkPausedUntil', 'lastJstOkAt']) if (num(src[k])) s[k] = src[k];
-    if (Array.isArray(src.loginTimes)) s.loginTimes = src.loginTimes.filter(num);
+    if (num(src.failures)) s.failures = src.failures;
+    // ค่าเวลาที่เกินช่วงที่เป็นไปได้ถูกตัด — กันสถานะเสียค้างข้ามรอบตลอดไป
+    if (num(src.pausedUntil)) s.pausedUntil = Math.min(src.pausedUntil, now + cfg.pauseMinutes * 60_000);
+    if (num(src.linkPausedUntil)) {
+      s.linkPausedUntil = Math.min(src.linkPausedUntil, now + Math.max(cfg.linkIdleMinutes, cfg.linkPauseMinutes, 360) * 60_000);
+    }
+    if (num(src.lastJstOkAt)) s.lastJstOkAt = Math.min(src.lastJstOkAt, now);
+    if (Array.isArray(src.loginTimes)) {
+      s.loginTimes = src.loginTimes.filter((t) => num(t) && t > now - 3600_000 && t <= now).sort((a, b) => b - a).slice(0, cfg.maxLoginsPerHour);
+    }
     if (Array.isArray(src.pendingReports)) {
+      // รายการรูปแบบผิดทำให้ flushPending โยน error ทุกรอบ — รับเฉพาะที่ถูกต้อง และไม่เกิน 20 รายการ
       s.pendingReports = src.pendingReports
-        .filter((r) => r && typeof r === 'object' && r.id && typeof r.status === 'string')
+        .filter((r) => r && typeof r === 'object' && typeof r.id === 'string' && UUID_RE.test(r.id) && ['sent', 'failed', 'requeue'].includes(r.status))
+        .slice(0, 20)
         .map((r) => ({ id: r.id, status: r.status, error: r.error ?? null, jstMsgId: r.jstMsgId ?? null }));
     }
     if (Array.isArray(src.linkTargets)) {
-      s.linkTargets = src.linkTargets.filter((t) => t && typeof t.buyer_id === 'string' && t.buyer_id.trim() !== '');
+      s.linkTargets = src.linkTargets.filter((t) => t && typeof t.buyer_id === 'string' && t.buyer_id.trim() !== '').slice(0, cfg.linkBatch);
     }
   }
   importState(initialState);
@@ -370,6 +382,7 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
     } catch (e) {
       if (e instanceof ShapeError) {
         s.linkDisabled = true;
+        s.linkPausedUntil = clock.now() + 6 * 3600_000; // จำข้ามรอบ — ไม่ลองค้นที่พังซ้ำทุกนาที
         log('error', 'link sync off for this run: unexpected JST response', { error: clip(e.message) });
       } else if (e instanceof SessionExpired) {
         enterNeedsLogin(`SessionExpired after re-login: ${clip(e.message)}`);
@@ -482,9 +495,11 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
       }
       jstOk();
     } catch (e) {
-      s.sessionOk = false;
-      if (e instanceof ShapeError) setState(STATES.stopped, `ShapeError: ${clip(e.message)}`);
-      else if (e instanceof SessionExpired) enterNeedsLogin(`SessionExpired after re-login: ${clip(e.message)}`);
+      // ล็อกอิน/session ล้มเหลว → enterNeedsLogin ตั้ง sessionOk ให้แล้ว · error ทั่วไป (เครือข่าย) ไม่ถือว่า session เสีย
+      if (e instanceof ShapeError) {
+        s.sessionOk = false;
+        setState(STATES.stopped, `ShapeError: ${clip(e.message)}`);
+      } else if (e instanceof SessionExpired) enterNeedsLogin(`SessionExpired after re-login: ${clip(e.message)}`);
       else if (e instanceof CaptchaRequired || e instanceof LoginFailed || e instanceof LoginUnavailable) enterNeedsLogin(`${e.name}: ${clip(e.message)}`);
       else s.lastError = `ping: ${clip(e?.message || e)}`;
     }
@@ -509,9 +524,14 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
           out.links++;
         }
       }
-      out.pinged = await pingIfQuiet(pingAfterMs);
+      if (clock.now() < deadlineMs) out.pinged = await pingIfQuiet(pingAfterMs);
     } catch (e) {
-      if (!(e instanceof QueueUnavailable)) throw e;
+      if (!(e instanceof QueueUnavailable)) {
+        // error ที่ไม่คาด: แจ้ง heartbeat ก่อน แล้วโยนต่อให้ผู้เรียกเห็น
+        s.lastError = `tick: ${clip(e?.message || e)}`;
+        await heartbeat({ force: true });
+        throw e;
+      }
       s.lastError = clip(e.message);
       log('warn', 'supabase unavailable during tick', { error: clip(e.message) });
       out.result = 'queue_error';

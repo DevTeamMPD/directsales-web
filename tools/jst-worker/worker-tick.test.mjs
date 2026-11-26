@@ -1,7 +1,7 @@
 // node --test — โหมดรอบ (Vercel): initialState / exportState / tick (fake jst / queue / clock)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CaptchaRequired, JstError, SessionExpired } from './jst-client.mjs';
+import { CaptchaRequired, JstError, SessionExpired, ShapeError } from './jst-client.mjs';
 import { createWorker } from './worker-core.mjs';
 
 const ROOM = { msId: 555, chatAccountId: 77, coId: 9, provider: 'Line', page: 'P', name: 'คุณเอ', expired: false };
@@ -109,8 +109,10 @@ test('needs_login survives; state set back to running (session upload) resumes',
   assert.equal(await c.worker.processOne(), 'sent');
 });
 
+const UUID = '123e4567-e89b-12d3-a456-426614174000';
+
 test('a report that could not be delivered is flushed by the next worker before it claims', async () => {
-  const a = setup({ jobs: [job()] });
+  const a = setup({ jobs: [job({ id: UUID })] });
   a.queue.reportError = new Error('supabase down');
   await assert.rejects(a.worker.processOne(), /queue_unavailable/);
   const saved = copy(a.worker.exportState());
@@ -119,7 +121,7 @@ test('a report that could not be delivered is flushed by the next worker before 
 
   const b = setup({ initialState: saved });
   assert.equal(await b.worker.processOne(), 'idle');
-  assert.deepEqual(b.queue.reports.map((r) => [r.id, r.status]), [['q1', 'sent']]);
+  assert.deepEqual(b.queue.reports.map((r) => [r.id, r.status]), [[UUID, 'sent']]);
   assert.equal(b.worker.exportState().pendingReports.length, 0);
 });
 
@@ -222,4 +224,84 @@ test('garbage in initialState is ignored', () => {
     state: 'running', sessionOk: null, lastError: null, failures: 0, pausedUntil: 0, loginTimes: [],
     pendingReports: [], linkTargets: [], linkPausedUntil: 0, lastJstOkAt: 0,
   });
+});
+
+test('importState keeps only well-formed pendingReports and caps them at 20', () => {
+  const good = (i) => ({ id: `123e4567-e89b-12d3-a456-4266141740${String(i).padStart(2, '0')}`, status: 'sent' });
+  const bad = [{ id: 'q1', status: 'sent' }, { id: UUID, status: 'weird' }, { id: 5, status: 'sent' }];
+  const { worker } = setup({ initialState: { pendingReports: [...bad, ...Array.from({ length: 25 }, (_, i) => good(i))] } });
+  const pr = worker.exportState().pendingReports;
+  assert.equal(pr.length, 20);
+  assert.ok(pr.every((r) => r.id.startsWith('123e4567')));
+});
+
+test('importState clamps values that are out of range', () => {
+  const { worker } = setup({
+    initialState: {
+      pausedUntil: T0 + 99 * 3600_000, linkPausedUntil: T0 + 999 * 3600_000, lastJstOkAt: T0 + 5000,
+      loginTimes: [T0 - 10, T0 - 20, T0 - 30, T0 - 40, T0 + 1000, T0 - 2 * 3600_000],
+      linkTargets: targets(80),
+    },
+  });
+  const e = worker.exportState();
+  assert.equal(e.pausedUntil, T0 + 15 * 60_000);
+  assert.equal(e.linkPausedUntil, T0 + 360 * 60_000);
+  assert.equal(e.lastJstOkAt, T0);
+  assert.deepEqual(e.loginTimes, [T0 - 10, T0 - 20, T0 - 30]);
+  assert.equal(e.linkTargets.length, 50);
+});
+
+test('ping: a generic JstError only sets lastError (ping:), session stays unknown, state running', async () => {
+  const { worker, queue, clock } = setup({ jst: { async ping() { throw new JstError('network: x'); } } });
+  const out = await worker.tick({ deadlineMs: clock.t + 40_000 });
+  assert.equal(out.pinged, true);
+  assert.equal(out.state, 'running');
+  assert.match(queue.heartbeats[0].lastError, /^ping:/);
+  assert.notEqual(queue.heartbeats[0].sessionOk, false);
+});
+
+test('ping: a ShapeError stops the worker', async () => {
+  const { worker, clock } = setup({ jst: { async ping() { throw new ShapeError('bad'); } } });
+  const out = await worker.tick({ deadlineMs: clock.t + 40_000 });
+  assert.equal(out.state, 'stopped');
+  assert.equal(worker.exportState().sessionOk, false);
+});
+
+test('tick: an error that is not QueueUnavailable → heartbeat with tick: error, then rethrow', async () => {
+  const { worker, queue, clock } = setup({
+    initialState: { state: 'needs_login' },
+    jst: { sessionMtime() { throw new TypeError('weird'); } },
+  });
+  await assert.rejects(worker.tick({ deadlineMs: clock.t + 40_000 }), /weird/);
+  assert.equal(queue.heartbeats.length, 1);
+  assert.match(queue.heartbeats[0].lastError, /^tick: /);
+});
+
+test('link ShapeError: link sync pauses for 6 hours (persisted)', async () => {
+  const { worker, clock } = setup({ linkTargets: targets(3), jst: { async searchByBuyerId() { throw new ShapeError('x'); } } });
+  await worker.tick({ deadlineMs: clock.t + 40_000 });
+  assert.equal(worker.exportState().linkPausedUntil, T0 + 6 * 3600_000);
+});
+
+test('tick skips the ping when the deadline has already passed', async () => {
+  const { worker, jst, clock } = setup();
+  const out = await worker.tick({ deadlineMs: clock.t - 1 });
+  assert.equal(out.pinged, false);
+  assert.equal(jst.pings, 0);
+});
+
+test('targets running out: links = 2 and link sync pauses afterwards', async () => {
+  const { worker, clock } = setup({ linkTargets: targets(2) });
+  const out = await worker.tick({ deadlineMs: clock.t + 40_000, maxLinks: 10 });
+  assert.equal(out.links, 2);
+  assert.ok(worker.exportState().linkPausedUntil > clock.t);
+});
+
+test('paused and needs_login ticks skip the ping', async () => {
+  const p = setup({ initialState: { state: 'paused', pausedUntil: T0 + 60_000 } });
+  await p.worker.tick({ deadlineMs: p.clock.t + 40_000 });
+  assert.equal(p.jst.pings, 0);
+  const n = setup({ initialState: { state: 'needs_login' } });
+  await n.worker.tick({ deadlineMs: n.clock.t + 40_000 });
+  assert.equal(n.jst.pings, 0);
 });

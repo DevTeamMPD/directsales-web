@@ -116,6 +116,7 @@ export function createJstClient({
   sessionStore,
   fetch = globalThis.fetch,
   userAgent = DEFAULT_UA,
+  timeoutMs = 15_000, // JST ไม่ตอบเกินนี้ = JstError('network') (รอบบน Vercel มีเวลาจำกัด)
 } = {}) {
   const base = new URL(baseUrl);
   // รหัสผ่าน/cookie ส่งได้เฉพาะ JST เท่านั้น
@@ -172,6 +173,7 @@ export function createJstClient({
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
         redirect: 'manual',
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (e) {
       // ห้ามแนบ request (มี cookie) ไปกับ error

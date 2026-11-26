@@ -310,3 +310,14 @@ test('ping: asks for one session with no ids; 401 → SessionExpired; bad shape 
   const busy = createJstClient({ sessionStore: memoryStore(), fetch: fakeFetch({ 'POST /iim/getSessions': () => res({ success: false, message: 'busy' }) }) });
   await assert.rejects(busy.ping(), (e) => e instanceof JstError && e.message === 'busy');
 });
+
+test('requests carry an abort timeout signal (timeoutMs option) and a timeout becomes JstError network', async () => {
+  let seen;
+  const fetch = async (url, init) => {
+    seen = init.signal;
+    return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new Error('aborted by timeout'))));
+  };
+  const c = createJstClient({ accountId: 'dev', password: 'pw', sessionFile: tmpSession(), fetch, timeoutMs: 20 });
+  await assert.rejects(c.ping(), (e) => e instanceof JstError && /^network:/.test(e.message));
+  assert.ok(seen instanceof AbortSignal);
+});
