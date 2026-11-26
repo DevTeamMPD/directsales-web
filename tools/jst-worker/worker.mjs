@@ -5,6 +5,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
+import { readEnvFile } from './config.mjs';
 import { createJstClient, DEFAULT_BASE_URL } from './jst-client.mjs';
 import { createQueueClient } from './queue-client.mjs';
 import { createWatchdog, createWorker } from './worker-core.mjs';
@@ -23,17 +24,6 @@ function parseArgs(argv) {
       out[a.slice(2)] = next;
       i++;
     }
-  }
-  return out;
-}
-
-/** KEY=VALUE จาก .env.local ที่รากโปรเจกต์ (นอก git) — ใช้เติมค่าที่ config.json เว้นว่าง; process.env มาก่อน */
-function readEnvFile(path) {
-  const out = {};
-  if (!existsSync(path)) return out;
-  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
-    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
-    if (m) out[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
   }
   return out;
 }

@@ -2,6 +2,7 @@
 //   node import-session.mjs                 ใช้โปรไฟล์ ../jst-worker-spike/.profile (ต้องล็อกอินไว้แล้ว)
 //   node import-session.mjs --login         เปิดหน้าต่าง Chrome ให้ล็อกอิน JST เอง (เช่น JST ขอ captcha) แล้วบันทึก
 //   node import-session.mjs --profile <dir> ใช้โปรไฟล์อื่น
+//   node import-session.mjs --login --upload vercel   ล็อกอินเองแล้วส่ง session ให้ worker บน Vercel (dsales_worker_session_put)
 // Playwright ใช้เฉพาะคำสั่งนี้ (worker ส่งข้อความด้วย HTTP ล้วน) · ไม่พิมพ์ค่า cookie ออกหน้าจอ
 import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -37,6 +38,22 @@ export function toJar(cookies, host = new URL(BASE).hostname) {
     if (!prev || String(c.path || '/').length > String(prev.path || '/').length) byName.set(c.name, c);
   }
   return [...byName.values()].map((c) => ({ name: c.name, value: c.value }));
+}
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** ส่ง cookie ให้ worker บน cloud — ถ้า worker กำลังทำรอบอยู่ (worker_busy) รอแล้วลองใหม่; error อื่น/ยังไม่ว่างหลังครบรอบ = โยน error (ไม่พิมพ์ cookie) */
+export async function uploadSession(queue, workerId, jar, { sleep = wait, log = console.log, attempts = 6, waitMs = 10_000 } = {}) {
+  for (let i = 1; ; i++) {
+    try {
+      await queue.sessionPut(workerId, jar);
+      return;
+    } catch (e) {
+      if (!String(e?.message || e).includes('worker_busy') || i >= attempts) throw e;
+      log(`worker กำลังทำงานรอบหนึ่งอยู่ — รอ ${Math.round(waitMs / 1000)} วินาทีแล้วลองใหม่`);
+      await sleep(waitMs);
+    }
+  }
 }
 
 async function main() {
@@ -85,6 +102,29 @@ async function main() {
     writeFileSync(tmp, JSON.stringify(jar, null, 2), { mode: 0o600 });
     renameSync(tmp, out);
     console.log(`บันทึก ${jar.length} cookie ลง ${out} แล้ว — worker ที่รออยู่ในสถานะ needs_login จะทำงานต่อเอง`);
+    if (args.upload !== undefined) {
+      if (typeof args.upload !== 'string') {
+        console.error('ระบุชื่อ worker ด้วย เช่น --upload vercel');
+        process.exitCode = 1;
+        return;
+      }
+      const { createClient } = await import('@supabase/supabase-js');
+      const { createQueueClient } = await import('./queue-client.mjs');
+      const { loadSupabaseConfig } = await import('./config.mjs');
+      const sb = loadSupabaseConfig({
+        configPath: resolve(ROOT, typeof args.config === 'string' ? args.config : 'config.json'),
+        envPath: resolve(ROOT, '..', '..', '.env.local'),
+      });
+      const queue = createQueueClient({ supabaseUrl: sb.url, anonKey: sb.anonKey, email: sb.email, password: sb.password, createClient });
+      try {
+        await uploadSession(queue, args.upload, jar);
+      } catch (e) {
+        console.error(`ส่ง session ให้ worker "${args.upload}" ไม่สำเร็จ: ${String(e?.message || e).split('\n')[0]}`);
+        process.exitCode = 1;
+        return;
+      }
+      console.log(`ส่ง ${jar.length} cookie ให้ worker "${args.upload}" แล้ว — รอบถัดไป (ไม่เกิน 1 นาที) จะทำงานต่อเอง`);
+    }
   } finally {
     await context.close();
   }
