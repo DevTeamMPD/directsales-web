@@ -108,6 +108,7 @@ erDiagram
 | `dsales_outreach_queue` | id, batch_id, lead_id, phone_normalized, ms_id, page, provider, chat_name, message_text, requested_by, status (`queued`/`sending`/`sent`/`failed`/`cancelled`), attempts, error, enqueued_at, locked_at, locked_by, sent_at, jst_msg_id, test_redirect, target_ms_id | ภายใน — ผ่าน RPC outreach / worker เท่านั้น |
 | `dsales_worker_status` | worker_id (PK), user_id, heartbeat_at, jst_session_ok, state (`running`/`paused`/`needs_login`/`stopped`), sent_last_hour, queue_waiting, last_error, updated_at | ภายใน — เขียนผ่าน `dsales_worker_heartbeat`, อ่านผ่าน `dsales_worker_status_get` |
 | `dsales_worker_state` | worker_id (PK), runtime (jsonb: state, sessionOk, lastError, failures, pausedUntil, loginTimes, pendingReports, linkTargets, linkPausedUntil, lastJstOkAt), lease_until, updated_at | ภายใน — สถานะข้ามรอบของ worker บน Vercel ผ่าน `dsales_worker_state_begin` / `_state_end` เท่านั้น · cookie ของ JST อยู่ใน Vault `dsales_jst_session_<worker_id>` |
+| `dsales_rfm_segments` | key (PK), sort_order, f_min, f_max, r_min, r_max, is_fallback, tone, behavior, action, template_bebeplay, template_hosttail, no_outreach, updated_at, updated_by | ภายใน — ไม่มี grant · กติกา + Action Context ของ 10 กลุ่ม RFM (`dsales_rfm(orders, days)` อ่านตารางนี้) หน้าเว็บอ่านผ่าน `dsales_rfm_config_get` |
 
 ### คิวส่งข้อความ (outreach)
 
@@ -151,6 +152,8 @@ migration `20261117100000_dsales_members_only.sql`, `20261117100100_dsales_acces
 | `dsales_customer_pool_v4(p_search, p_limit, p_offset, p_from, p_to, p_brand)` | ถังลูกค้าทั้งหมดของแบรนด์ + สถานะจอง (lead_id, taken, mine, no_call, reserved_by) สูงสุด 100/หน้า | หน้าแคมเปญ (ถัง) |
 | `dsales_customer_pool_v3(…)` | รุ่นเดิม | นับลูกค้าทั้งแบรนด์ (`p_limit: 1` อ่าน `total_count`) ครั้งเดียวต่อแบรนด์ |
 | `dsales_base_customers(p_scope, p_search, p_limit, p_offset, p_brand)` | ฐานลูกค้าเก่า (`dsales_customer_base` เฉพาะ `eligible`) ตาม scope `mine` (ของฉันตาม tag/ลีด) / `pool` (ไม่มีเจ้าของ) / `team` (หัวหน้าเท่านั้น) + dormant_days, owner_tag | `/mine`, `/pool` |
+| `dsales_rfm_config_get()` | กติกา + Action Context ของ 10 กลุ่ม RFM เรียงตามลำดับเช็ก | ตอนเปิดแอป |
+| `dsales_rfm_map(p_scope, p_brand, p_as)` | จำนวนลูกค้าต่อกลุ่ม: `n` ทุกคนในขอบเขต, `contactable` เฉพาะที่ไม่ซื้อมา ≥ 30 วัน (`''` = ยังไม่มีกลุ่ม) | `/rfm` |
 | `dsales_customer_purchases(p_phone)` / `dsales_customer_channels(p_phone)` | ประวัติซื้อ (สูงสุด 200 แถว) / ช่องทาง-ร้านที่เคยสั่ง | popup ลูกค้า, popup ถัง, หลังจอง |
 | `dsales_customer_chats(p_phone, p_since)` | แชต JST + จำนวนข้อความฝั่งแอดมินหลัง `p_since` (ไม่นับ autoreply/system/error) | ตรวจการทักแชต |
 | `dsales_claim_customer(p_phone, p_brand)` | จองลูกค้าจากถัง/ฐานลูกค้า (สร้างลีด `self` หรือจองลีดเดิม; ของเซลล์อื่นตาม tag = `taken`) | ถัง, `/mine`, `/pool` |
