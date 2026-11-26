@@ -524,7 +524,8 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
           out.links++;
         }
       }
-      if (clock.now() < deadlineMs) out.pinged = await pingIfQuiet(pingAfterMs);
+      // ping ช้าได้ถึง ~10 วินาที — ทำเมื่อเหลือเวลาอย่างน้อย 15 วินาทีก่อน deadline เท่านั้น
+      if (clock.now() + 15_000 < deadlineMs) out.pinged = await pingIfQuiet(pingAfterMs);
     } catch (e) {
       if (!(e instanceof QueueUnavailable)) {
         // error ที่ไม่คาด: แจ้ง heartbeat ก่อน แล้วโยนต่อให้ผู้เรียกเห็น

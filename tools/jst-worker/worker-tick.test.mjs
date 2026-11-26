@@ -305,3 +305,13 @@ test('paused and needs_login ticks skip the ping', async () => {
   await n.worker.tick({ deadlineMs: n.clock.t + 40_000 });
   assert.equal(n.jst.pings, 0);
 });
+
+test('no ping unless at least 15 s remain before the deadline', async () => {
+  const { worker, jst, clock } = setup();
+  const near = await worker.tick({ deadlineMs: clock.t + 14_000 });
+  assert.equal(near.pinged, false);
+  assert.equal(jst.pings, 0);
+  const far = await worker.tick({ deadlineMs: clock.t + 16_000 });
+  assert.equal(far.pinged, true);
+  assert.equal(jst.pings, 1);
+});

@@ -120,3 +120,87 @@ test('state is still saved when the tick throws, and the error is rethrown', asy
   await assert.rejects(runTick(args({ queue, createJst: create, createWorkerFn })), /boom/);
   assert.deepEqual(queue.ends, [{ workerId: 'vercel', runtime: { state: 'running', failures: 7 }, cookies: null }]);
 });
+
+test('setup failure (createJst throws): the lease is released with the old runtime and the error is rethrown', async () => {
+  const queue = fakeQueue({ begun: { runtime: { failures: 3 }, cookies: [] } });
+  const createJst = () => {
+    throw new Error('bad config');
+  };
+  await assert.rejects(runTick(args({ queue, createJst })), /bad config/);
+  assert.deepEqual(queue.ends, [{ workerId: 'vercel', runtime: { failures: 3 }, cookies: null }]);
+});
+
+test('setup failure and stateEnd failure: the setup error wins', async () => {
+  const queue = fakeQueue();
+  queue.stateEnd = async () => {
+    throw new Error('save down');
+  };
+  const createJst = () => {
+    throw new Error('bad config');
+  };
+  await assert.rejects(runTick(args({ queue, createJst })), /bad config/);
+});
+
+test('stateEnd failing once is retried', async () => {
+  const queue = fakeQueue();
+  const { create } = fakeJstFactory();
+  let n = 0;
+  const real = queue.stateEnd;
+  queue.stateEnd = async (...a) => {
+    if (n++ === 0) throw new Error('blip');
+    return real(...a);
+  };
+  const out = await runTick(args({ queue, createJst: create }));
+  assert.equal(out.skipped, null);
+  assert.equal(queue.ends.length, 1);
+});
+
+test('stateEnd failing twice after a good tick: rejects with the save error and logs it', async () => {
+  const queue = fakeQueue();
+  queue.stateEnd = async () => {
+    throw new Error('save down');
+  };
+  const { create } = fakeJstFactory();
+  const logs = [];
+  await assert.rejects(runTick(args({ queue, createJst: create, log: (...a) => logs.push(a) })), /save down/);
+  const entry = logs.find((l) => l[1] === 'state save failed');
+  assert.ok(entry);
+  assert.equal(entry[0], 'error');
+  assert.match(entry[2].error, /save down/);
+  assert.equal(entry[2].result, 'idle');
+});
+
+test('tick error and stateEnd error: the tick error wins', async () => {
+  const queue = fakeQueue();
+  queue.stateEnd = async () => {
+    throw new Error('save down');
+  };
+  const { create } = fakeJstFactory();
+  const createWorkerFn = () => ({
+    async tick() {
+      throw new Error('boom');
+    },
+    exportState: () => ({}),
+  });
+  await assert.rejects(runTick(args({ queue, createJst: create, createWorkerFn, log: () => {} })), /boom/);
+});
+
+test('real worker: report fails after a send → queue_error is returned and the report is kept in pendingReports', async () => {
+  const queue = fakeQueue({ jobs: [JOB] });
+  queue.report = async () => {
+    throw new Error('supabase down');
+  };
+  const { create, seen } = fakeJstFactory();
+  const out = await runTick(args({ queue, createJst: create }));
+  assert.deepEqual(seen.sends, ['สวัสดีค่ะ']);
+  assert.equal(out.result, 'queue_error');
+  assert.equal(queue.ends[0].runtime.pendingReports.length, 1);
+  assert.equal(queue.ends[0].runtime.pendingReports[0].status, 'sent');
+});
+
+test('default sleep is a real timer (runs without a sleep argument)', async () => {
+  const queue = fakeQueue();
+  const { create } = fakeJstFactory();
+  const out = await runTick({ workerId: 'vercel', queue, createJst: create, jstConfig: {}, now: () => 1_000_000 });
+  assert.equal(out.skipped, null);
+});

@@ -124,3 +124,63 @@ test('autoRefreshToken true (office loop): the sign-in is kept however old it is
   await q.claim('w1');
   assert.equal(log.filter((l) => l.signIn).length, 1);
 });
+
+function slowClient(log, { rpcResults = [] } = {}) {
+  return () => ({
+    auth: {
+      async signInWithPassword() {
+        log.push({ signIn: true });
+        await new Promise((r) => setTimeout(r, 20));
+        return { data: { session: {} }, error: null };
+      },
+    },
+    async rpc(name, args) {
+      log.push({ rpc: name, args });
+      return rpcResults.length ? rpcResults.shift() : { data: null, error: null };
+    },
+  });
+}
+
+test('autoRefreshToken false: concurrent calls share one sign-in (cold start and after expiry)', async () => {
+  const log = [];
+  let t = 1_000_000;
+  const q = createQueueClient({ ...base, autoRefreshToken: false, now: () => t, createClient: slowClient(log) });
+  await Promise.all([q.claim('w'), q.claim('w'), q.claim('w')]);
+  assert.equal(log.filter((l) => l.signIn).length, 1);
+  t += 46 * 60_000;
+  await Promise.all([q.claim('w'), q.claim('w'), q.claim('w')]);
+  assert.equal(log.filter((l) => l.signIn).length, 2);
+});
+
+test('auth error on an RPC: sign in again and retry once', async () => {
+  const log = [];
+  const q = createQueueClient({
+    ...base,
+    createClient: slowClient(log, { rpcResults: [{ data: null, error: { message: 'JWT expired' } }, { data: { id: 'q1' }, error: null }] }),
+  });
+  assert.deepEqual(await q.claim('w'), { id: 'q1' });
+  assert.equal(log.filter((l) => l.signIn).length, 2);
+  assert.equal(log.filter((l) => l.rpc).length, 2);
+});
+
+test('auth error twice: the second error is thrown', async () => {
+  const log = [];
+  const err = { data: null, error: { message: 'JWT expired' } };
+  const q = createQueueClient({ ...base, createClient: slowClient(log, { rpcResults: [err, err] }) });
+  await assert.rejects(q.claim('w'), (e) => e instanceof QueueError && /JWT expired/.test(e.message));
+  assert.equal(log.filter((l) => l.rpc).length, 2);
+});
+
+test('non-auth RPC errors are not retried (a "token" word alone is not an auth error)', async () => {
+  const log = [];
+  const q = createQueueClient({ ...base, createClient: slowClient(log, { rpcResults: [{ data: null, error: { message: 'bad token count' } }] }) });
+  await assert.rejects(q.claim('w'), /bad token count/);
+  assert.equal(log.filter((l) => l.rpc).length, 1);
+});
+
+test('stateEnd rejects a missing runtime', async () => {
+  const q = createQueueClient({ ...base, createClient: fakeCreateClient([]) });
+  await assert.rejects(q.stateEnd('w', undefined), /runtime/);
+  await assert.rejects(q.stateEnd('w', null), /runtime/);
+  await assert.rejects(q.stateEnd('w', 'x'), /runtime/);
+});

@@ -13,7 +13,7 @@ export async function runTick({
   queue,
   jstConfig = {},
   now = () => Date.now(),
-  sleep,
+  sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
   log = () => {},
   budgetMs = 40_000,
   maxLinks = 10,
@@ -25,19 +25,41 @@ export async function runTick({
   const begun = await queue.stateBegin(workerId, leaseSeconds);
   if (!begun) return { skipped: 'busy' };
 
-  const store = memoryStore(begun.cookies);
-  const jst = createJst({ ...jstConfig, sessionStore: store });
-  const worker = createWorkerFn({ jst, queue, clock: { now }, sleep, log, config: { workerId }, initialState: begun.runtime });
-
-  let out;
+  let store;
+  let worker;
+  let out = null;
   let failure = null;
+  try {
+    store = memoryStore(begun.cookies);
+    const jst = createJst({ ...jstConfig, sessionStore: store });
+    worker = createWorkerFn({ jst, queue, clock: { now }, sleep, log, config: { workerId }, initialState: begun.runtime });
+  } catch (e) {
+    // ตั้งค่าไม่สำเร็จ: ปล่อย lease ด้วย runtime เดิม (ทำเต็มที่) แล้วโยน error ของการตั้งค่า
+    try {
+      await queue.stateEnd(workerId, begun.runtime ?? {}, null);
+    } catch (e2) {
+      log('error', 'state save failed', { error: String(e2?.message || e2).slice(0, 200), result: null });
+    }
+    throw e;
+  }
   try {
     out = await worker.tick({ deadlineMs: started + budgetMs, maxLinks });
   } catch (e) {
     failure = e;
   }
-  // บันทึกเสมอ (ปล่อย lease + เก็บ pendingReports) · cookie เขียนกลับเฉพาะเมื่อ JST เปลี่ยนค่า
-  await queue.stateEnd(workerId, worker.exportState(), store.dirty ? store.cookies() : null);
-  if (failure) throw failure;
+  // บันทึกเสมอ (ปล่อย lease + เก็บ pendingReports) · cookie เขียนกลับเฉพาะเมื่อ JST เปลี่ยนค่า · ลองซ้ำหนึ่งครั้ง
+  let saveError = null;
+  for (let i = 0; i < 2; i++) {
+    try {
+      await queue.stateEnd(workerId, worker.exportState(), store.dirty ? store.cookies() : null);
+      saveError = null;
+      break;
+    } catch (e) {
+      saveError = e;
+    }
+  }
+  if (saveError) log('error', 'state save failed', { error: String(saveError?.message || saveError).slice(0, 200), result: out?.result ?? null });
+  if (failure) throw failure; // error ของ tick มาก่อน
+  if (saveError) throw saveError;
   return { skipped: null, ...out, cookiesSaved: store.dirty };
 }
