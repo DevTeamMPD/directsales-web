@@ -109,7 +109,7 @@ export function demoPool(
 }
 
 /* ---------- /mine และ /pool (dsales_base_customers) ---------- */
-export type BaseScopeKey = 'mine' | 'pool';
+export type BaseScopeKey = 'mine' | 'pool' | 'team';
 
 /** แบรนด์ที่ใช้จอง (spec ข้อ 3): แบรนด์ที่เลือกในตัวกรอง หรือแบรนด์แรกของลูกค้าที่เป็น bebeplay/hosttail; ไม่มี = null */
 export function claimBrand(selected: string | null | undefined, brands: ReadonlyArray<string>): Brand | null {
@@ -189,7 +189,8 @@ export function demoBase(
     customers
       .filter((c) => {
         const owner = ownedLead(leads, c.phone)?.owner ?? null;
-        return (scope === 'mine' ? owner === o.meId : owner === null) && (!o.brand || c.brand === o.brand)
+        const inScope = scope === 'team' ? true : scope === 'mine' ? owner === o.meId : owner === null;
+        return inScope && (!o.brand || c.brand === o.brand)
           && (!q || c.name.toLowerCase().includes(q) || (c.chatName || '').toLowerCase().includes(q) || (!!qd && c.phone.includes(qd)));
       })
       .map((c): PoolRow => {
