@@ -2,7 +2,7 @@ import type { Brand, ChatRoom, DemoCustomer } from '@/lib/api/types';
 
 // โหมด fixture ของ /mine /pool: เติมห้องแชต (chat_rooms), กลุ่ม RFM และ tag เจ้าของให้ลูกค้าตัวอย่างแบบคงที่ (ไม่สุ่ม)
 // เลียนข้อมูลจริงของ dsales_base_customers: ห้องตามร้านที่ลูกค้าเคยซื้อ, บางคนมีห้องของอีกแบรนด์,
-// บางคนมีเพจนอกแบรนด์ (brand null), Facebook/Instagram ส่วนใหญ่เกิน 24 ชม. (ส่งไม่ได้), rfm_segment ส่วนใหญ่เป็น null
+// บางคนมีเพจนอกแบรนด์ (brand null), Facebook/Instagram ส่วนใหญ่เกิน 7 วัน (ส่งไม่ได้), rfm_segment ส่วนใหญ่เป็น null
 
 const PREFIX: Readonly<Record<string, string>> = { LOA: 'line', SH: 'shopee', LA: 'lazada', TT: 'tiktok', FB: 'facebook', IG: 'instagram' };
 const RFM = ['Loyal', 'Potential', 'Promising', 'At Risk', 'Hibernating', 'Unscored'] as const;
@@ -18,14 +18,14 @@ const brandOf = (shop: string): Brand | null => {
 export function fixtureRooms(c: DemoCustomer, i: number): ChatRoom[] {
   const shops = (c.channels.length ? c.channels.map((ch) => ch.shop || '') : [c.shop]).filter(Boolean);
   if (i % 3 === 1) shops.push(`LOA_${OTHER[c.brand]}`); // มีห้อง LINE ของอีกแบรนด์ด้วย
-  if (i % 5 === 2) shops.push(`FB_${c.brand}`); // ห้อง Facebook ที่ลูกค้าเงียบเกิน 24 ชม.
+  if (i % 5 === 2) shops.push(`FB_${c.brand}`); // ห้อง Facebook ที่ลูกค้าเงียบเกิน 7 วัน
   if (i % 7 === 3) shops.push('FB_MPDOutlet'); // เพจนอกแบรนด์
   const rooms: ChatRoom[] = [];
   for (const shop of [...new Set(shops)]) {
     const provider = PREFIX[shop.split('_')[0].toUpperCase()];
     if (!provider) continue; // เว็บไซต์ไม่มีห้องแชต
     const brand = brandOf(shop);
-    // Facebook ของลูกค้าบางคนยังอยู่ในช่วง 24 ชม. (ทักมาเมื่อวาน)
+    // Facebook ของลูกค้าบางคนยังอยู่ในช่วง 7 วัน (ทักมาเมื่อวาน)
     const open = provider === 'facebook' || provider === 'instagram' ? i % 10 === 0 : true;
     rooms.push({ msId: 800000 + i * 10 + rooms.length, provider, page: shop, brand, sendable: !!brand && open });
   }

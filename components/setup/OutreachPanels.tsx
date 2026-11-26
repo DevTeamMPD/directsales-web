@@ -5,9 +5,10 @@ import { errorMessage } from '@/lib/api/errors';
 import { findWorkerRooms, getTemplates, getWorkerStatus, saveTemplate, setWorkerSettings } from '@/lib/api/rpc';
 import type { Template, WorkerRoom, WorkerStatus } from '@/lib/api/types';
 import { BRAND, FIXTURE_NO_WRITE, type Brand } from '@/lib/constants';
+import { pageBrand } from '@/lib/domain/brand';
 import {
   isWorkerOnline, renderTemplate, roomLabel, SAMPLE_VALUES, stamp, TEMPLATE_VARS, toggleRoom, upsertTemplate, validateSettings, validateTemplate,
-  workerStateBadge, workerStateLabel,
+  workerBadge,
 } from '@/lib/domain/outreach';
 import { useActions, useAppState } from '@/lib/state/AppProvider';
 
@@ -17,16 +18,27 @@ const EMPTY_TPL: TplForm = { id: null, name: '', body: '', active: true };
 /**
  * การ์ด Template ข้อความ (spec ข้อ 6.4): รายการต่อแบรนด์ (หัวหน้าเห็นที่ปิดใช้ด้วย), สร้าง/แก้/ปิด-เปิดใช้งาน (dsales_template_save)
  * พร้อมตัวอย่างการแทนตัวแปรด้วยค่าตัวอย่างระหว่างพิมพ์
+ * แบรนด์เริ่มต้น = แบรนด์ใหญ่ใน topbar (ทั้งหมด = Bebeplay) และตามเมื่อแบรนด์ใหญ่เปลี่ยน · ยังเปลี่ยนใน #tpl-brand ได้
  */
 export function TemplatePanel() {
-  const { live, outreachDemo } = useAppState();
+  const { live, outreachDemo, brand: scope } = useAppState();
   const { toast, toastError, once, handleAuthError } = useActions();
   const [liveList, setLiveList] = useState<Template[] | null>(null);
   const [err, setErr] = useState('');
-  const [brand, setBrand] = useState<Brand>('bebeplay');
+  const [brand, setBrand] = useState<Brand>(() => pageBrand(scope) || 'bebeplay');
   const [form, setForm] = useState<TplForm>(EMPTY_TPL);
   const [formErr, setFormErr] = useState('');
   const [saving, setSaving] = useState(false);
+  // แบรนด์ใหญ่เปลี่ยนเป็น Bebeplay/Hosttail = รายการ template ตามไปด้วย (ปรับระหว่าง render; "ทั้งหมด" คงแบรนด์เดิม)
+  const [followed, setFollowed] = useState(scope);
+  if (followed !== scope) {
+    setFollowed(scope);
+    const b = pageBrand(scope);
+    if (b && b !== brand) {
+      setBrand(b);
+      setForm(EMPTY_TPL);
+    }
+  }
 
   useEffect(() => {
     if (!live) return;
@@ -249,6 +261,7 @@ export function WorkerPanel() {
             {status.workers.length ? (
               status.workers.map((w) => {
                 const on = isWorkerOnline(w);
+                const badge = workerBadge(w);
                 return (
                   <div key={w.worker_id} className="list-row" data-worker={w.worker_id}>
                     <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', flex: 'none', background: on ? 'var(--ok)' : 'var(--bad)' }} />
@@ -257,9 +270,10 @@ export function WorkerPanel() {
                       <div className="sub">
                         JST {w.jst_session_ok ? 'เชื่อมต่อแล้ว' : 'ยังไม่ได้ล็อกอิน'} · ส่งชั่วโมงนี้ {Number(w.sent_last_hour || 0).toLocaleString('th-TH')} · คิวรอ {Number(w.queue_waiting || 0).toLocaleString('th-TH')}
                       </div>
+                      {badge.hint ? <div className="sub" style={{ color: 'var(--bad)' }}>{badge.hint}</div> : null}
                       {w.last_error ? <div className="sub" style={{ color: 'var(--bad)' }}>error ล่าสุด: {w.last_error}</div> : null}
                     </div>
-                    <span className={`badge plain ${workerStateBadge(w.state)}`}>{workerStateLabel(w.state)}</span>
+                    <span className={`badge plain ${badge.cls}`}>{badge.text}</span>
                   </div>
                 );
               })

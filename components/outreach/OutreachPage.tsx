@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CallButton } from '@/components/leads/ContactBar';
 import { errorMessage } from '@/lib/api/errors';
 import { cancelOutreach, getOutreachBatch, getOutreachBatches, getWorkerStatus } from '@/lib/api/rpc';
 import type { BatchDetail, BatchRow, WorkerStatus } from '@/lib/api/types';
 import { BRAND, FIXTURE_NO_WRITE } from '@/lib/constants';
+import { inBrand } from '@/lib/domain/brand';
 import { repName } from '@/lib/domain/leads';
 import {
   channelLabel, countBadges, hasPending, itemErrorText, itemsPending, OUTREACH_POLL_MS, shouldPoll, skipLabel, stamp, statusBadge, statusLabel,
@@ -29,9 +30,10 @@ function usePageVisible(): boolean {
  * หน้า /outreach "ส่งข้อความ" (spec ข้อ 6.3): แถบสถานะ worker, รายการชุดที่ส่ง → รายละเอียดรายคน (สถานะ, เวลาส่ง, เหตุผล,
  * ยกเลิกรายการที่รอ, ปุ่มโทรสำหรับห้องที่หมดช่วงส่ง) · โหลดใหม่ทุก 10 วินาทีเฉพาะตอนหน้าแสดงอยู่และยังมีรายการรอ/กำลังส่ง
  * โหมด fixture: ข้อมูลตัวอย่าง (state.outreachDemo) ปุ่มยกเลิกแสดง toast โหมด fixture
+ * แสดงเฉพาะชุดของแบรนด์ใหญ่ที่เลือก (สลับไปอีกแบรนด์ = ปิดรายละเอียดชุดของแบรนด์เดิม)
  */
 export function OutreachPage() {
-  const { live, outreachDemo, reps } = useAppState();
+  const { live, outreachDemo, reps, brand } = useAppState();
   const { toast, toastError, handleAuthError, once } = useActions();
   const visible = usePageVisible();
   const [liveBatches, setLiveBatches] = useState<BatchRow[] | null>(null);
@@ -42,7 +44,20 @@ export function OutreachPage() {
   const [err, setErr] = useState('');
   const [tick, setTick] = useState(0);
 
-  const batches = live ? liveBatches : outreachDemo?.batches ?? [];
+  const allBatches = live ? liveBatches : outreachDemo?.batches ?? null;
+  const batches = useMemo(
+    () => (live && allBatches === null ? null : (allBatches ?? []).filter((b) => inBrand(brand, b.brand))),
+    [live, allBatches, brand],
+  );
+  const [shownBrand, setShownBrand] = useState(brand);
+  if (shownBrand !== brand) {
+    setShownBrand(brand);
+    const open = allBatches?.find((b) => b.id === selId);
+    if (open && !inBrand(brand, open.brand)) {
+      setSelId(null);
+      setPicked(new Set());
+    }
+  }
   const worker = live ? liveWorker : outreachDemo?.worker ?? null;
   const detail = live ? (liveDetail?.batch.id === selId ? liveDetail : null) : selId ? outreachDemo?.details[selId] ?? null : null;
 
@@ -233,7 +248,7 @@ export function OutreachPage() {
         </div>
       ) : null}
       <p className="help">
-        {poll ? 'อัปเดตอัตโนมัติทุก 10 วินาที' : 'กดเวลาของชุดเพื่อดูรายละเอียดรายคน'} · ห้องที่หมดช่วงส่ง (ลูกค้าไม่ได้ทักมาเกิน 24 ชม.) ให้โทรหาแทน
+        {poll ? 'อัปเดตอัตโนมัติทุก 10 วินาที' : 'กดเวลาของชุดเพื่อดูรายละเอียดรายคน'} · ห้องที่หมดช่วงส่ง (ลูกค้าไม่ได้ทักมาเกิน 7 วัน) ให้โทรหาแทน
       </p>
     </>
   );

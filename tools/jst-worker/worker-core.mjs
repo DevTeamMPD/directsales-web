@@ -14,6 +14,12 @@ const DEFAULTS = {
   backoffMinMs: 5000,
   backoffMaxMs: 60000,
   afterJobMs: 1000,
+  // ผูกห้องด้วยรหัสผู้ซื้อ (dsales_worker_link_targets / _save) ตอนไม่มีงานส่ง — 1 รหัสต่อรอบ
+  linkSync: true,
+  linkBatch: 50,
+  linkIntervalMs: 1500,
+  linkIdleMinutes: 30, // ไม่มีรหัสให้ค้น → ถามใหม่อีกครั้งหลังจากนี้
+  linkPauseMinutes: 5, // JST ตอบ error ตอนค้น → พักการค้น (การส่งไม่พัก)
 };
 
 /** Supabase ใช้ไม่ได้ — ห้ามส่ง JST จนกว่าจะกลับมา */
@@ -23,6 +29,32 @@ export class QueueUnavailable extends Error {
     this.name = 'QueueUnavailable';
     this.cause = cause;
   }
+}
+
+/**
+ * ตัวจับลูปค้าง: ถ้า getTicks() ไม่ขยับเกิน limitMs → onStall(ms) ครั้งเดียว
+ * (worker.mjs เรียก check() ทุก 1 นาที แล้วออกจากโปรแกรม ให้ run-worker.cmd เปิดใหม่)
+ * ทุกสถานะปกติ (รอคิว / พัก / backoff ≤ 60 วิ / ต้องล็อกอิน) ลูปยังวนทุกไม่กี่วินาที จึงไม่ถูกตัด
+ */
+export function createWatchdog({ getTicks, now, limitMs, onStall }) {
+  let seen = getTicks();
+  let since = now();
+  let fired = false;
+  return {
+    check() {
+      const t = getTicks();
+      if (t !== seen) {
+        seen = t;
+        since = now();
+        return;
+      }
+      const ms = now() - since;
+      if (!fired && ms > limitMs) {
+        fired = true;
+        onStall(ms);
+      }
+    },
+  };
 }
 
 const clip = (s, n = 300) => String(s ?? '').slice(0, n);
@@ -91,8 +123,17 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
     pendingReports: [],
     backoffMs: 0,
     stopRequested: false,
+    ticks: 0, // รอบลูปที่ผ่านไป — watchdog ใน worker.mjs ใช้ดูว่าลูปค้างไหม
     sentCount: 0,
+    linkTargets: [],
+    linkPausedUntil: 0,
+    linkDisabled: false,
+    linkLookups: 0,
+    linksWritten: 0,
   };
+  const canLink = () =>
+    cfg.linkSync !== false && !s.linkDisabled &&
+    typeof queue.linkTargets === 'function' && typeof queue.linkSave === 'function' && typeof jst.searchByBuyerId === 'function';
 
   /* ---------- heartbeat ---------- */
 
@@ -246,6 +287,81 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
     );
   }
 
+  /* ---------- ผูกห้องด้วยรหัสผู้ซื้อ ---------- */
+
+  function pauseLink(msg, e) {
+    s.linkPausedUntil = clock.now() + cfg.linkPauseMinutes * 60_000;
+    log('warn', `${msg} — pausing link sync`, { error: clip(e?.message || e), minutes: cfg.linkPauseMinutes });
+  }
+
+  /** ค้น 1 รหัส → 'linked' | 'idle' · error ใด ๆ ของการค้น/บันทึก = พักการค้น (การส่งงานไม่ถูกกระทบ) */
+  async function linkOne() {
+    if (!canLink() || s.state !== STATES.running || clock.now() < s.linkPausedUntil) return 'idle';
+    if (!s.linkTargets.length) {
+      let list;
+      try {
+        list = await queue.linkTargets(cfg.workerId, cfg.linkBatch);
+      } catch (e) {
+        // claim เพิ่งสำเร็จ → Supabase ใช้ได้ · error นี้เป็นของ link sync (เช่นยังไม่ได้ลง migration) — พักเฉพาะการค้น ไม่บล็อกการส่ง
+        pauseLink('link targets failed', e);
+        return 'idle';
+      }
+      s.linkTargets = (list || []).filter((t) => t && typeof t.buyer_id === 'string' && t.buyer_id.trim() !== '');
+      if (!s.linkTargets.length) {
+        s.linkPausedUntil = clock.now() + cfg.linkIdleMinutes * 60_000;
+        return 'idle';
+      }
+    }
+    const target = s.linkTargets.shift();
+    const search = () => jst.searchByBuyerId(target.buyer_id);
+    let rooms;
+    try {
+      try {
+        rooms = await search();
+      } catch (e) {
+        if (!(e instanceof SessionExpired)) throw e;
+        s.sessionOk = false;
+        log('warn', 'JST session expired during link sync — logging in again');
+        const lr = await relogin();
+        if (!lr.ok) {
+          s.linkTargets.unshift(target);
+          return 'idle';
+        }
+        rooms = await search();
+      }
+      s.sessionOk = true;
+    } catch (e) {
+      if (e instanceof ShapeError) {
+        s.linkDisabled = true;
+        log('error', 'link sync off for this run: unexpected JST response', { error: clip(e.message) });
+      } else if (e instanceof SessionExpired) {
+        enterNeedsLogin(`SessionExpired after re-login: ${clip(e.message)}`);
+        s.linkTargets.unshift(target);
+      } else if (e instanceof CaptchaRequired || e instanceof LoginFailed || e instanceof LoginUnavailable) {
+        enterNeedsLogin(`${e.name}: ${clip(e.message)}`);
+        s.linkTargets.unshift(target);
+      } else {
+        s.linkTargets.unshift(target);
+        pauseLink('link search failed', e);
+      }
+      return 'idle';
+    }
+    let n;
+    try {
+      n = await queue.linkSave(cfg.workerId, target.buyer_id, rooms, null);
+    } catch (e) {
+      s.linkTargets.unshift(target);
+      pauseLink('link save failed', e);
+      return 'idle';
+    }
+    s.linkLookups++;
+    s.linksWritten += n;
+    if (n > 0 || s.linkLookups % 25 === 0) {
+      log('info', 'link', { lookups: s.linkLookups, linksWritten: s.linksWritten, shop: target.shop_prefix, rooms: rooms.length, links: n });
+    }
+    return 'linked';
+  }
+
   /* ---------- หนึ่งรอบ ---------- */
 
   /** คืน 'idle' | 'sent' | 'failed' | 'requeued' | 'paused' | 'needs_login' | 'stopped' · Supabase ล่ม → โยน QueueUnavailable */
@@ -275,7 +391,7 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
     } catch (e) {
       throw new QueueUnavailable(e);
     }
-    if (!job) return 'idle';
+    if (!job) return linkOne();
 
     if (!validJob(job)) {
       setState(STATES.stopped, 'invalid_job: claim returned an unexpected shape');
@@ -316,6 +432,7 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
     await heartbeat({ force: true });
     let last;
     while (!s.stopRequested) {
+      s.ticks++;
       try {
         last = await processOne();
         s.backoffMs = 0;
@@ -334,7 +451,7 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
       await heartbeat();
       if (once) break;
       const worked = last === 'sent' || last === 'failed' || last === 'requeued';
-      await sleep(worked ? cfg.afterJobMs : cfg.pollSeconds * 1000);
+      await sleep(worked ? cfg.afterJobMs : last === 'linked' ? cfg.linkIntervalMs : cfg.pollSeconds * 1000);
     }
     if (s.stopRequested) await heartbeat({ force: true, state: STATES.stopped });
     else await heartbeat({ force: true });
@@ -357,7 +474,11 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
         pausedUntil: s.pausedUntil,
         pendingReports: s.pendingReports.length,
         sentCount: s.sentCount,
+        ticks: s.ticks,
         backoffMs: s.backoffMs,
+        linkLookups: s.linkLookups,
+        linksWritten: s.linksWritten,
+        linkDisabled: s.linkDisabled,
       };
     },
   };

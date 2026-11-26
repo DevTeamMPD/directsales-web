@@ -67,10 +67,22 @@ async function openChatPage(t: JstTarget, deps: JstDeps, auto: boolean): Promise
   const opened = deps.openJst(jstChatUrl(deps.chatUrl, t, deps.now()));
   const copied = await copy;
   if (!auto) {
-    if (!opened) deps.toast(copied ? 'เบราว์เซอร์บล็อกการเปิดแท็บ JST · คัดลอกชื่อแชตแล้ว นำไปค้นหาใน JST' : 'เบราว์เซอร์บล็อกการเปิดแท็บ JST · ค้นหาใน JST ด้วย: ' + txt);
-    else deps.toast(copied ? 'เปิดแชตใน JST แล้ว · ถ้าแชตไม่เปิดเอง กด Ctrl+V ในช่องค้นหา' : 'เปิดแชตใน JST แล้ว · ถ้าแชตไม่เปิดเอง ค้นหาด้วย: ' + txt);
+    if (!opened) deps.toast(copied ? `เบราว์เซอร์บล็อกการเปิดแท็บ JST · คัดลอก "${txt}" แล้ว นำไปค้นหาใน JST` : 'เบราว์เซอร์บล็อกการเปิดแท็บ JST · ค้นหาใน JST ด้วย: ' + txt);
+    else deps.toast(copied ? `เปิดแชตใน JST แล้ว · คัดลอก "${txt}" แล้ว ถ้าแชตไม่เปิดเอง กด Ctrl+V ในช่องค้นหา` : 'เปิดแชตใน JST แล้ว · ถ้าแชตไม่เปิดเอง ค้นหาด้วย: ' + txt);
   }
   return opened;
+}
+
+/**
+ * ห้อง Facebook / Instagram ที่เกิน 7 วัน (ส่งผ่าน JST ไม่ได้): คัดลอกชื่อห้อง แล้วเปิด Inbox ของเพจใน Meta Business Suite
+ * (Business Suite เปิดแชตของลูกค้าตรง ๆ จาก PSID ไม่ได้ — เซลล์วางชื่อในช่องค้นหาของ Meta)
+ */
+export async function metaOpen(url: string, name: string, page: string, deps: JstDeps): Promise<void> {
+  const copy = deps.clipboard && name ? deps.clipboard.writeText(name).then(() => true, () => false) : Promise.resolve(false);
+  deps.open(url);
+  const copied = await copy;
+  const where = `เปิด Inbox เพจ ${page || 'Facebook'} ใน Meta แล้ว`;
+  deps.toast(copied ? `${where} · คัดลอก "${name}" แล้ว กด Ctrl+V ในช่องค้นหาของ Meta` : `${where} · ค้นหาด้วย: ${name}`);
 }
 
 /**

@@ -1,0 +1,32 @@
+'use client';
+
+import { BRAND } from '@/lib/constants';
+import type { BrandScope } from '@/lib/domain/brand';
+import { useActions, useAppState } from '@/lib/state/AppProvider';
+
+/** ตัวสลับแบรนด์ใหญ่ — จอกว้าง = ปุ่มแบ่งช่อง, จอ ≤ 760px = dropdown (CSS สลับการแสดง) · "ทั้งหมด" เฉพาะหัวหน้า
+ *  brandPage = หน้าที่เป็นของแบรนด์เดียวอยู่แล้ว (หน้าแคมเปญ): บนมือถือซ่อน เพื่อให้ชื่อหน้า + ปุ่มของหน้าพอดี topbar แถวเดียว */
+export function BrandSwitch({ brandPage = false }: { brandPage?: boolean }) {
+  const { brand, isAdmin } = useAppState();
+  const { setBrand } = useActions();
+  const opts: { value: BrandScope; label: string }[] = [
+    { value: 'bebeplay', label: BRAND.bebeplay },
+    { value: 'hosttail', label: BRAND.hosttail },
+    ...(isAdmin ? [{ value: 'all' as const, label: 'ทั้งหมด' }] : []),
+  ];
+  return (
+    <div className={`brand-switch${brandPage ? ' brand-page' : ''}`} data-scope={brand}>
+      <div className="seg brand-seg" role="group" aria-label="แบรนด์">
+        {opts.map((o) => (
+          <button key={o.value} type="button" className={`seg-btn${brand === o.value ? ' on' : ''}`} data-brand-pick={o.value}
+            aria-pressed={brand === o.value} onClick={() => setBrand(o.value)}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+      <select className="select brand-select" id="brand-switch" aria-label="แบรนด์" value={brand} onChange={(e) => setBrand(e.target.value as BrandScope)}>
+        {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}

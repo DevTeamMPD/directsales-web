@@ -4,6 +4,7 @@ import { ERROR_TEXT, errorKind, errorMessage, kindOf, NETWORK_TEXT, RpcError, to
 describe('toThaiError', () => {
   it('maps the outreach tokens (template_not_found is not shadowed by not_found)', () => {
     expect(toThaiError('template_not_found')).toBe('ไม่พบ template นี้ หรือถูกปิดใช้งานแล้ว');
+    expect(toThaiError('too_many_phones')).toBe('ส่งเบอร์เกินจำนวนสูงสุดต่อครั้ง');
     expect(toThaiError('batch_too_large')).toBe('เลือกลูกค้าเกินจำนวนสูงสุดต่อชุด');
     expect(toThaiError('invalid_template')).toBe('template ไม่ถูกต้อง ต้องมีชื่อและข้อความ');
     expect(toThaiError('invalid_setting')).toBe('ค่าตั้งค่าไม่ถูกต้อง (ระยะห่าง 5–3600 วินาที, เพดาน LINE ตั้งแต่ 0)');
@@ -12,6 +13,12 @@ describe('toThaiError', () => {
   });
   it('maps every prototype LIVE_ERR key', () => {
     expect(toThaiError('taken')).toBe('ลูกค้ารายนี้มีคนจองไปแล้ว');
+    expect(toThaiError('ai_daily_limit')).toMatch(/^วิเคราะห์ด้วย AI ครบเพดาน/);
+    expect(toThaiError('ai_nothing_to_undo')).toMatch(/^ไม่มีผล AI ให้ย้อนกลับ/);
+    expect(toThaiError('campaign_closed')).toBe('แคมเปญนี้ปิดหรือสิ้นสุดแล้ว จองลูกค้าเข้าแคมเปญไม่ได้');
+    expect(toThaiError('campaign_quota')).toBe('คุณจองลูกค้าในแคมเปญนี้ครบจำนวนสูงสุดแล้ว');
+    expect(toThaiError('cs_customer')).toBe('ลูกค้ารายนี้เป็นเคสบริการ/เคลม หรือลูกค้า B2B — ไม่ดึงเข้า Direct Sale');
+    expect(toThaiError('release_cooldown')).toBe('ลูกค้ารายนี้เพิ่งถูกคืนจาก Direct Sale ของคุณ (ครบ 30 วันยังไม่ปิดการขาย) จองซ้ำได้เมื่อพ้น 30 วัน');
     expect(toThaiError('no_call')).toBe('ลูกค้ารายนี้ไม่สะดวกให้โทร');
     expect(toThaiError('forbidden')).toBe('ไม่มีสิทธิ์ทำรายการนี้');
     expect(toThaiError('bill_required')).toBe('ใส่เลขบิลก่อนปิดการขาย');

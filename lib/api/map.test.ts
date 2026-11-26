@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildReps, mapCampaign, mapChannel, mapChatRoom, mapLead, mapPoolRow, mapPurchase, normProvider, rowsTotal, upsertLead } from './map';
+import { buildReps, mapCampaign, mapChannel, mapChatRoom, mapLead, mapPoolRow, mapPurchase, metaInboxUrl, normProvider, rowsTotal, upsertLead } from './map';
 import { leadJson } from './test-helpers';
 import type { CampaignRow, MeRow, PoolRowJson, TeamRow } from './types';
 
@@ -109,6 +109,25 @@ describe('mapPoolRow', () => {
     expect([normProvider('Line'), normProvider('LineOA'), normProvider('TikTok'), normProvider('Zalo'), normProvider(null)]).toEqual(['line', 'line', 'tiktok', 'zalo', 'other']);
     expect(mapChatRoom({ ms_id: 5, provider: 'shopee', page: null, brand: 'x', sendable: true })).toEqual({ msId: 5, provider: 'shopee', page: '', brand: null, sendable: false });
   });
+  it('keeps the room own chat name (JST name of that room) when the server sends it', () => {
+    expect(mapChatRoom({ ms_id: 6, provider: 'Facebook', page: 'Bebeplay', brand: 'bebeplay', sendable: false, name: ' Kampan N ' }))
+      .toEqual({ msId: 6, provider: 'facebook', page: 'Bebeplay', brand: 'bebeplay', sendable: false, name: 'Kampan N' });
+    expect(mapChatRoom({ ms_id: 7, provider: 'line', page: 'x', brand: null, sendable: false, name: '  ' })).not.toHaveProperty('name');
+  });
+  it('Facebook / Instagram rooms with a known Meta page id get the page inbox link of Meta Business Suite', () => {
+    expect(metaInboxUrl('347147266044826', '543119309449766')).toBe(
+      'https://business.facebook.com/latest/inbox/all/?business_id=543119309449766&asset_id=347147266044826&mailbox_id=347147266044826',
+    );
+    expect(metaInboxUrl('347147266044826', null)).toBe(
+      'https://business.facebook.com/latest/inbox/all/?asset_id=347147266044826&mailbox_id=347147266044826',
+    );
+    expect(metaInboxUrl('', '5')).toBeNull();
+    expect(metaInboxUrl('12a', '5')).toBeNull();
+    const fb = mapChatRoom({ ms_id: 8, provider: 'Facebook', page: 'Bebeplay', brand: 'bebeplay', sendable: false, meta_page_id: '347147266044826', meta_business_id: '543119309449766' });
+    expect(fb.metaInbox).toBe(metaInboxUrl('347147266044826', '543119309449766'));
+    expect(mapChatRoom({ ms_id: 9, provider: 'Facebook', page: 'HostTail', brand: 'hosttail', sendable: false, meta_page_id: null })).not.toHaveProperty('metaInbox');
+    expect(mapChatRoom({ ms_id: 10, provider: 'line', page: 'x', brand: 'bebeplay', sendable: true, meta_page_id: '1' })).not.toHaveProperty('metaInbox');
+  });
   it('rowsTotal reads total_count from the first row', () => {
     expect(rowsTotal([pr(), pr()])).toBe(120);
     expect(rowsTotal([])).toBe(0);
@@ -138,5 +157,30 @@ describe('mapPurchase / mapChannel', () => {
       .toEqual({ date: '2026-10-01', bill: 'SO-1', sku: 'BBP-BED-03', product: 'เตียงนอนไม้', amount: 3290, seller: null });
     expect(mapChannel({ platform: 'line', shop: 'LOA_bebeplay', orders: 2, last_order: null, chat_name: null }))
       .toEqual({ platform: 'line', shop: 'LOA_bebeplay', chat: '' });
+  });
+});
+
+describe('mapLead system history', () => {
+  it('keeps system entries (auto-release) out of the contact history and exposes them separately', () => {
+    const j = leadJson({
+      dsSince: '2026-11-01T03:00:00+00:00',
+      interactions: [
+        { id: 'i1', type: 'call', date: '2026-11-04T03:00:00+00:00', rep: 'u1', result: null, note: null, due: null, bills: null },
+        { id: 's1', type: 'system', date: '2026-11-05T00:05:00+00:00', rep: 'u1', result: null, note: 'ครบ 30 วันยังไม่ปิดการขาย — คืนอัตโนมัติ', due: null, bills: null },
+      ],
+    });
+    const l = mapLead(j);
+    expect(l.interactions.map((i) => i.id)).toEqual(['i1']);
+    expect(l.systemLog).toEqual([{ id: 's1', date: '2026-11-05T07:05', rep: 'u1', note: 'ครบ 30 วันยังไม่ปิดการขาย — คืนอัตโนมัติ' }]);
+    expect(l.dsSince).toBe('2026-11-01T03:00:00+00:00');
+  });
+  it('AI entries go to the system history with kind ai and the status it set', () => {
+    const l = mapLead(leadJson({
+      interactions: [
+        { id: 'a1', type: 'ai', date: '2026-11-25T03:00:00+00:00', rep: 'u9', result: 'callback', note: 'ลูกค้าขอให้ติดต่อพรุ่งนี้', due: '2026-11-26', bills: null },
+      ],
+    }));
+    expect(l.interactions).toEqual([]);
+    expect(l.systemLog).toEqual([{ id: 'a1', date: '2026-11-25T10:00', rep: 'u9', note: 'ลูกค้าขอให้ติดต่อพรุ่งนี้', kind: 'ai', result: 'callback' }]);
   });
 });

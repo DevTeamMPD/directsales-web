@@ -314,6 +314,48 @@ export function createJstClient({
     };
   }
 
+  /**
+   * ห้องของผู้ซื้อตามรหัสผู้ซื้อออนไลน์ (= order_tracking.buyer_account_no: LINE userId / FB PSID / Shopee, Lazada buyer id)
+   * เหมือนเลือก "รหัสผู้ซื้อออนไลน์" ในช่องค้นของหน้าแชต JST · คืนเฉพาะห้องที่ outer_user_id ตรงทุกตัวอักษร
+   * → [{ ms_id, outer_user_id, provider, page, name, expired, last_message_time (ISO | null) }]
+   */
+  async function searchByBuyerId(idInput) {
+    const id = String(idInput ?? '').trim();
+    if (!id) throw new Error('invalid buyer id');
+    const body = await post('/iim/getSessions', {
+      ...sessionBody(0, false),
+      query_type: 'outer_user_id',
+      name: id,
+      page_size: 20,
+      precise_query_ms_ids: [],
+    });
+    requireSuccess('/iim/getSessions', body);
+    const list = body.data?.data;
+    if (!Array.isArray(list)) throw new ShapeError('/iim/getSessions: data.data is not an array');
+    const out = [];
+    for (const s of list) {
+      const bad = [];
+      if (!s || typeof s !== 'object') throw new ShapeError('/iim/getSessions: session is not an object');
+      if (!isNum(s.ms_id)) bad.push('ms_id');
+      if (typeof s.outer_user_id !== 'string') bad.push('outer_user_id');
+      if (typeof s.name !== 'string') bad.push('name');
+      if (typeof s.is_expired !== 'boolean') bad.push('is_expired');
+      if (bad.length) throw new ShapeError(`/iim/getSessions: bad field(s) ${bad.join(', ')}`);
+      if (s.outer_user_id !== id) continue;
+      const long = Number(s.last_message_time_long);
+      out.push({
+        ms_id: s.ms_id,
+        outer_user_id: s.outer_user_id,
+        provider: typeof s.session_provider === 'string' ? s.session_provider : null,
+        page: typeof s.outer_account_name === 'string' ? s.outer_account_name : null,
+        name: s.name.trim(),
+        expired: s.is_expired,
+        last_message_time: Number.isFinite(long) && long > 0 ? new Date(long).toISOString() : null,
+      });
+    }
+    return out;
+  }
+
   /** ข้อความล่าสุด 20 รายการของห้อง */
   async function recentMessages(r) {
     const body = await post('/iim/getMsgs', {
@@ -367,6 +409,7 @@ export function createJstClient({
     login,
     post,
     room,
+    searchByBuyerId,
     recentMessages,
     send,
     /** โหลด cookie จากไฟล์ใหม่ (หลัง import-session.mjs) */

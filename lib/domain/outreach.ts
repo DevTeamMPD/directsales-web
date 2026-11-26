@@ -1,5 +1,5 @@
 import type {
-  BatchItem, Brand, ChatRoom, DemoCustomer, EnqueueSkipReason, OutreachCounts, OutreachStatus, PreviewRow, Template, WorkerRoom, WorkerRow, WorkerState,
+  BatchItem, Brand, ChatRoom, DemoCustomer, EnqueueSkipReason, Lead, OutreachCounts, OutreachStatus, PreviewRow, Template, WorkerRoom, WorkerRow, WorkerState,
   WorkerStatus,
 } from '@/lib/api/types';
 import { BRAND, PLAT } from '@/lib/constants';
@@ -54,6 +54,50 @@ export function pageCheckState(sel: Selection, rows: ReadonlyArray<Pick<SelRow, 
   return n === 0 ? 'none' : n === rows.length ? 'all' : 'some';
 }
 
+/* ---------- หน้า Direct Sale: ติ๊กลีดเพื่อส่งข้อความ ---------- */
+/** เซลล์ติ๊กได้เฉพาะลีดที่ตัวเองเป็นเจ้าของ · หัวหน้าติ๊กลีดที่มีเจ้าของได้ทุกคน (ส่งแทน ลีดยังเป็นของเจ้าของเดิม —
+ *  migration 20261124090000) · ลีดที่ยังไม่มีเจ้าของติ๊กไม่ได้ (enqueue จะจองให้คนกดส่ง) */
+export const leadSelectable = (l: Pick<Lead, 'owner'>, meId: string, isAdmin = false): boolean =>
+  !!meId && !!l.owner && (isAdmin || l.owner === meId);
+
+/** ตัดเบอร์ที่ไม่ใช่ลีดของฉันแล้วออกจากที่เลือก (ไม่มีอะไรถูกตัด = คืนตัวเดิม เพื่อไม่ให้ React วาดใหม่) */
+export function pruneSelection(sel: ReadonlySet<string>, allowed: ReadonlySet<string>): ReadonlySet<string> {
+  for (const p of sel) if (!allowed.has(p)) return new Set([...sel].filter((x) => allowed.has(x)));
+  return sel;
+}
+
+/** สถานะช่องติ๊กหัวตารางของเบอร์ที่ติ๊กได้ในหน้านี้ */
+export function phoneCheckState(sel: ReadonlySet<string>, phones: ReadonlyArray<string>): 'all' | 'some' | 'none' {
+  const n = phones.filter((p) => sel.has(p)).length;
+  return n === 0 ? 'none' : n === phones.length ? 'all' : 'some';
+}
+
+export function togglePhone(sel: ReadonlySet<string>, phone: string): Set<string> {
+  const next = new Set(sel);
+  if (next.has(phone)) next.delete(phone);
+  else next.add(phone);
+  return next;
+}
+
+export function setPhones(sel: ReadonlySet<string>, phones: ReadonlyArray<string>, on: boolean): Set<string> {
+  const next = new Set(sel);
+  for (const p of phones) {
+    if (on) next.add(p);
+    else next.delete(p);
+  }
+  return next;
+}
+
+/** ภาพของลีดสำหรับ SendOutreachModal — chatBrands = แบรนด์ที่มีห้องส่งได้ (จาก useLeadRooms) */
+export function leadSelRow(l: Pick<Lead, 'phone' | 'name' | 'brand' | 'chatName'>, rooms: ReadonlyArray<ChatRoom> | undefined): SelRow {
+  const rs = rooms ?? [];
+  const chatBrands = [...new Set(rs.filter((r) => r.sendable && r.brand).map((r) => r.brand as Brand))];
+  return {
+    phone: l.phone, name: l.name, brands: [l.brand], chat: l.chatName, taken: null, mine: true, chatBrands,
+    ...(rs.length ? { chatRooms: [...rs] } : {}),
+  };
+}
+
 /** แถบลอยด้านล่าง: ส่งได้เมื่อเลือก 1..max คน */
 export function selectionBar(count: number, max: number): { text: string; canSend: boolean; over: string | null } {
   return {
@@ -102,9 +146,10 @@ export const SKIP_TEXT: Readonly<Record<EnqueueSkipReason, string>> = {
   taken: 'เป็นลูกค้าของเซลล์คนอื่น',
   already_queued: 'อยู่ในคิวส่งข้อความแล้ว',
   no_chat_room: 'ไม่พบห้องแชตของแบรนด์นี้',
-  window_closed: 'หมดช่วงส่งข้อความ (ลูกค้าไม่ได้ทักมาเกิน 24 ชม.)',
+  window_closed: 'หมดช่วงส่งข้อความ (ลูกค้าไม่ได้ทักมาเกิน 7 วัน)',
   no_call: 'ลูกค้าไม่สะดวกให้ติดต่อ',
   claim_failed: 'จองลูกค้าไม่สำเร็จ',
+  cs_customer: 'ลูกค้าเคสบริการ/เคลม หรือ B2B (ไม่ทักขาย)',
 };
 export const skipLabel = (reason: string | null | undefined): string =>
   (reason && (SKIP_TEXT as Readonly<Record<string, string>>)[reason]) || reason || '—';
@@ -131,8 +176,9 @@ export function itemErrorText(error: string | null | undefined): string {
   const e = (error ?? '').trim();
   if (!e) return '';
   if (e === 'room_mismatch') return 'ห้องแชตไม่ตรงกับที่บันทึกไว้ (ไม่ได้ส่ง)';
-  if (e === 'window_closed') return 'หมดช่วงส่งข้อความ (ลูกค้าไม่ได้ทักมาเกิน 24 ชม.) — โทรหาแทน';
+  if (e === 'window_closed') return 'หมดช่วงส่งข้อความ (ลูกค้าไม่ได้ทักมาเกิน 7 วัน) — โทรหาแทน';
   if (e === 'stale_sending') return 'ส่งค้างนานเกินไป ระบบคืนเข้าคิว';
+  if (e === 'cs_customer') return 'ยกเลิก: ลูกค้าเคสบริการ/เคลม หรือ B2B';
   const jst = /^jst_error:\s*([\s\S]*)$/.exec(e);
   if (jst) return `JST ส่งไม่สำเร็จ${jst[1] ? ': ' + jst[1] : ''}`;
   return e;
@@ -187,13 +233,30 @@ export function isWorkerOnline(w: Pick<WorkerRow, 'heartbeat_at'> & { online?: b
   return Number.isFinite(t) && now - t <= WORKER_ONLINE_MS;
 }
 
+/** ป้ายสถานะการ์ด Worker: ออฟไลน์ = "ไม่ได้ทำงาน" เสมอ (state ที่เห็นคือค่าสุดท้ายที่เครื่องส่งมาก่อนหายไป) + บอกว่าขาดการติดต่อนานเท่าไร */
+export function workerBadge(
+  w: Pick<WorkerRow, 'heartbeat_at' | 'state'> & { online?: boolean | null }, now: number = Date.now(),
+): { cls: string; text: string; hint: string | null } {
+  if (isWorkerOnline(w, now)) return { cls: workerStateBadge(w.state), text: workerStateLabel(w.state), hint: null };
+  const t = w.heartbeat_at ? Date.parse(w.heartbeat_at) : NaN;
+  const min = Number.isFinite(t) ? Math.max(0, Math.floor((now - t) / 60_000)) : null;
+  const ago = min === null ? '' : min < 60 ? `${min} นาที` : min < 1440 ? `${Math.floor(min / 60)} ชั่วโมง` : `${Math.floor(min / 1440)} วัน`;
+  return {
+    cls: 's-lost', text: 'ไม่ได้ทำงาน',
+    hint: `${ago ? `ขาดการติดต่อ ${ago} — ` : ''}เปิด worker ใหม่ที่เครื่องนี้ (run-worker.cmd หรือ task "JST Outreach Worker")`,
+  };
+}
+
 export interface Banner { kind: 'warn' | 'note'; text: string }
 /** แถบเตือนด้านบนของหน้า /outreach */
 export function workerBanners(s: WorkerStatus | null | undefined, now: number = Date.now()): Banner[] {
   if (!s) return [];
   const out: Banner[] = [];
   const online = (s.workers ?? []).filter((w) => isWorkerOnline(w, now));
-  if (!online.length) out.push({ kind: 'warn', text: 'Worker ออฟไลน์: ข้อความจะรอในคิวจนกว่า worker จะกลับมาทำงาน' });
+  if (!online.length) {
+    const last = (s.workers ?? []).map((w) => w.heartbeat_at).filter((x): x is string => !!x).sort().pop();
+    out.push({ kind: 'warn', text: `Worker ออฟไลน์${last ? ` (ส่งสัญญาณล่าสุด ${stamp(last)})` : ''}: ข้อความจะรอในคิวจนกว่า worker จะกลับมาทำงาน — แจ้ง dev ให้เปิดเครื่อง worker` });
+  }
   else if (online.every((w) => w.state === 'needs_login')) out.push({ kind: 'warn', text: 'Worker ต้องล็อกอิน JST ใหม่: ยังไม่ส่งข้อความจนกว่าจะล็อกอิน (คิวไม่หาย)' });
   else if (online.every((w) => w.state === 'stopped')) out.push({ kind: 'warn', text: 'Worker หยุดทำงาน: รอ dev ตรวจสอบ (คิวไม่หาย)' });
   else if (online.every((w) => w.state !== 'running')) out.push({ kind: 'warn', text: 'Worker พักชั่วคราว: จะกลับมาส่งเองภายใน 15 นาที' });
@@ -287,7 +350,7 @@ export function demoPreview(rows: ReadonlyArray<SelRow>, t: Pick<Template, 'body
       .sort((a, b) => ROOM_ORDER[a.plat] - ROOM_ORDER[b.plat]);
     if (!rooms.length) return { ...base, skip: 'no_chat_room' };
     const room = rooms[0];
-    // ลูกค้าเก่าส่วนมากเงียบเกิน 24 ชม. → ห้อง Facebook/Instagram ปิดช่วงส่ง (ข้อ 4.4)
+    // ลูกค้าเก่าส่วนมากเงียบเกิน 7 วัน → ห้อง Facebook/Instagram ปิดช่วงส่ง (ข้อ 4.4)
     if (ROOM_ORDER[room.plat] === 2) return { ...base, skip: 'window_closed' };
     const msg = renderTemplate(t.body, { name: c.name, product, shop: room.shop });
     return { ...base, ms_id: null, page: room.shop, provider: PROVIDER[room.plat], chat_name: room.chat, message: msg.text, skip: null };

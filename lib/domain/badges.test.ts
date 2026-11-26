@@ -13,4 +13,12 @@ describe('badgeCounts (prototype updateBadges)', () => {
       L('me', 'new', 'hosttail'), L(null, 'new', 'bebeplay', 'self')];
     expect(badgeCounts(leads, 'me')).toEqual({ leads: 1, bebeplay: 1, hosttail: 2 });
   });
+  it('Direct Sale badge counts only the selected brand; campaign badges are unchanged', () => {
+    const leads = [L('me', 'new', 'bebeplay'), L('me', 'callback', 'hosttail'), L('me', 'new', 'hosttail'),
+      L(null, 'new', 'bebeplay'), L(null, 'new', 'hosttail')];
+    expect(badgeCounts(leads, 'me', 'hosttail')).toEqual({ leads: 2, bebeplay: 1, hosttail: 1 });
+    expect(badgeCounts(leads, 'me', 'bebeplay')).toEqual({ leads: 1, bebeplay: 1, hosttail: 1 });
+    expect(badgeCounts(leads, 'me', 'all')).toEqual({ leads: 3, bebeplay: 1, hosttail: 1 });
+    expect(badgeCounts(leads, 'me')).toEqual(badgeCounts(leads, 'me', 'all'));
+  });
 });

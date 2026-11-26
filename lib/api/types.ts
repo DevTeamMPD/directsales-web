@@ -7,13 +7,22 @@ export type ContactType = 'call' | 'chat';
 export interface Channel { shop?: string; chat?: string; chat_name?: string; platform?: string; ms_id?: number | string | null }
 
 /** รายการใน interactions ของ dsales_lead_json (ล่าสุด 30 รายการ เรียงเก่า→ใหม่) */
+/** 'system' = บันทึกจากระบบ (เช่น คืนลีดอัตโนมัติเมื่อครบ 30 วัน) — mapLead แยกไปไว้ที่ Lead.systemLog ไม่ปนกับประวัติการติดต่อ */
 export interface InteractionJson {
-  id: string; type: ContactType; date: string; rep: string | null;
+  id: string; type: ContactType | 'system' | 'ai'; date: string; rep: string | null;
   result: string | null; note: string | null; due: string | null; bills: string[] | null;
 }
 export interface Interaction {
   id: string; type: ContactType; date: string; rep: string | null;
   result: string; note: string; due?: string | null; bills?: string[] | null;
+}
+
+/** kind 'ai' = ผลวิเคราะห์สถานะด้วย AI (result = สถานะที่ตั้ง / keep / undo) */
+export interface SystemNote { id: string; date: string; rep: string | null; note: string; kind?: 'ai'; result?: string }
+/** dsales_leads.ai — ผลวิเคราะห์สถานะด้วย AI ครั้งล่าสุด (20261125130000) */
+export interface LeadAi {
+  at: string; status: string; applied: boolean; confidence: number; prevStatus: string; prevCallback: string | null; callback: string | null;
+  interest: string; reason: string; flags: string[]; nextAction: string; undoneAt?: string;
 }
 
 export interface Purchase { date: string; bill: string; sku: string; product: string; amount: number; seller: string | null }
@@ -26,6 +35,9 @@ export interface LeadJson {
   interest: string | null; closedBills: string[] | null; closedAmount: number | null; closedAt: string | null;
   claimedBy: string | null; claimedAt: string | null; noCall: boolean; noCallBy: string | null; noCallAt: string | null;
   releasedBy: string[] | null; autoSkip: boolean; identityId: string | null;
+  /** เวลาที่เข้า Direct Sale ของเจ้าของปัจจุบัน (null = ไม่มีเจ้าของ) — ครบ 30 วันยังไม่ won ระบบคืนอัตโนมัติ */
+  dsSince?: string | null;
+  ai?: LeadAi | null;
   bills: string[] | null; total: number | null; lastBuy: string | null; orders: number | null;
   interactions: InteractionJson[] | null;
 }
@@ -39,10 +51,15 @@ export interface Lead {
   noCall?: boolean; noCallBy?: string | null; noCallAt?: string | null; releasedBy?: string[]; autoSkip?: boolean; identityId?: string | null;
   bills?: string[]; total?: number | null; lastBuy?: string | null; orders?: number | null;
   interactions: Interaction[]; purchases: Purchase[];
+  dsSince?: string | null; systemLog?: SystemNote[]; ai?: LeadAi | null;
   _pl?: 'loading' | 'done'; chatCheck?: ChatCheck | null;
 }
 
-export interface CampaignCriterion { type: CritType; kw?: string; min?: string; max?: string; from?: string; to?: string }
+/** SKU ที่ติ๊กในเงื่อนไข "เคยซื้อสินค้า" (เก็บชื่อไว้แสดงชิป) */
+export interface ProductItem { sku: string; name: string }
+export interface CampaignCriterion { type: CritType; kw?: string; min?: string; max?: string; from?: string; to?: string; items?: ProductItem[] }
+/** แถวของ dsales_product_search */
+export interface ProductRow { sku: string; product_name: string | null; buyers: number; last_bought: string | null }
 export interface CampaignRow {
   id: string; brand: Brand; name: string; description: string | null; start_date: string | null; end_date: string | null;
   claim_mode: ClaimMode; max_per_rep: number | null; active: boolean | null; criteria: CampaignCriterion[] | null; created_at?: string;
@@ -60,14 +77,22 @@ export interface MemberJson { user_id: string; email: string; display_name: stri
 
 /**
  * ห้องแชตที่ผูกกับลูกค้า (dsales_base_customers.chat_rooms เรียงห้องที่ส่งได้ก่อน)
- * brand null = เพจนอก 2 แบรนด์; sendable false = brand null หรือ Facebook/Instagram ที่ลูกค้าไม่ได้ทักมาใน 24 ชม.
+ * brand null = เพจนอก 2 แบรนด์; sendable false = brand null หรือ Facebook/Instagram ที่ลูกค้าไม่ได้ทักมาใน 7 วัน
  */
-export interface ChatRoomJson { ms_id: number; provider: string | null; page: string | null; brand: string | null; sendable: boolean }
-export interface ChatRoom { msId: number; provider: string; page: string; brand: Brand | null; sendable: boolean }
+export interface ChatRoomJson { ms_id: number; provider: string | null; page: string | null; brand: string | null; sendable: boolean; name?: string | null;
+  /** ห้อง Facebook / Instagram เท่านั้น */ outer_user_id?: string | null; meta_page_id?: string | null; meta_business_id?: string | null }
+/** name = ชื่อของห้องนี้ใน JST (ใช้ค้นหา/คัดลอก) · metaInbox = ลิงก์ Inbox ของเพจใน Meta Business Suite (FB/IG ที่รู้ page id) */
+export interface ChatRoom { msId: number; provider: string; page: string; brand: Brand | null; sendable: boolean; name?: string; metaInbox?: string }
+/** แถวของ dsales_rooms_for_phones */
+export interface RoomsForPhoneRow { phone: string; rooms: ChatRoomJson[] | null }
 
 /** p_filters ของ dsales_base_customers (สร้างจาก UI ด้วย lib/domain/baseFilters.ts buildFilterJson) — ไม่มีตัวกรอง = {} */
 export type BaseFilterJson = Partial<{
-  rfm: string[]; dormant_min: number; dormant_max: number; ltv_min: number; orders_min: number; tag: string; has_chat: boolean; provider: string;
+  rfm: string[]; dormant_min: number; dormant_max: number; ltv_min: number; ltv_max: number; orders_min: number; tag: string; has_chat: boolean; provider: string;
+  /** แคมเปญ (20261125090000): เคยซื้อ — ทุกกลุ่มต้องเจอ (SKU ใดในกลุ่ม หรือคำค้น kw) · ช่วงวันที่ซื้อ · บิลขั้นต่ำ · ยอดรวมไม่เกิน (รวมค่าขอบ) */
+  products: Array<{ skus?: string[]; kw?: string }>; bought_from: string; bought_to: string; bill_min: number; ltv_to: number;
+  /** หัวหน้าดูในมุมมองเซลล์ (scope mine = ลูกค้าของเซลล์คนนี้) — 20261125150000 */
+  as: string;
   sort: 'ltv' | 'dormant_asc' | 'dormant_desc' | 'last_desc' | 'orders_desc';
 }>;
 
@@ -109,7 +134,7 @@ export interface MemberTagsRow { user_id: string; jst_tags: string[] }
 
 /* ---------- ส่งข้อความผ่าน JST worker (docs/superpowers/plans/2026-11-20-outreach-contract.md) ---------- */
 /** เหตุผลที่ preview ข้ามลูกค้า (dsales_outreach_preview.skip) */
-export type OutreachSkip = 'customer_not_found' | 'taken' | 'already_queued' | 'no_chat_room' | 'window_closed';
+export type OutreachSkip = 'customer_not_found' | 'taken' | 'already_queued' | 'no_chat_room' | 'window_closed' | 'cs_customer';
 /** เหตุผลที่ enqueue ข้าม (preview + no_call / claim_failed) */
 export type EnqueueSkipReason = OutreachSkip | 'no_call' | 'claim_failed';
 export type OutreachStatus = 'queued' | 'sending' | 'sent' | 'failed' | 'cancelled';

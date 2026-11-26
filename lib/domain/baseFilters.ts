@@ -1,5 +1,6 @@
 import type { BaseFilterJson, Brand, ChatRoom, PoolRow } from '@/lib/api/types';
 import { PLAT } from '@/lib/constants';
+import { RFM_SEGMENTS } from './rfm';
 
 // ตัวกรองของ /mine และ /pool (dsales_base_customers.p_filters) — ฟังก์ชันล้วน
 
@@ -13,14 +14,9 @@ export const EMPTY_FILTERS: BaseFilters = { rfm: [], dormant: '', ltv: '', order
 
 export interface Option { value: string; label: string }
 
-/** กลุ่มลูกค้า (rfm_segment) — '' = ยังไม่จัดกลุ่ม (rfm_segment เป็น null ซึ่งเป็นแถวส่วนใหญ่) */
+/** กลุ่มลูกค้า RFM (dsales_customer_base.rfm — 20261125140000) — '' = ยังไม่จัดกลุ่ม (ไม่มีจำนวนออเดอร์/วันซื้อล่าสุด) */
 export const RFM_OPTIONS: ReadonlyArray<Option> = [
-  { value: 'Loyal', label: 'Loyal' },
-  { value: 'Potential', label: 'Potential' },
-  { value: 'Promising', label: 'Promising' },
-  { value: 'At Risk', label: 'At Risk' },
-  { value: 'Hibernating', label: 'Hibernating' },
-  { value: 'Unscored', label: 'Unscored' },
+  ...RFM_SEGMENTS.map((s) => ({ value: s.key, label: s.label })),
   { value: '', label: 'ยังไม่จัดกลุ่ม' },
 ];
 
@@ -32,9 +28,14 @@ export const DORMANT_PRESETS: ReadonlyArray<RangePreset> = [
   { key: '181-365', label: 'ไม่ได้ซื้อมา 181–365 วัน', min: 181, max: 365 },
   { key: '366-', label: 'ไม่ได้ซื้อมาเกิน 365 วัน', min: 366, max: null },
 ];
-export const LTV_PRESETS: ReadonlyArray<RangePreset> = [1000, 5000, 10000, 50000].map((n) => ({
-  key: String(n), label: `ยอดซื้อสะสม ≥ ${n.toLocaleString('en-US')}`, min: n, max: null,
-}));
+/** ยอดซื้อสะสมเป็นช่วง (ขอบบนไม่รวม: ltv_max = 5000 หมายถึง < 5,000) — เดิมเป็น "≥ N" ซึ่งรวมลูกค้าหลักหมื่นเข้ามาด้วย */
+export const LTV_PRESETS: ReadonlyArray<RangePreset> = [
+  { key: '0-999', label: 'ยอดซื้อสะสมต่ำกว่า 1,000', min: 0, max: 1000 },
+  { key: '1000-4999', label: 'ยอดซื้อสะสม 1,000–4,999', min: 1000, max: 5000 },
+  { key: '5000-9999', label: 'ยอดซื้อสะสม 5,000–9,999', min: 5000, max: 10000 },
+  { key: '10000-49999', label: 'ยอดซื้อสะสม 10,000–49,999', min: 10000, max: 50000 },
+  { key: '50000-', label: 'ยอดซื้อสะสมตั้งแต่ 50,000', min: 50000, max: null },
+];
 export const ORDERS_PRESETS: ReadonlyArray<RangePreset> = [2, 3, 5].map((n) => ({ key: String(n), label: `ออเดอร์ ≥ ${n}`, min: n, max: null }));
 
 export const PROVIDERS = ['line', 'shopee', 'lazada', 'facebook', 'instagram', 'tiktok'] as const;
@@ -68,7 +69,10 @@ export function buildFilterJson(f: BaseFilters): BaseFilterJson {
     if (d.max != null) out.dormant_max = d.max;
   }
   const l = preset(LTV_PRESETS, f.ltv);
-  if (l) out.ltv_min = l.min;
+  if (l) {
+    out.ltv_min = l.min;
+    if (l.max != null) out.ltv_max = l.max;
+  }
   const o = preset(ORDERS_PRESETS, f.orders);
   if (o) out.orders_min = o.min;
   if (f.tag.trim()) out.tag = f.tag.trim();
@@ -94,10 +98,10 @@ export function tagOptions(tags: ReadonlyArray<string | null | undefined>): stri
   return [...seen.values()].sort((a, b) => a.localeCompare(b));
 }
 
-/* ---------- เก็บตัวกรองใน URL (?brand=&rfm=&dormant=&ltv=&orders=&provider=&tag=&chat=1&sort=) ---------- */
-export function filtersToQuery(f: BaseFilters, brand: string): string {
+/* ---------- เก็บตัวกรองใน URL (?rfm=&dormant=&ltv=&orders=&provider=&tag=&chat=1&sort=) ---------- */
+/** แบรนด์ไม่อยู่ใน URL แล้ว (ใช้แบรนด์ใหญ่ใน topbar) */
+export function filtersToQuery(f: BaseFilters): string {
   const q = new URLSearchParams();
-  if (brand) q.set('brand', brand);
   for (const v of f.rfm) q.append('rfm', v);
   if (f.dormant) q.set('dormant', f.dormant);
   if (f.ltv) q.set('ltv', f.ltv);
@@ -109,7 +113,7 @@ export function filtersToQuery(f: BaseFilters, brand: string): string {
   return q.toString();
 }
 
-/** ค่าที่ไม่รู้จักใน URL ถูกทิ้ง (กลับเป็นค่าเริ่มต้น) */
+/** ค่าที่ไม่รู้จักใน URL ถูกทิ้ง (กลับเป็นค่าเริ่มต้น) · `brand` อ่านจากลิงก์เดิม (?brand=) เพื่อตั้งแบรนด์ใหญ่ครั้งเดียว */
 export function filtersFromQuery(search: string): { filters: BaseFilters; brand: '' | Brand } {
   const q = new URLSearchParams(search);
   const pick = (k: string, ok: (v: string) => boolean): string => {
@@ -141,6 +145,7 @@ export function matchesFilters(r: PoolRow, f: BaseFilters, brand: Brand | null):
   if (j.dormant_min != null && (r.dormantDays == null || r.dormantDays < j.dormant_min)) return false;
   if (j.dormant_max != null && (r.dormantDays == null || r.dormantDays > j.dormant_max)) return false;
   if (j.ltv_min != null && (r.ltv ?? 0) < j.ltv_min) return false;
+  if (j.ltv_max != null && (r.ltv ?? 0) >= j.ltv_max) return false;
   if (j.orders_min != null && (r.orders ?? 0) < j.orders_min) return false;
   if (j.tag) {
     const tag = (r.ownerTag ?? '').toLowerCase();
@@ -177,16 +182,24 @@ export function sortBaseRows<T extends Pick<PoolRow, 'ltv' | 'dormantDays' | 'la
 /* ---------- ไอคอนห้องแชตในตาราง ---------- */
 const platName = (p: string): string => (PLAT as Readonly<Record<string, string>>)[p] || p;
 
-/** ห้องที่ worker ส่งไม่ได้: เพจนอก 2 แบรนด์ / Facebook-Instagram ที่ลูกค้าเงียบเกิน 24 ชม. */
+/** ห้องที่ worker ส่งไม่ได้: เพจนอก 2 แบรนด์ / Facebook-Instagram ที่ลูกค้าเงียบเกิน 7 วัน */
 export function roomNote(r: Pick<ChatRoom, 'brand' | 'sendable'>): string | null {
   if (r.sendable) return null;
-  return r.brand ? 'เกิน 24 ชม. ส่งผ่าน worker ไม่ได้' : 'เพจนอกแบรนด์';
+  return r.brand ? 'เกิน 7 วัน ส่งผ่าน worker ไม่ได้' : 'เพจนอกแบรนด์';
 }
+
+/** ห้อง FB/IG ที่ส่งผ่าน JST ไม่ได้ (เกิน 7 วัน) และรู้ page id → กดแล้วเปิด Inbox ของเพจใน Meta แทน JST */
+export const roomOpensMeta = (r: Pick<ChatRoom, 'provider' | 'sendable' | 'metaInbox'>): boolean =>
+  !r.sendable && !!r.metaInbox && (r.provider === 'facebook' || r.provider === 'instagram');
 
 export function roomTitle(r: ChatRoom): string {
   const note = roomNote(r);
-  return `${platName(r.provider)}${r.page ? ' · ' + r.page : ''} — ${note ? note + ' (กดเพื่อเปิดแชตใน JST)' : 'เปิดแชตใน JST'}`;
+  const action = roomOpensMeta(r) ? 'กดเพื่อเปิด Inbox ของเพจใน Meta Business Suite' : 'กดเพื่อเปิดแชตใน JST';
+  return `${platName(r.provider)}${r.page ? ' · ' + r.page : ''}${r.name ? ' · ' + r.name : ''} — ${note ? `${note} (${action})` : 'เปิดแชตใน JST'}`;
 }
+
+/** ชื่อที่ใช้ค้นหา/คัดลอกตอนกดไอคอนห้อง: ชื่อของห้องนั้นเอง → ชื่อแชตของลูกค้า → ชื่อลูกค้า (ลูกค้าคนเดียวอาจมีหลายห้องที่ชื่อต่างกัน) */
+export const roomSearchName = (room: Pick<ChatRoom, 'name'>, row: { chat: string; name: string }): string => room.name || row.chat || row.name;
 
 /** จำนวนผลลัพธ์ใต้ตัวกรอง */
 export const resultCountText = (total: number | null): string => (total == null ? '' : `พบ ${total.toLocaleString('th-TH')} คน`);

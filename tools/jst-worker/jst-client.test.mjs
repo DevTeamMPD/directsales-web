@@ -239,3 +239,35 @@ test('baseUrl must be https *.jsterp.com', () => {
   assert.throws(() => createJstClient({ baseUrl: 'https://evil.example.com', fetch: async () => {} }), /jsterp/);
   assert.throws(() => createJstClient({ baseUrl: 'http://asia-web.jsterp.com', fetch: async () => {} }), /jsterp/);
 });
+
+test('searchByBuyerId(): outer_user_id query, keeps exact matches only, maps fields', async () => {
+  const rooms = [
+    { ...ROOM, ms_id: 1, outer_user_id: 'U1', is_expired: true, last_message_time_long: '1789961714887' },
+    { ...ROOM, ms_id: 2, outer_user_id: 'U10' }, // ค้นแบบขึ้นต้นด้วยอาจได้คนอื่นมา — ต้องทิ้ง
+    { ...ROOM, ms_id: 3, outer_user_id: 'U1', session_provider: 'Facebook', outer_account_name: 'Bebeplay', last_message_time_long: '' },
+  ];
+  const fetch = fakeFetch({ 'POST /iim/getSessions': () => res({ success: true, data: { data: rooms } }) });
+  const c = createJstClient({ sessionFile: tmpSession(), fetch });
+  const out = await c.searchByBuyerId(' U1 ');
+  assert.deepEqual(out, [
+    { ms_id: 1, outer_user_id: 'U1', provider: 'Line', page: 'Bebeplay OA', name: 'คุณเอ', expired: true, last_message_time: '2026-09-21T03:35:14.887Z' },
+    { ms_id: 3, outer_user_id: 'U1', provider: 'Facebook', page: 'Bebeplay', name: 'คุณเอ', expired: false, last_message_time: null },
+  ]);
+  const b = fetch.calls[0].body;
+  assert.equal(b.query_type, 'outer_user_id');
+  assert.equal(b.name, 'U1');
+  assert.equal(b.is_precise_query, false);
+  assert.deepEqual(b.precise_query_ms_ids, []);
+  assert.equal(b.page_size, 20);
+});
+
+test('searchByBuyerId(): empty id rejected; bad shape → ShapeError; success:false → JstError', async () => {
+  const mk = (body) => createJstClient({ sessionFile: tmpSession(), fetch: fakeFetch({ 'POST /iim/getSessions': () => res(body) }) });
+  await assert.rejects(mk({ success: true, data: { data: [] } }).searchByBuyerId('  '), /invalid buyer id/);
+  await assert.rejects(mk({ success: true, data: { data: [{ ...ROOM, ms_id: '1' }] } }).searchByBuyerId('U1'), (e) => e instanceof ShapeError && /ms_id/.test(e.message));
+  await assert.rejects(mk({ success: true, data: { data: [{ ...ROOM, outer_user_id: 5 }] } }).searchByBuyerId('U1'), ShapeError);
+  await assert.rejects(mk({ success: true, data: { data: [{ ...ROOM, is_expired: 'no' }] } }).searchByBuyerId('U1'), ShapeError);
+  await assert.rejects(mk({ success: true, data: {} }).searchByBuyerId('U1'), ShapeError);
+  await assert.rejects(mk({ success: false, message: 'busy' }).searchByBuyerId('U1'), (e) => e instanceof JstError && e.message === 'busy');
+  assert.deepEqual(await mk({ success: true, data: { data: [] } }).searchByBuyerId('U1'), []);
+});

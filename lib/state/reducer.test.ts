@@ -81,3 +81,21 @@ describe('reducer', () => {
     expect(reducer(reducer(ready, { type: 'invalidatePool' }), { type: 'invalidatePool' }).poolVersion).toBe(2);
   });
 });
+
+describe('global brand', () => {
+  it('defaults to bebeplay, setBrand works before and after loading, sessions keep it', () => {
+    expect(initialState.brand).toBe('bebeplay');
+    const s1 = reducer(initialState, { type: 'setBrand', brand: 'hosttail' });
+    expect(s1.brand).toBe('hosttail'); // ก่อนโหลด (hydrate จาก localStorage) ต้องไม่ถูกทิ้ง
+    const s2 = reducer(s1, { type: 'loaded', payload });
+    expect(s2.brand).toBe('hosttail');
+    expect(reducer(s2, { type: 'setBrand', brand: 'all' }).brand).toBe('all');
+    expect(reducer(s2, { type: 'sessionLost', reason: 'expired' }).brand).toBe('hosttail');
+    expect(reducer(s2, { type: 'noAccess', email: 'x@example.com', inactive: false }).brand).toBe('hosttail');
+  });
+  it('a sales rep cannot keep "all" after loading', () => {
+    const s = reducer({ ...initialState, brand: 'all' }, { type: 'loaded', payload: { ...payload, isAdmin: false } });
+    expect(s.brand).toBe('bebeplay');
+    expect(reducer({ ...initialState, brand: 'all' }, { type: 'loaded', payload }).brand).toBe('all');
+  });
+});

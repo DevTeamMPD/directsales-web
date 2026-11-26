@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { DemoCustomer, WorkerStatus } from '@/lib/api/types';
+import type { ChatRoom, DemoCustomer, WorkerStatus } from '@/lib/api/types';
 import {
   batchProgress, brandRoomCounts, brandRoomHint, channelLabel, countBadges, DEFAULT_MAX_BATCH, defaultOutreachBrand, demoPreview, hasPending, isWorkerOnline, itemErrorText, itemsPending, maxBatch,
-  pageCheckState, renderTemplate, roomLabel, selectionBar, setPageSelected, shouldPoll, skipLabel, splitPreview, statusBadge, statusLabel,
-  skipReasonText, TEST_MODE_TEXT, toggleRoom, toggleSelect, toSelRow, upsertTemplate, validateSettings, validateTemplate, workerBanners, workerStateLabel, type SelRow,
+  leadSelectable, leadSelRow, pageCheckState, phoneCheckState, pruneSelection, renderTemplate, roomLabel, selectionBar, setPageSelected, setPhones, shouldPoll, skipLabel, splitPreview, statusBadge, statusLabel,
+  skipReasonText, TEST_MODE_TEXT, togglePhone, toggleRoom, toggleSelect, toSelRow, upsertTemplate, validateSettings, validateTemplate, workerBadge, workerBanners, workerStateLabel, type SelRow,
 } from './outreach';
 
 const row = (phone: string, over: Partial<SelRow> = {}): SelRow => ({ phone, name: `ลูกค้า ${phone}`, brands: ['bebeplay'], chat: 'c', taken: null, mine: false, chatBrands: [], ...over });
@@ -41,8 +41,9 @@ describe('selection', () => {
 describe('labels', () => {
   it('skip reasons, statuses and worker states in Thai', () => {
     expect(skipLabel('no_chat_room')).toBe('ไม่พบห้องแชตของแบรนด์นี้');
-    expect(skipLabel('window_closed')).toBe('หมดช่วงส่งข้อความ (ลูกค้าไม่ได้ทักมาเกิน 24 ชม.)');
+    expect(skipLabel('window_closed')).toBe('หมดช่วงส่งข้อความ (ลูกค้าไม่ได้ทักมาเกิน 7 วัน)');
     expect(skipLabel('claim_failed')).toBe('จองลูกค้าไม่สำเร็จ');
+    expect(skipLabel('cs_customer')).toBe('ลูกค้าเคสบริการ/เคลม หรือ B2B (ไม่ทักขาย)');
     expect(skipLabel('something_new')).toBe('something_new');
     expect(statusLabel('queued')).toBe('รอส่ง');
     expect(statusBadge('sent')).toBe('s-won');
@@ -53,6 +54,7 @@ describe('labels', () => {
     expect(itemErrorText(null)).toBe('');
     expect(itemErrorText('room_mismatch')).toBe('ห้องแชตไม่ตรงกับที่บันทึกไว้ (ไม่ได้ส่ง)');
     expect(itemErrorText('window_closed')).toContain('โทรหาแทน');
+    expect(itemErrorText('cs_customer')).toBe('ยกเลิก: ลูกค้าเคสบริการ/เคลม หรือ B2B');
     expect(itemErrorText('jst_error: ห้องถูกปิด')).toBe('JST ส่งไม่สำเร็จ: ห้องถูกปิด');
     expect(itemErrorText('stale_sending')).toBe('ส่งค้างนานเกินไป ระบบคืนเข้าคิว');
   });
@@ -106,6 +108,21 @@ describe('worker', () => {
     expect(workerBanners(status({}, [worker()]))).toEqual([]);
     expect(workerBanners(status({ test_mode: true, test_ms_ids: [1] }, [worker()]))).toEqual([{ kind: 'note', text: TEST_MODE_TEXT }]);
     expect(workerBanners(status({ test_mode: true }, [worker()]))[0]).toMatchObject({ kind: 'warn' });
+  });
+  it('worker badge: offline wins over the last reported state, with how long it has been silent', () => {
+    const now = Date.parse('2026-11-25T03:00:00Z');
+    expect(workerBadge(worker({ online: false, state: 'running', heartbeat_at: '2026-11-20T20:59:50Z' }), now))
+      .toEqual({ cls: 's-lost', text: 'ไม่ได้ทำงาน', hint: 'ขาดการติดต่อ 4 วัน — เปิด worker ใหม่ที่เครื่องนี้ (run-worker.cmd หรือ task "JST Outreach Worker")' });
+    expect(workerBadge(worker({ online: false, heartbeat_at: '2026-11-25T02:30:00Z' }), now).hint).toMatch(/^ขาดการติดต่อ 30 นาที/);
+    expect(workerBadge(worker({ online: false, heartbeat_at: '2026-11-24T22:00:00Z' }), now).hint).toMatch(/^ขาดการติดต่อ 5 ชั่วโมง/);
+    expect(workerBadge(worker({ online: true, state: 'paused' }), now)).toEqual({ cls: 's-callback', text: 'พักชั่วคราว', hint: null });
+  });
+  it('offline banner says when the worker was last seen (latest heartbeat)', () => {
+    const now = Date.parse('2026-11-25T03:00:00Z');
+    const off = (at: string | null) => worker({ online: false, heartbeat_at: at });
+    expect(workerBanners(status({}, [off('2026-11-20T06:07:09Z'), off('2026-11-20T20:59:50Z')]), now)[0].text)
+      .toBe('Worker ออฟไลน์ (ส่งสัญญาณล่าสุด 21/11/2026 03:59): ข้อความจะรอในคิวจนกว่า worker จะกลับมาทำงาน — แจ้ง dev ให้เปิดเครื่อง worker');
+    expect(workerBanners(status({}, [off(null)]), now)[0].text).toBe('Worker ออฟไลน์: ข้อความจะรอในคิวจนกว่า worker จะกลับมาทำงาน — แจ้ง dev ให้เปิดเครื่อง worker');
   });
   it('validates settings like the DB (interval 5–3600, cap ≥ 0)', () => {
     expect(validateSettings({ interval: '60', lineCap: '0' })).toBeNull();
@@ -199,5 +216,50 @@ describe('demoPreview with the chat rooms of the row', () => {
     expect(a).toMatchObject({ skip: null, ms_id: 11, page: 'LOA_bebeplay', provider: 'Line', chat_name: 'a_chat', message: 'คุณเอ LOA_bebeplay' });
     expect(b.skip).toBe('window_closed');
     expect(c.skip).toBe('no_chat_room');
+  });
+});
+
+describe('Direct Sale: tick leads to send a message', () => {
+  const room = (over: Partial<ChatRoom>): ChatRoom => ({ msId: 1, provider: 'line', page: 'Bebeplayofficial', brand: 'bebeplay', sendable: true, ...over });
+  const lead = { phone: '0811111111', name: 'คุณเอ', brand: 'hosttail' as const, chatName: 'เอ แชต', owner: 'u1' };
+  it('only leads I own can be ticked', () => {
+    expect(leadSelectable(lead, 'u1')).toBe(true);
+    expect(leadSelectable(lead, 'u2')).toBe(false);
+    expect(leadSelectable({ owner: null }, 'u1')).toBe(false);
+    expect(leadSelectable(lead, '')).toBe(false);
+  });
+  it('admins can tick any lead that has an owner (send on behalf, the lead stays with its owner)', () => {
+    expect(leadSelectable(lead, 'admin1', true)).toBe(true);
+    expect(leadSelectable({ owner: null }, 'admin1', true)).toBe(false);
+  });
+  it('builds the selection row from the lead and its rooms (sendable brands only)', () => {
+    const rooms = [room({ msId: 1 }), room({ msId: 2, brand: 'hosttail', sendable: false }), room({ msId: 3, brand: null, sendable: false })];
+    expect(leadSelRow(lead, rooms)).toEqual({
+      phone: '0811111111', name: 'คุณเอ', brands: ['hosttail'], chat: 'เอ แชต', taken: null, mine: true, chatBrands: ['bebeplay'], chatRooms: rooms,
+    });
+    expect(leadSelRow(lead, undefined)).toEqual({
+      phone: '0811111111', name: 'คุณเอ', brands: ['hosttail'], chat: 'เอ แชต', taken: null, mine: true, chatBrands: [],
+    });
+  });
+});
+
+describe('Direct Sale selection by phone', () => {
+  it('pruneSelection drops phones that are no longer allowed and keeps the same instance when nothing changes', () => {
+    const sel = new Set(['01', '02', '03']);
+    expect([...pruneSelection(sel, new Set(['01', '03', '09']))]).toEqual(['01', '03']);
+    expect(pruneSelection(sel, new Set(['01', '02', '03', '04']))).toBe(sel);
+    expect(pruneSelection(new Set<string>(), new Set(['01']))).toEqual(new Set());
+  });
+  it('phoneCheckState for the header checkbox', () => {
+    expect(phoneCheckState(new Set(['01']), [])).toBe('none');
+    expect(phoneCheckState(new Set<string>(), ['01', '02'])).toBe('none');
+    expect(phoneCheckState(new Set(['01']), ['01', '02'])).toBe('some');
+    expect(phoneCheckState(new Set(['01', '02', '09']), ['01', '02'])).toBe('all');
+  });
+  it('togglePhone / setPhones', () => {
+    expect([...togglePhone(new Set(['01']), '02')]).toEqual(['01', '02']);
+    expect([...togglePhone(new Set(['01', '02']), '01')]).toEqual(['02']);
+    expect([...setPhones(new Set(['09']), ['01', '02'], true)].sort()).toEqual(['01', '02', '09']);
+    expect([...setPhones(new Set(['01', '02', '09']), ['01', '02'], false)]).toEqual(['09']);
   });
 });

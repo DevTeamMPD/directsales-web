@@ -31,10 +31,10 @@ export const scopeLabel = (b: DashBrand): string => (b === 'all' ? 'ทุกแ
 
 export const byBrand = (A: ReadonlyArray<Lead>, b: DashBrand): Lead[] => (b === 'all' ? [...A] : A.filter((l) => l.brand === b));
 
-/** ชิปแบรนด์ (L323-324) นับจาก A ทั้งหมด */
-export function brandChips(A: ReadonlyArray<Lead>): Array<{ key: DashBrand; label: string; n: number; dot: string | null }> {
+/** ชิปแบรนด์ (L323-324) นับจาก A ทั้งหมด · ชิปเลือกแบรนด์ใหญ่ จึงมี "ทุกแบรนด์" เฉพาะหัวหน้า */
+export function brandChips(A: ReadonlyArray<Lead>, isAdmin: boolean): Array<{ key: DashBrand; label: string; n: number; dot: string | null }> {
   return [
-    { key: 'all', label: 'ทุกแบรนด์', n: A.length, dot: null },
+    ...(isAdmin ? [{ key: 'all' as const, label: 'ทุกแบรนด์', n: A.length, dot: null }] : []),
     { key: 'bebeplay', label: 'Bebeplay', n: A.filter((l) => l.brand === 'bebeplay').length, dot: 'var(--bebe)' },
     { key: 'hosttail', label: 'Hosttail', n: A.filter((l) => l.brand === 'hosttail').length, dot: 'var(--host)' },
   ];

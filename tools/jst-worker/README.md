@@ -12,6 +12,8 @@
 | `jst-client.mjs` | คุยกับ JST ผ่าน fetch + cookie jar (`.session.json`) |
 | `queue-client.mjs` | คุยกับ Supabase schema `dsales` ด้วยบัญชี worker |
 | `import-session.mjs` | ดึง cookie JST จากโปรไฟล์ Chrome (Playwright ใช้เฉพาะไฟล์นี้) |
+| `run-worker.cmd` | รัน worker แล้วเปิดใหม่เองเมื่อออกด้วย error |
+| `install-task.ps1` | ตั้ง task ของ Windows ให้เปิด `run-worker.cmd` ตอนล็อกอิน + ตรวจทุก 15 นาที |
 
 ## ติดตั้ง (Windows, Node 20+)
 ```powershell
@@ -28,6 +30,8 @@ copy config.example.json config.json
 |---|---|
 | `workerId` | ชื่อเครื่อง worker (แสดงในการ์ด Worker หน้าตั้งค่า) |
 | `pollSeconds` | ตรวจคิวทุกกี่วินาทีเมื่อไม่มีงาน (ค่าเริ่ม 5) |
+| `watchdogMinutes` | ลูปค้างเกินกี่นาทีให้ออกเพื่อเปิดใหม่ (ค่าเริ่ม 10, 0 = ปิด) |
+| `linkSync` | ผูกห้องแชตด้วยรหัสผู้ซื้อตอนไม่มีงานส่ง (ค่าเริ่ม `true`) — เครื่องสำรองที่รันพร้อมกันให้ตั้ง `false` |
 | `jst.baseUrl` | `https://asia-web.jsterp.com` (รับเฉพาะ `https://*.jsterp.com`) |
 | `jst.accountId` / `jst.password` | บัญชี JST กลาง (User Dev) — **เว้นว่างได้** ถ้าจะใช้ session จาก `import-session.mjs` อย่างเดียว (worker จะล็อกอินเองไม่ได้ เมื่อ session หลุดจะเข้า `needs_login`) |
 | `supabase.url` / `supabase.anonKey` | โปรเจกต์ Supabase + publishable key (ค่าเดียวกับ `NEXT_PUBLIC_SUPABASE_ANON_KEY`) |
@@ -43,6 +47,17 @@ copy config.example.json config.json
    ได้ไฟล์ `.session.json` (cookie ของ JST = มีค่าเท่ารหัสผ่าน) · ปิดสคริปต์อื่นที่ใช้โปรไฟล์เดียวกันก่อน (เช่น `probe.mjs` ของ spike)
 2. **ทดลองหนึ่งงาน**: `node worker.mjs --once` (ทำงานไม่เกิน 1 รายการแล้วออก)
 3. **รันจริง**: `node worker.mjs` (กด Ctrl+C = ทำงานที่ค้างให้จบ ส่ง heartbeat `stopped` แล้วออก · กดซ้ำ = ออกทันที)
+
+4. **รันค้างไว้ถาวร (เครื่อง worker จริง — แนะนำ)**: ติดตั้ง task ของ Windows ครั้งเดียว (ไม่ต้องใช้สิทธิ์ admin)
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\install-task.ps1 -KeepAwake
+   ```
+   - task **"JST Outreach Worker"** เปิด `run-worker.cmd` ตอนล็อกอินเครื่อง และตรวจทุก 15 นาที: ถ้า worker ไม่ได้รันอยู่ (ปิดหน้าต่าง/เครื่องหลับแล้วตื่น/แครช) จะเปิดใหม่เอง · ตั้ง WakeToRun ให้ปลุกเครื่องจากโหมดหลับได้
+   - `run-worker.cmd` รัน `node worker.mjs` ซ้ำทุกครั้งที่ออกด้วย error (เน็ตหลุด, แครช, watchdog) หลังรอ 30 วินาที · ออกด้วย Ctrl+C = หยุด (task จะเปิดใหม่ภายใน 15 นาที) · ประวัติการเปิด/ปิดอยู่ที่ `logs/supervisor.log`
+   - watchdog: ลูปไม่ขยับเกิน `watchdogMinutes` (ค่าเริ่ม 10, ตั้ง 0 = ปิด) worker ออกเอง (exit 3) ให้สคริปต์เปิดใหม่
+   - `-KeepAwake` ตั้งเครื่องไม่ให้หลับ/hibernate ตอนเสียบไฟ (สาเหตุหลักที่ worker หายไปเงียบ ๆ)
+   - เลิกใช้: `.\install-task.ps1 -Remove` · เมื่อติดตั้ง task แล้วอย่ารัน `node worker.mjs` ซ้อนอีกหน้าต่าง
+   - task เริ่มเมื่อมีคนล็อกอินเครื่องเท่านั้น — หลัง Windows Update รีสตาร์ท ต้องล็อกอินเครื่องก่อน (หรือเปิด auto-logon ของ Windows)
 
 ให้เปิดโหมดทดสอบในหน้าตั้งค่าไว้ก่อนเสมอ (ค่าเริ่ม): ทุกงานจะถูกส่งไป "ห้องทดสอบ" (`target_ms_id`) พร้อมคำนำหน้า `[ทดสอบ → ชื่อลูกค้า]` แทนห้องลูกค้าจริง
 
@@ -61,6 +76,13 @@ copy config.example.json config.json
 | `paused` | ล้มเหลวติดกัน 5 รายการ | พัก 15 นาทีแล้วลองใหม่เอง |
 | `needs_login` | session หลุดแล้วล็อกอินใหม่ไม่ได้ (JST ขอ captcha / รหัสผิด / ไม่ได้ใส่รหัส / ล็อกอินเกิน 3 ครั้งใน 1 ชม.) | รัน `node import-session.mjs --login` — worker เห็นไฟล์ `.session.json` เปลี่ยนแล้วทำงานต่อเอง (หรือรีสตาร์ท worker) · งานในคิวไม่หาย |
 | `stopped` | รูปแบบ response ของ JST/คิวเปลี่ยน (`ShapeError`) หรือกด Ctrl+C | หยุดส่งทันที (ยังส่ง heartbeat) — ให้ dev ตรวจ log แล้วรีสตาร์ทเอง **อย่าตั้งให้รีสตาร์ทอัตโนมัติ** |
+
+## ผูกห้องแชตด้วยรหัสผู้ซื้อ (link sync)
+ตอนไม่มีงานส่ง worker ค้นห้องใน JST ด้วย "รหัสผู้ซื้อออนไลน์" (`getSessions` + `query_type: 'outer_user_id'`) ทีละ 1 รหัส ทุก 1.5 วินาที
+- รหัสมาจาก `dsales_worker_link_targets` (= `order_tracking.buyer_account_no` ของลูกค้าในฐาน: LINE userId / FB PSID / Shopee, Lazada buyer id) ที่ยังไม่เคยค้นก่อน (มูลค่าสูงก่อน) แล้วค่อยค้นซ้ำทุก 14 วัน · รหัสที่สั่งซื้อด้วยเบอร์มากกว่า 3 เบอร์ (ตัวแทน/พนักงาน) ไม่ถูกผูก
+- ผล → `dsales_worker_link_save`: เก็บห้องใน `dsales_jst_rooms` และผูก `dsales_chat_links` (`method = 'buyer_id'`) เฉพาะห้องที่ `outer_user_id` ตรงทุกตัวอักษร
+- งานส่งมาก่อนเสมอ (ตรวจคิวทุกรอบก่อนค้น) · ไม่มีรหัสเหลือ = ถามใหม่ทุก 30 นาที · JST หรือ RPC ผูกห้องตอบ error = พักการค้น 5 นาที (ไม่กระทบการส่ง — อัปเดตโค้ดก่อนลง migration ก็ยังส่งได้) · response รูปแบบไม่คาด = ปิดการค้นจนกว่าจะรีสตาร์ท (การส่งทำต่อ)
+- log: บรรทัด `link` เมื่อผูกได้ และสรุปทุก 25 รหัส (ไม่มีรหัส/ชื่อลูกค้าใน log)
 
 Supabase ใช้ไม่ได้ → รอแล้วลองใหม่ (5 → 10 → … → 60 วินาที) และ **ไม่ส่ง JST** ระหว่างนั้น · ถ้าส่งแล้วแต่รายงานผลไม่ได้ worker จะเก็บผลไว้และรายงานให้ได้ก่อนรับงานใหม่
 

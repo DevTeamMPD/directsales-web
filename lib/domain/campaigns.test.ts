@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { Campaign } from '@/lib/api/types';
 import { fixturePayload } from '@/lib/fixtures/load';
 import {
-  campaignBadge, campaignBase, campStats, emptyCampaignsText, funnel, inCampLine, initialCampaignForm, leadsInCampaigns, matchOne, modeOf,
-  namePlaceholder, newCampaignRow, nextTab, normalizeSelCamp, quota,
+  audienceBrand, campaignBadge, campaignBase, campStats, criteriaFilters, emptyCampaignsText, funnel, inCampLine, initialCampaignForm,
+  leadsInCampaigns, liveSteps, matchOne, modeOf, namePlaceholder, newCampaignRow, nextTab, normalizeSelCamp, productSummary, quota,
+  audienceClaim, criteriaText, demoProducts, selectAllItems, stepFilters, toggleItem,
 } from './campaigns';
 
 // ค่าคาดหวังคำนวณด้วยโค้ด legacy/app.js ตรงตัวบนข้อมูลตัวอย่างเดียวกัน (Dev MPD หัวหน้า, วันนี้ 2026-11-04)
@@ -99,5 +100,80 @@ describe('campaign builder (prototype campaignForm L782-871)', () => {
     });
     expect(newCampaignRow({ ...f, desc: 'โปร', start: '2026-12-01', end: '2026-12-31', max: '', active: false }))
       .toMatchObject({ description: 'โปร', start_date: '2026-12-01', end_date: '2026-12-31', max_per_rep: null, active: false });
+  });
+});
+
+describe('campaign segments (live: dsales_base_customers filters)', () => {
+  const bed = { sku: 'BBP-BED-01', name: 'เตียงนอนเด็ก' };
+  const pen = { sku: 'BBP-PEN-02', name: 'คอกกั้น' };
+  it('matchOne product: ticked SKUs win over the keyword', () => {
+    const c = { purchases: [{ date: '2026-03-01', bill: '1', sku: 'BBP-BED-01', product: 'เตียงนอนเด็ก', amount: 4990, seller: null }] };
+    expect(matchOne(c, { type: 'product', items: [pen] })).toBe(false);
+    expect(matchOne(c, { type: 'product', items: [pen, bed], kw: 'zzz' })).toBe(true);
+    expect(matchOne(c, { type: 'product', items: [], kw: 'เตียง' })).toBe(true);
+  });
+  it('criteriaFilters maps every criterion type (stricter value wins when repeated)', () => {
+    expect(criteriaFilters([])).toEqual({});
+    expect(criteriaFilters([
+      { type: 'product', items: [bed, pen], kw: 'เตียง' }, { type: 'product', kw: ' คอก ' }, { type: 'product', kw: '' },
+      { type: 'total', min: '1000', max: '50000' }, { type: 'total', min: '3000', max: '' },
+      { type: 'dates', from: '2026-01-01', to: '2026-06-30' }, { type: 'order', min: '2000' }, { type: 'times', min: '1' },
+    ])).toEqual({
+      products: [{ skus: ['BBP-BED-01', 'BBP-PEN-02'] }, { kw: 'คอก' }],
+      ltv_min: 3000, ltv_to: 50000, bought_from: '2026-01-01', bought_to: '2026-06-30', bill_min: 2000, orders_min: 2,
+    });
+    expect(criteriaFilters([{ type: 'total', min: 'abc' }, { type: 'times', min: '' }])).toEqual({});
+  });
+  it('stepFilters is cumulative; product criteria drop the brand filter', () => {
+    const crits = [{ type: 'total' as const, min: '1000' }, { type: 'product' as const, items: [bed] }];
+    expect(stepFilters(crits)).toEqual([{ ltv_min: 1000 }, { ltv_min: 1000, products: [{ skus: ['BBP-BED-01'] }] }]);
+    expect(audienceBrand('bebeplay', crits)).toBeNull();
+    expect(audienceBrand('bebeplay', [{ type: 'total', min: '1000' }, { type: 'product', kw: ' ' }])).toBe('bebeplay');
+  });
+  it('liveSteps labels + percentages from server counts (null = loading)', () => {
+    expect(liveSteps('bebeplay', null, [{ type: 'product', items: [bed] }], [7276, 120])).toEqual([
+      { label: 'ลูกค้าทั้งหมด · ทุกแบรนด์', n: 7276, pct: 100 },
+      { label: 'เงื่อนไข 1 · เคยซื้อสินค้า (ชื่อ / SKU)', n: 120, pct: 2 },
+    ]);
+    expect(liveSteps('hosttail', 'hosttail', [], [null])).toEqual([{ label: 'ลูกค้าทั้งหมด · Hosttail', n: null, pct: 0 }]);
+  });
+  it('SKU picker helpers: toggle, select all (union, no duplicates), summary', () => {
+    expect(toggleItem([], bed)).toEqual([bed]);
+    expect(toggleItem([bed, pen], bed)).toEqual([pen]);
+    expect(selectAllItems([bed], [bed, pen])).toEqual([bed, pen]);
+    expect(selectAllItems([bed, pen], [bed, pen], false)).toEqual([]);
+    expect(selectAllItems([bed, pen], [pen], false)).toEqual([bed]);
+    expect(productSummary({ type: 'product', items: [bed, pen] })).toBe('เลือก 2 SKU');
+    expect(productSummary({ type: 'product', kw: 'เตียง' })).toBe('ทุก SKU ที่มีคำว่า "เตียง"');
+    expect(productSummary({ type: 'product' })).toBe('ยังไม่ได้เลือกสินค้า');
+  });
+  it('demoProducts: SKU search over demo purchases, most buyers first, < 2 chars = none', () => {
+    const cs = [
+      { phone: '1', purchases: [{ date: '2026-01-01', bill: 'a', sku: 'BBP-BED-01', product: 'เตียงนอนเด็ก', amount: 1, seller: null }] },
+      { phone: '2', purchases: [{ date: '2026-02-01', bill: 'b', sku: 'BBP-BED-01', product: 'เตียงนอนเด็ก', amount: 1, seller: null },
+        { date: '2026-03-01', bill: 'c', sku: 'BBP-BED-02', product: 'เตียงพับ', amount: 1, seller: null }] },
+    ];
+    expect(demoProducts(cs, 'เตียง')).toEqual([
+      { sku: 'BBP-BED-01', product_name: 'เตียงนอนเด็ก', buyers: 2, last_bought: '2026-02-01' },
+      { sku: 'BBP-BED-02', product_name: 'เตียงพับ', buyers: 1, last_bought: '2026-03-01' },
+    ]);
+    expect(demoProducts(cs, 'ต')).toEqual([]);
+  });
+  it('criteriaText summarises the campaign conditions for the audience panel', () => {
+    expect(criteriaText([])).toBe('ไม่มีเงื่อนไข (ลูกค้าทั้งหมดของแบรนด์)');
+    expect(criteriaText([
+      { type: 'product', items: [bed, pen] }, { type: 'total', min: '1000', max: '' }, { type: 'dates', from: '2026-01-01', to: '' },
+      { type: 'order', min: '2000' }, { type: 'times', min: '1' }, { type: 'total', min: '', max: '' },
+    ])).toBe('เคยซื้อ: เลือก 2 SKU · ยอดซื้อรวม 1,000 บาทขึ้นไป · ซื้อตั้งแต่ 2026-01-01 · บิลละ 2,000 บาทขึ้นไป · ซื้อมากกว่า 1 ครั้ง');
+    expect(criteriaText([{ type: 'total', min: '1000', max: '5000' }, { type: 'dates', from: '', to: '2026-06-30' }]))
+      .toBe('ยอดซื้อรวม 1,000–5,000 บาท · ซื้อถึง 2026-06-30');
+  });
+  it('audienceClaim: closed campaign or assign mode (sales) cannot claim', () => {
+    const c = (over: Partial<Campaign>) => camp({ active: true, end: undefined, claimMode: 'self', ...over });
+    expect(audienceClaim(c({}), false, '2026-11-25')).toEqual({ can: true, note: null });
+    expect(audienceClaim(c({ active: false }), true, '2026-11-25')).toEqual({ can: false, note: 'แคมเปญนี้ปิดหรือสิ้นสุดแล้ว — จองไม่ได้' });
+    expect(audienceClaim(c({ end: '2026-11-24' }), true, '2026-11-25').can).toBe(false);
+    expect(audienceClaim(c({ claimMode: 'assign' }), false, '2026-11-25')).toEqual({ can: false, note: 'แคมเปญนี้หัวหน้าเป็นผู้มอบหมายลูกค้าให้เซลล์' });
+    expect(audienceClaim(c({ claimMode: 'assign' }), true, '2026-11-25').can).toBe(true);
   });
 });

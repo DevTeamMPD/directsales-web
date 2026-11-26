@@ -1,7 +1,11 @@
 /** ข้อความไทยของ error จาก RPC ใน schema dsales (เทียบทั้ง token จึงไม่มี key ไหนทับกัน ต่างจาก prototype ที่เทียบ substring) */
 export const ERROR_TEXT: Readonly<Record<string, string>> = {
   taken: 'ลูกค้ารายนี้มีคนจองไปแล้ว',
+  release_cooldown: 'ลูกค้ารายนี้เพิ่งถูกคืนจาก Direct Sale ของคุณ (ครบ 30 วันยังไม่ปิดการขาย) จองซ้ำได้เมื่อพ้น 30 วัน',
   no_call: 'ลูกค้ารายนี้ไม่สะดวกให้โทร',
+  campaign_closed: 'แคมเปญนี้ปิดหรือสิ้นสุดแล้ว จองลูกค้าเข้าแคมเปญไม่ได้',
+  campaign_quota: 'คุณจองลูกค้าในแคมเปญนี้ครบจำนวนสูงสุดแล้ว',
+  cs_customer: 'ลูกค้ารายนี้เป็นเคสบริการ/เคลม หรือลูกค้า B2B — ไม่ดึงเข้า Direct Sale',
   forbidden: 'ไม่มีสิทธิ์ทำรายการนี้',
   bill_required: 'ใส่เลขบิลก่อนปิดการขาย',
   not_found: 'ไม่พบข้อมูลรายการนี้',
@@ -20,15 +24,21 @@ export const ERROR_TEXT: Readonly<Record<string, string>> = {
   // ส่งข้อความผ่าน JST worker (outreach contract)
   template_not_found: 'ไม่พบ template นี้ หรือถูกปิดใช้งานแล้ว',
   batch_too_large: 'เลือกลูกค้าเกินจำนวนสูงสุดต่อชุด',
+  too_many_phones: 'ส่งเบอร์เกินจำนวนสูงสุดต่อครั้ง',
   invalid_template: 'template ไม่ถูกต้อง ต้องมีชื่อและข้อความ',
   invalid_setting: 'ค่าตั้งค่าไม่ถูกต้อง (ระยะห่าง 5–3600 วินาที, เพดาน LINE ตั้งแต่ 0)',
   not_worker: 'บัญชีนี้ไม่ใช่บัญชีของ worker',
   already_queued: 'ลูกค้ารายนี้อยู่ในคิวส่งข้อความแล้ว',
   no_chat_room: 'ไม่พบห้องแชตของลูกค้าในแบรนด์นี้',
-  window_closed: 'หมดช่วงที่ร้านส่งข้อความได้ (ลูกค้าไม่ได้ทักมาเกิน 24 ชม.)',
+  window_closed: 'หมดช่วงที่ร้านส่งข้อความได้ (ลูกค้าไม่ได้ทักมาเกิน 7 วัน)',
   claim_failed: 'จองลูกค้าไม่สำเร็จ',
   invalid_state: 'สถานะของรายการเปลี่ยนไปแล้ว',
   invalid_status: 'สถานะไม่ถูกต้อง',
+  // วิเคราะห์สถานะด้วย AI
+  ai_not_configured: 'ยังไม่ได้ตั้งค่า AI (ANTHROPIC_API_KEY) บนเซิร์ฟเวอร์',
+  ai_daily_limit: 'วิเคราะห์ด้วย AI ครบเพดานของวันนี้แล้ว ลองใหม่พรุ่งนี้ (หรือให้ dev ปรับ ai_daily_limit)',
+  ai_nothing_to_undo: 'ไม่มีผล AI ให้ย้อนกลับ (สถานะถูกเปลี่ยนไปแล้ว หรือย้อนกลับไปแล้ว)',
+  invalid_input: 'ข้อมูลที่ส่งไม่ถูกต้อง',
 };
 
 /** fetch ล้ม / offline: Chrome "Failed to fetch", Firefox "NetworkError when attempting…", Safari "Load failed", Node "fetch failed" */

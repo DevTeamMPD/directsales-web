@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { FIXTURE_NO_WRITE } from '../lib/constants';
+import { pinAllBrands } from './brand-pin';
 
 // ส่งข้อความผ่าน JST worker (spec 2026-11-20 ข้อ 6) — หน้าใหม่ไม่มีใน prototype: ตรวจ DOM + ภาพของตัวเอง
 // (baseline ใน e2e/__screenshots__/app/) โหมด fixture: ข้อมูลจาก lib/fixtures/outreach.ts
@@ -10,6 +11,11 @@ const SIZES = [
 ] as const;
 const TEST_MODE_TEXT = 'โหมดทดสอบ: ข้อความทั้งหมดจะถูกส่งไปห้องทดสอบ';
 const OWN = { maxDiffPixelRatio: 0.001, threshold: 0.1 } as const;
+
+// baseline ถ่ายตอนแสดงทุกแบรนด์ (ผู้ใช้ fixture เป็นหัวหน้า) — ตัวสลับแบรนด์ตรวจใน brand-switch.spec.ts
+test.beforeEach(async ({ page }) => {
+  await pinAllBrands(page);
+});
 
 async function settle(page: Page) {
   await page.mouse.move(0, 0);
@@ -88,7 +94,9 @@ for (const s of SIZES) {
       await expect(page.locator('#view tbody tr')).toHaveCount(50, { timeout: 60_000 });
       await expect(page.locator('#base-count')).toHaveText('พบ 67 คน');
       await expect(page.locator('#base-clear')).toBeDisabled();
-      await expect(page.locator('[data-rfm]')).toHaveText(['Loyal', 'Potential', 'Promising', 'At Risk', 'Hibernating', 'Unscored', 'ยังไม่จัดกลุ่ม']);
+      // กลุ่ม RFM (20261125140000) + จำนวนคนบนชิป · "ยังไม่จัดกลุ่ม" แสดงเฉพาะเมื่อมีลูกค้า (ข้อมูลตัวอย่างมีประวัติซื้อทุกคน)
+      await expect(page.locator('[data-rfm] .lbl')).toHaveText(['Champion', 'Loyal', 'Promising', 'Need Attention', 'Warm', 'Cold', "Shouldn't Lose", 'Sleepers', 'Lost']);
+      await expect(page.locator('[data-rfm=Loyal]')).toHaveAttribute('title', 'ซื้อ 4 ครั้งขึ้นไป · ซื้อล่าสุดไม่เกิน 90 วัน');
       await expect(page.locator('#base-sort option')).toHaveText(['มูลค่าสูงสุด', 'หายนานสุด', 'เพิ่งหายไป', 'ซื้อล่าสุด', 'ซื้อบ่อยสุด']);
       await expect(page.locator('#base-tag')).toBeVisible(); // Dev MPD เป็นหัวหน้า
 
@@ -101,14 +109,14 @@ for (const s of SIZES) {
       });
       await expect(page.locator('#view tbody tr').nth(2).locator('[data-sendable="0"]')).toHaveCount(2);
       await expect(page.locator('#view tbody tr').nth(2).locator('[data-sendable="0"]').last()).toHaveAttribute('title', /เพจนอกแบรนด์/);
-      await expect(page.locator('#view tbody tr').nth(2).locator('[data-sendable="0"]').first()).toHaveAttribute('title', /เกิน 24 ชม\. ส่งผ่าน worker ไม่ได้/);
+      await expect(page.locator('#view tbody tr').nth(2).locator('[data-sendable="0"]').first()).toHaveAttribute('title', /เกิน 7 วัน ส่งผ่าน worker ไม่ได้/);
 
       // ที่ติ๊กไว้คงอยู่หลังเปลี่ยนตัวกรอง
       await page.locator('#view tbody input[data-sel]').first().check();
       await page.locator('[data-rfm=Loyal]').click();
       await expect(page.locator('[data-rfm=Loyal]')).toHaveClass(/active/);
-      await expect(page.locator('#base-count')).toHaveText('พบ 3 คน');
-      await expect(page.locator('#view tbody tr')).toHaveCount(3);
+      await expect(page.locator('#base-count')).toHaveText('พบ 17 คน');
+      await expect(page.locator('#view tbody tr')).toHaveCount(17);
       expect(new Set(await page.locator('#view tbody tr td:nth-child(5)').allInnerTexts())).toEqual(new Set(['Loyal']));
       await expect(page).toHaveURL(/\/pool\?rfm=Loyal$/);
       await expect(page.locator('#sel-bar b')).toHaveText('เลือก 1 คน');
@@ -116,7 +124,7 @@ for (const s of SIZES) {
 
       await page.locator('#base-chat').click();
       await page.locator('#base-provider').selectOption('facebook');
-      await expect(page.locator('#base-count')).toHaveText('พบ 2 คน');
+      await expect(page.locator('#base-count')).toHaveText('พบ 5 คน');
       for (const tr of await page.locator('#view tbody tr').all()) await expect(tr.locator('[data-room] img[alt=Facebook]').first()).toBeVisible();
 
       await page.locator('#base-clear').click();

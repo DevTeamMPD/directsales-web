@@ -4,8 +4,8 @@ import { fixturePayload } from '@/lib/fixtures/load';
 import { EMPTY_FILTERS } from './baseFilters';
 import type { Period } from '@/lib/state/reducer';
 import {
-  baseAction, canNext, clampPage, claimBrand, demoBase, demoGrand, demoPool, dormantText, keepTotal, pageRange, poolAction, poolCampNames,
-  poolDetailFooter, takenBadge,
+  baseAction, bulkFollowPlan, bulkFollowSummary, canNext, clampPage, claimBrand, demoBase, demoGrand, demoPool, dormantText, keepTotal, NO_BRAND_TEXT,
+  pageRange, poolAction, poolCampNames, poolDetailFooter, takenBadge,
 } from './pool';
 
 // ค่าคาดหวังคำนวณด้วยโค้ด legacy/app.js ตรงตัว (poolLoad โหมดตัวอย่าง L636-640, poolAction L694-704)
@@ -153,5 +153,24 @@ describe('/mine and /pool (dsales_base_customers, spec ข้อ 3)', () => {
     expect(chat.rows.every((r) => r.chatBrands.includes('hosttail'))).toBe(true);
     const old = demoBase(F.customers, F.leads, 'pool', { ...o, filters: { ...EMPTY_FILTERS, sort: 'dormant_desc' } });
     expect(old.rows[0].dormantDays).toBe(Math.max(...all.rows.map((r) => r.dormantDays ?? 0)));
+  });
+});
+
+describe('bulk "send to Direct Sale" from /mine', () => {
+  const sel = (phone: string, over: Partial<{ brands: string[]; mine: boolean; name: string }> = {}) => ({
+    phone, name: over.name ?? `ลูกค้า ${phone}`, brands: over.brands ?? ['bebeplay'], chat: '', taken: null, mine: over.mine ?? true, chatBrands: [],
+  });
+  it('plans one claim per customer with the brand of the page filter or of the customer; skips no-brand and not-mine rows', () => {
+    const p = bulkFollowPlan([sel('0811111111'), sel('0822222222', { brands: ['hosttail'] }), sel('0833333333', { brands: [] }), sel('0844444444', { mine: false })], '');
+    expect(p.todo.map((t) => [t.phone, t.brand])).toEqual([['0811111111', 'bebeplay'], ['0822222222', 'hosttail']]);
+    expect(p.skipped.map((s) => [s.phone, s.reason])).toEqual([['0833333333', NO_BRAND_TEXT], ['0844444444', 'ไม่ใช่ลูกค้าของคุณแล้ว']]);
+    expect(bulkFollowPlan([sel('0855555555', { brands: [] })], 'hosttail').todo).toEqual([{ phone: '0855555555', name: 'ลูกค้า 0855555555', brand: 'hosttail' }]);
+  });
+  it('summarizes the result in one toast, grouping skip reasons', () => {
+    expect(bulkFollowSummary(3, [])).toBe('ส่งเข้า Direct Sale แล้ว 3 คน');
+    expect(bulkFollowSummary(2, ['ลูกค้ารายนี้มีคนจองไปแล้ว', 'ลูกค้ารายนี้มีคนจองไปแล้ว', NO_BRAND_TEXT])).toBe(
+      `ส่งเข้า Direct Sale แล้ว 2 คน · ข้าม 3 คน (ลูกค้ารายนี้มีคนจองไปแล้ว 2, ${NO_BRAND_TEXT} 1)`,
+    );
+    expect(bulkFollowSummary(0, ['ลูกค้ารายนี้ไม่สะดวกให้โทร'])).toBe('ไม่ได้ส่งเข้า Direct Sale · ข้าม 1 คน (ลูกค้ารายนี้ไม่สะดวกให้โทร 1)');
   });
 });

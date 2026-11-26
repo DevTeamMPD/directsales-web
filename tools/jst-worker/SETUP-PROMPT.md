@@ -23,7 +23,7 @@
 6. ทดสอบ 1 รอบ: node worker.mjs --once — ต้องไม่มี error และ log ต้องขึ้น "worker start" กับ "worker exit" (ถ้าคิวว่างจะเป็น last: idle ซึ่งปกติ)
 7. ให้ฉันเช็กในเว็บ Direct Sale หน้า ตั้งค่า → การ์ด Worker ว่าเห็น office-1 ออนไลน์
 8. รันจริงแบบค้างไว้: node worker.mjs (เปิดหน้าต่างทิ้งไว้)
-9. ถามฉันก่อนว่าจะให้ตั้ง Task Scheduler ให้ worker เริ่มเองตอนล็อกอินเครื่องไหม ถ้าตกลง ให้สร้างไฟล์ start-worker.bat ที่ cd ไปโฟลเดอร์ worker แล้ว node worker.mjs และตั้ง task "JST Outreach Worker" ทำงานตอนผู้ใช้ล็อกอิน (ไม่ต้องใช้สิทธิ์ admin)
+9. ตั้งให้ worker รันค้างถาวร: ปิดหน้าต่างข้อ 8 (Ctrl+C) แล้วรัน `powershell -ExecutionPolicy Bypass -File .\install-task.ps1 -KeepAwake` ในโฟลเดอร์ tools\jst-worker (ไม่ต้องใช้ admin) — จะเปิดหน้าต่าง "JST Outreach Worker" ทิ้งไว้ และเปิดใหม่เองถ้าปิด/แครช/เครื่องหลับแล้วตื่น · ให้ฉันเช็กการ์ด Worker ในเว็บอีกครั้ง
 
 กติกา
 - ห้ามพิมพ์/แสดง/commit รหัสผ่าน, config.json, .session.json, หรือ cookie
@@ -38,4 +38,4 @@ git pull
 cd tools\jst-worker
 npm install
 ```
-แล้วปิด worker เดิม (Ctrl+C) และรัน `node worker.mjs` ใหม่
+แล้วปิดหน้าต่าง worker เดิม (Ctrl+C แล้วตอบ Y) — ถ้าติดตั้ง task แล้ว ให้รัน `Start-ScheduledTask -TaskName "JST Outreach Worker"` (หรือรอไม่เกิน 15 นาที) · ถ้ายังไม่ได้ติดตั้ง ให้รัน `powershell -ExecutionPolicy Bypass -File .\install-task.ps1 -KeepAwake`

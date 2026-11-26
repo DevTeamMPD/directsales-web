@@ -3,7 +3,7 @@ import type { Lead } from '@/lib/api/types';
 import { fixturePayload } from '@/lib/fixtures/load';
 import type { Period } from '@/lib/state/reducer';
 import {
-  bills, canUnclaim, canUnclaimAny, chipLabel, CHIP_DOT, claimBlock, contactedIn, dueInfo, filtered, isDnc, lastSeller, mineOrAll,
+  bills, canUnclaim, canUnclaimAny, releaseInfo, releaseTagShown, chipLabel, CHIP_DOT, claimBlock, contactedIn, dueInfo, filtered, isDnc, lastSeller, mineOrAll,
   periodOk, releasedByMe, statusCounts, STATUS_CHIPS, total, visible, wonIn, type LeadFilter,
 } from './leads';
 
@@ -144,5 +144,28 @@ describe('row rules (prototype L89-90, L186-191, L884-887)', () => {
     expect(claimBlock(byId('L1001'), { ...camp, maxPerRep: 4 }, L, 'r4')).toBeNull();
     expect(claimBlock(byId('L1001'), { ...camp, maxPerRep: null }, L, 'r4')).toBeNull();
     expect(claimBlock(byId('L1001'), undefined, L, 'r4')).toBeNull();
+  });
+});
+
+describe('releaseInfo (Direct Sale 30-day auto-release)', () => {
+  const today = '2026-11-24';
+  it('counts days left from the Bangkok date the lead entered Direct Sale', () => {
+    // 2026-11-01 01:00 Bangkok = 2026-10-31T18:00Z -> 23 days ago -> 7 left
+    expect(releaseInfo('2026-10-31T18:00:00+00:00', 'following', today)).toEqual({ days: 7, cls: 'today', text: 'เหลือ 7 วัน' });
+    expect(releaseInfo('2026-11-03T03:00:00+00:00', 'new', today)).toEqual({ days: 9, cls: '', text: 'เหลือ 9 วัน' });
+    expect(releaseInfo('2026-10-27T03:00:00+00:00', 'callback', today)).toEqual({ days: 2, cls: 'overdue', text: 'เหลือ 2 วัน' });
+  });
+  it('is never below 0 and says it is due', () => {
+    expect(releaseInfo('2026-10-01T03:00:00+00:00', 'new', today)).toEqual({ days: 0, cls: 'overdue', text: 'ครบ 30 วัน รอคืนอัตโนมัติ' });
+  });
+  it('is null for won leads and leads without a clock', () => {
+    expect(releaseInfo('2026-10-01T03:00:00+00:00', 'won', today)).toBeNull();
+    expect(releaseInfo(null, 'new', today)).toBeNull();
+    expect(releaseInfo(undefined, 'new', today)).toBeNull();
+  });
+  it('shows the tag only in the last 7 days', () => {
+    expect(releaseTagShown(releaseInfo('2026-11-03T03:00:00+00:00', 'new', today))).toBe(false);
+    expect(releaseTagShown(releaseInfo('2026-10-31T18:00:00+00:00', 'new', today))).toBe(true);
+    expect(releaseTagShown(null)).toBe(false);
   });
 });

@@ -4,8 +4,9 @@ import { db } from '@/lib/supabase/client';
 import { RpcError } from './errors';
 import { rowsTotal } from './map';
 import type {
+  ProductRow,
   BaseFilterJson, BatchDetail, BatchRow, CampaignRow, ChannelRowJson, ChatSessionJson, ContactType, EnqueueResult, JstTagRow, LeadJson, LeadStatus, MeRow,
-  MemberJson, MemberTagsRow, NewCampaign, PoolRowJson, PreviewRow, PurchaseRowJson, TeamRow, Template, TemplateInput, WorkerRoom,
+  MemberJson, MemberTagsRow, NewCampaign, PoolRowJson, PreviewRow, PurchaseRowJson, RoomsForPhoneRow, TeamRow, Template, TemplateInput, WorkerRoom,
   WorkerSettingsInput, WorkerStatus,
 } from './types';
 
@@ -36,6 +37,15 @@ export const setMemberTags = (userId: string, tags: string[]) => call<string[]>(
 
 /* ---------- ลีด ---------- */
 export const getMyLeads = (limit = 1000, offset = 0) => call<LeadJson[]>('dsales_my_leads', { p_limit: limit, p_offset: offset });
+/** ห้องแชตของหลายเบอร์ (ลีดของฉัน; หัวหน้า = ทุกเบอร์) — ตัดซ้ำ/ว่าง แล้วส่งทีละ 100 เบอร์ (ขีดจำกัดของ RPC) */
+export async function getRoomsForPhones(phones: ReadonlyArray<string>): Promise<RoomsForPhoneRow[]> {
+  const uniq = [...new Set(phones.map((p) => p.trim()).filter(Boolean))];
+  const out: RoomsForPhoneRow[] = [];
+  for (let i = 0; i < uniq.length; i += 100) {
+    out.push(...((await call<RoomsForPhoneRow[] | null>('dsales_rooms_for_phones', { p_phones: uniq.slice(i, i + 100) })) ?? []));
+  }
+  return out;
+}
 export const claimLead = (leadId: string) => call<LeadJson>('dsales_claim_lead', { p_lead: leadId });
 export const unclaimLead = (leadId: string) => call<LeadJson>('dsales_unclaim_lead', { p_lead: leadId });
 export const assignLead = (leadId: string, userId: string) => call<LeadJson>('dsales_assign_lead', { p_lead: leadId, p_user: userId });
@@ -51,7 +61,15 @@ export const logContact = (x: LogInput) =>
   });
 
 /* ---------- ลูกค้า / ถัง ---------- */
-export const claimCustomer = (phone: string, brand: Brand) => call<LeadJson>('dsales_claim_customer', { p_phone: phone, p_brand: brand });
+/** campaignId = จองจากการ์ดแคมเปญ (ลีดผูกแคมเปญ · campaign_closed / campaign_quota) */
+/** campaignId = จองเข้าแคมเปญ · forUser = หัวหน้าจองให้เซลล์คนนั้น (โหมดดูในมุมมองเซลล์) */
+export const claimCustomer = (phone: string, brand: Brand, campaignId?: string | null, forUser?: string | null) =>
+  call<LeadJson>('dsales_claim_customer', {
+    p_phone: phone, p_brand: brand, ...(campaignId ? { p_campaign: campaignId } : {}), ...(forUser ? { p_for: forUser } : {}),
+  });
+/** ย้อนสถานะที่ AI เปลี่ยน (หัวหน้าเท่านั้น) */
+export const undoAiStatus = (leadId: string) => call<LeadJson>('dsales_ai_status_undo', { p_lead: leadId });
+export const searchProducts = (q: string) => call<ProductRow[]>('dsales_product_search', { p_q: q.trim(), p_limit: 100 });
 export async function getPoolGrandTotal(brand: Brand | null): Promise<number> {
   return rowsTotal(await call<PoolRowJson[]>('dsales_customer_pool_v3', { p_limit: 1, p_offset: 0, p_brand: brand || null }));
 }
@@ -67,6 +85,9 @@ export const getBaseCustomers = (scope: BaseScope, q: Omit<PoolQuery, 'from' | '
     p_scope: scope, p_search: normalizeSearchPhone(q.search ?? '') || null, p_limit: q.limit ?? PAGE, p_offset: q.offset ?? 0, p_brand: q.brand || null,
     p_filters: q.filters ?? {},
   });
+/** จำนวนลูกค้าต่อกลุ่ม RFM ตามขอบเขต + แบรนด์ ('' = ยังไม่จัดกลุ่ม) */
+export const getBaseSegmentCounts = (scope: BaseScope, brand: Brand | null, asUser?: string | null) =>
+  call<Array<{ segment: string; n: number | string }>>('dsales_base_segment_counts', { p_scope: scope, p_brand: brand || null, ...(asUser ? { p_as: asUser } : {}) });
 export const getCustomerPurchases = (phone: string) => call<PurchaseRowJson[]>('dsales_customer_purchases', { p_phone: phone });
 export const getCustomerChannels = (phone: string) => call<ChannelRowJson[]>('dsales_customer_channels', { p_phone: phone });
 export const getCustomerChats = (phone: string, sinceIso: string | null) =>
@@ -89,10 +110,11 @@ export async function setCampaignClaimMode(id: string, mode: ClaimMode): Promise
 export const getTemplates = (brand: Brand | null) => call<Template[]>('dsales_templates_list', { p_brand: brand || null });
 export const saveTemplate = (t: TemplateInput) =>
   call<Template>('dsales_template_save', { p_id: t.id, p_brand: t.brand, p_name: t.name.trim(), p_body: t.body, p_active: t.active });
-export const previewOutreach = (phones: string[], templateId: string) =>
-  call<PreviewRow[]>('dsales_outreach_preview', { p_phones: phones, p_template: templateId });
-export const enqueueOutreach = (phones: string[], templateId: string) =>
-  call<EnqueueResult>('dsales_enqueue_outreach', { p_phones: phones, p_template: templateId });
+/** forUser = หัวหน้าส่งในนามเซลล์คนนั้น (กติกาเหมือนเซลล์ส่งเอง, จองลูกค้าในถังให้เซลล์) */
+export const previewOutreach = (phones: string[], templateId: string, forUser?: string | null) =>
+  call<PreviewRow[]>('dsales_outreach_preview', { p_phones: phones, p_template: templateId, ...(forUser ? { p_for: forUser } : {}) });
+export const enqueueOutreach = (phones: string[], templateId: string, forUser?: string | null) =>
+  call<EnqueueResult>('dsales_enqueue_outreach', { p_phones: phones, p_template: templateId, ...(forUser ? { p_for: forUser } : {}) });
 export const getOutreachBatches = (limit = PAGE, offset = 0) => call<BatchRow[]>('dsales_outreach_batches_mine', { p_limit: limit, p_offset: offset });
 export const getOutreachBatch = (batchId: string) => call<BatchDetail>('dsales_outreach_batch', { p_batch: batchId });
 export const cancelOutreach = (ids: string[]) => call<number>('dsales_outreach_cancel', { p_ids: ids });

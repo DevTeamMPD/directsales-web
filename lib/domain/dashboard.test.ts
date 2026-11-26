@@ -26,10 +26,13 @@ describe('dashboard stats (prototype stat() L304-310)', () => {
   it('pct, scope label and brand chips', () => {
     expect([pct(16, 28), pct(6, 16), pct(1, 0)]).toEqual([57, 38, 0]);
     expect([scopeLabel('all'), scopeLabel('bebeplay'), scopeLabel('hosttail')]).toEqual(['ทุกแบรนด์', 'Bebeplay', 'Hosttail']);
-    expect(brandChips(A).map((c) => [c.key, c.label, c.n, c.dot])).toEqual([
+    expect(brandChips(A, true).map((c) => [c.key, c.label, c.n, c.dot])).toEqual([
       ['all', 'ทุกแบรนด์', 28, null], ['bebeplay', 'Bebeplay', 19, 'var(--bebe)'], ['hosttail', 'Hosttail', 9, 'var(--host)'],
     ]);
-    expect(brandChips(A2).map((c) => c.n)).toEqual([9, 6, 3]);
+    expect(brandChips(A2, true).map((c) => c.n)).toEqual([9, 6, 3]);
+  });
+  it('"ทุกแบรนด์" chip is for admins only (global brand: sales reps cannot pick all)', () => {
+    expect(brandChips(A2, false).map((c) => [c.key, c.n])).toEqual([['bebeplay', 6], ['hosttail', 3]]);
   });
 });
 

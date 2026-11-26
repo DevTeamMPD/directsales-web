@@ -60,6 +60,13 @@ a { color: var(--accent-strong); }
   text-overflow: ellipsis; -webkit-appearance: none; appearance: none;
 }
 .me-select option { color: var(--fg); background: var(--surface); }
+.view-as { margin-top: 12px; padding: 0 4px; display: grid; gap: 4px; }
+.view-as .select { width: 100%; }
+.view-as.on .select { border-color: var(--warn); background: var(--warn-soft); color: var(--warn); font-weight: 600; }
+.view-as-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between;
+  margin: 12px 24px 0; padding: 10px 14px; border-radius: 12px; background: var(--warn-soft); color: var(--warn); font-size: 13.5px;
+}
 
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100%; overflow-y: auto; }
 .topbar {
@@ -71,6 +78,15 @@ a { color: var(--accent-strong); }
 .page-sub { color: var(--muted); font-size: 13px; }
 .topbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .topbar .menu-btn { display: none; }
+/* global brand switch (BrandSwitch): segmented on wide screens, compact select on phones */
+.brand-switch { margin-left: auto; flex: none; display: flex; align-items: center; }
+.brand-seg { border: 1px solid var(--border); }
+/* fixed 36px tall so the 64px topbar keeps its height (a fractional height shifts every page below it) */
+.brand-seg .seg-btn { font-size: 13px; line-height: 20px; padding: 4px 14px; white-space: nowrap; }
+.brand-seg .seg-btn:hover { color: var(--fg); }
+.brand-seg .seg-btn.on { background: var(--accent); color: var(--accent-fg); font-weight: 600; box-shadow: var(--shadow-sm); }
+.brand-seg .seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.brand-select { display: none; }
 .content { padding: 20px 24px 40px; display: flex; flex-direction: column; gap: 16px; }
 .scrim { display: none; }
 
@@ -112,6 +128,7 @@ a { color: var(--accent-strong); }
 .chip .dot { width: 8px; height: 8px; border-radius: 50%; }
 .chip.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
 .chip.active .dot { background: currentColor !important; }
+.chip .count { opacity: .7; font-size: 12px; }
 .select, .input, .textarea {
   border: 1px solid var(--border-strong); background: var(--surface); color: var(--fg); border-radius: var(--radius); padding: 7px 12px;
 }
@@ -207,6 +224,12 @@ th.r, td.r { text-align: right; }
 .feed-ic svg { width: 14px; height: 14px; }
 .feed-ic.call { background: var(--ok-soft); color: var(--ok); }
 .feed-ic.chat { background: var(--info-soft); color: var(--info); }
+.feed-ic.system { background: var(--warn-soft); color: var(--warn); }
+.feed-ic.ai { background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 700; }
+.tl-ai .tl-note { white-space: pre-wrap; }
+.tag.ai-tag { background: var(--accent-soft); color: var(--accent); font-weight: 600; cursor: help; }
+.tag.ai-tag.warn { background: var(--warn-soft); color: var(--warn); }
+.ai-row .ai-flag { color: var(--warn); }
 .feed-body { min-width: 0; flex: 1; font-size: 13.5px; }
 
 /* ---------- settings ---------- */
@@ -306,6 +329,18 @@ td .select { margin-top: 6px; max-width: 170px; font-size: 13px; padding: 4px 8p
 .crit-row { display: flex; gap: 8px; align-items: center; border: 1px solid var(--border); border-radius: 12px; padding: 8px; background: var(--surface-2); flex-wrap: wrap; }
 .crit-row .select { flex: 1 1 210px; min-width: 0; }
 .crit-row .input { flex: 1 1 110px; min-width: 0; width: auto; }
+.crit-row .sku-pick { order: 3; flex: 1 1 100%; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.crit-row .sku-pick .input { width: 100%; flex: none; }
+.sku-list { max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.sku-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 13.5px; }
+.sku-row:last-child { border-bottom: 0; }
+.sku-row:hover { background: var(--fill); }
+.sku-row.head { position: sticky; top: 0; z-index: 1; background: var(--surface-2); font-weight: 600; }
+.sku-row input { flex: none; width: 18px; height: 18px; }
+.sku-row .sku-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.sku-picked { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sku-picked .chip { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.aud-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
 .crit-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .rep-name { font-weight: 600; }
 .camp-cell { font-size: 13.5px; }
@@ -359,6 +394,7 @@ tr.total td { border-top: 2px solid var(--border); background: var(--surface-2);
   .grid-2 { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
+  .sku-row { min-height: var(--tap); }
   .sidebar {
     position: fixed; z-index: 40; left: 0; top: 0; bottom: 0; width: min(300px, 86vw); transform: translateX(-100%); transition: transform .2s;
     padding-top: max(20px, env(safe-area-inset-top, 0px)); padding-left: max(14px, env(safe-area-inset-left, 0px));
@@ -368,7 +404,10 @@ tr.total td { border-top: 2px solid var(--border); background: var(--surface-2);
   .scrim.open { display: block; position: fixed; inset: 0; background: var(--scrim); z-index: 30; }
   .topbar .menu-btn { display: inline-grid; margin-left: -8px; }
   .topbar { padding: 10px max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px)); min-height: 60px; gap: 8px; }
-  .topbar h1 { font-size: 18px; }
+  .topbar h1 { font-size: 18px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .brand-seg { display: none; }
+  .brand-select { display: block; min-height: var(--tap); width: auto; max-width: 116px; padding: 0 22px 0 8px; }
+  .brand-switch.brand-page { display: none; }
   .page-sub { display: none; }
   .content { padding: 16px max(16px, env(safe-area-inset-right, 0px)) 32px max(16px, env(safe-area-inset-left, 0px)); gap: 12px; }
   .lbl-long { display: none; }

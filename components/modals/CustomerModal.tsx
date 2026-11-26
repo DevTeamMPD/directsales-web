@@ -1,7 +1,10 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ChannelRow, ContactBar } from '@/components/leads/ContactBar';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { AI_STATUS_TEXT } from '@/lib/domain/aiStatus';
+import { CallButton, ChannelRow, ContactBar } from '@/components/leads/ContactBar';
+import { RoomChips, RoomIcons } from '@/components/leads/RoomIcons';
+import { useLeadRooms } from '@/components/leads/useLeadRooms';
 import { useJst } from '@/components/leads/useJst';
 import { CloseButton } from '@/components/ui/CloseButton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -47,8 +50,15 @@ function CustomerDetail({ lead: l }: { lead: Lead }) {
   }, [live, l.id, l.phone, l._pl, patchLead]);
 
   const chans = channelsOf(l);
+  const leadRooms = useLeadRooms(useMemo(() => [l], [l]));
+  const rooms = leadRooms.get(l.phone) ?? [];
+  const who = { phone: l.phone, name: l.name, chat: l.chatName, brand: l.brand };
   const lastBuy = l.lastBuy || l.purchases[0]?.date;
-  const hist = [...l.interactions].sort((a, b) => b.date.localeCompare(a.date));
+  // ประวัติการติดต่อ + บันทึกจากระบบ (คืนลีดอัตโนมัติ) เรียงใหม่→เก่า
+  const hist = [
+    ...l.interactions.map((i) => ({ sys: false as const, i, date: i.date })),
+    ...(l.systemLog ?? []).map((s) => ({ sys: true as const, s, date: s.date })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
   const logType = l.noCall ? 'chat' : 'call';
   const plDone = l._pl === 'done';
   // prototype สลับแท็บ / โหลดประวัติซื้อเสร็จ ด้วยการเปิด popup ใหม่ (L515, L483): popup ใหม่เริ่มบนสุด, #chk-body ยังว่าง
@@ -72,7 +82,11 @@ function CustomerDetail({ lead: l }: { lead: Lead }) {
         <h3>{l.name}</h3>
         <StatusBadge status={l.status} />
         <span className={`tag ${l.brand === 'bebeplay' ? 'bebe' : 'host'}`}>{BRAND[l.brand]}</span>
-        <ContactBar x={l} chans={chans} openJst={openJst} />
+        {rooms.length ? (
+          <span className="ch-bar"><CallButton phone={l.phone} /><RoomIcons who={who} rooms={rooms} openJst={openJst} /></span>
+        ) : (
+          <ContactBar x={l} chans={chans} openJst={openJst} />
+        )}
         <CloseButton />
       </div>
       <div className="modal-b">
@@ -90,7 +104,7 @@ function CustomerDetail({ lead: l }: { lead: Lead }) {
           <div><dt>สินค้าที่สนใจ</dt><dd>{l.interest || '—'}</dd></div>
           <div><dt>เลขบิลที่ปิดได้</dt><dd className="mono">{l.closedBills.length ? l.closedBills.join(', ') : '—'}</dd></div>
           <div><dt>วันที่ปิดการขาย</dt><dd>{l.closedAt ? fmtDate(l.closedAt) : '—'}</dd></div>
-          <div className="wide"><dt>ช่องทางแชต (แยกตามร้าน)</dt><dd><ChannelRow x={l} chans={chans} openJst={openJst} /></dd></div>
+          <div className="wide"><dt>ช่องทางแชต (แยกตามร้าน)</dt><dd>{rooms.length ? <RoomChips who={who} rooms={rooms} openJst={openJst} /> : <ChannelRow x={l} chans={chans} openJst={openJst} />}</dd></div>
         </dl>
         <div className="chk">
           <div className="chk-h">
@@ -125,17 +139,30 @@ function CustomerDetail({ lead: l }: { lead: Lead }) {
           </div>
         ) : hist.length ? (
           <ul className="timeline">
-            {hist.map((i) => (
-              <li key={i.id}>
-                <span className={`feed-ic ${i.type}`}><svg viewBox="0 0 24 24"><path d={i.type === 'call' ? PATHS.phone : PATHS.chat} /></svg></span>
+            {hist.map((h) => h.sys ? (
+              <li key={h.s.id} className={h.s.kind === 'ai' ? 'tl-ai' : 'tl-system'}>
+                {h.s.kind === 'ai' ? <span className="feed-ic ai">AI</span>
+                  : <span className="feed-ic system"><svg viewBox="0 0 24 24"><path d={PATHS.clock} /></svg></span>}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="tl-head">
-                    <b>{i.type === 'call' ? 'โทร' : 'แชต'}</b>
-                    <span className="sub">{fmtDT(i.date)} · {repName(reps, i.rep) || ''}</span>
-                    <span className="tag">{i.result}</span>
-                    {i.due ? <span className="tag s-callback">นัดติดต่อ {fmtDate(i.due)}</span> : null}
+                    <b>{h.s.kind === 'ai' ? 'AI วิเคราะห์สถานะ' : 'ระบบ'}</b>
+                    <span className="sub">{fmtDT(h.s.date)}{h.s.rep ? ' · ' + (repName(reps, h.s.rep) || '') : ''}</span>
+                    {h.s.kind === 'ai' && h.s.result ? <span className="tag">{AI_STATUS_TEXT[h.s.result] ?? h.s.result}</span> : null}
                   </div>
-                  <div className="tl-note">{i.note}</div>
+                  <div className="tl-note">{h.s.note}</div>
+                </div>
+              </li>
+            ) : (
+              <li key={h.i.id}>
+                <span className={`feed-ic ${h.i.type}`}><svg viewBox="0 0 24 24"><path d={h.i.type === 'call' ? PATHS.phone : PATHS.chat} /></svg></span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="tl-head">
+                    <b>{h.i.type === 'call' ? 'โทร' : 'แชต'}</b>
+                    <span className="sub">{fmtDT(h.i.date)} · {repName(reps, h.i.rep) || ''}</span>
+                    <span className="tag">{h.i.result}</span>
+                    {h.i.due ? <span className="tag s-callback">นัดติดต่อ {fmtDate(h.i.due)}</span> : null}
+                  </div>
+                  <div className="tl-note">{h.i.note}</div>
                 </div>
               </li>
             ))}

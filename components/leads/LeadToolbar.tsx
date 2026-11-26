@@ -1,19 +1,26 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { Lead } from '@/lib/api/types';
 import { PATHS } from '@/lib/constants';
+import { inBrand } from '@/lib/domain/brand';
 import { CHIP_DOT, chipLabel, statusCounts, STATUS_CHIPS, type SortKey } from '@/lib/domain/leads';
 import { useActions, useAppState } from '@/lib/state/AppProvider';
 
 /**
  * toolbar ลีด: ค้นหา (กรองทุกตัวอักษร ไม่ debounce — input เดิมไม่ถูกสร้างใหม่ focus/caret จึงอยู่ที่เดิม),
- * ชิปสถานะพร้อมจำนวน (นับจาก base ที่ผ่านช่วงวันที่), แคมเปญ (หน้า Direct Sale), เรียง, เซลล์ (หัวหน้า)
+ * ชิปสถานะพร้อมจำนวน (นับจาก base ที่ผ่านช่วงวันที่), แคมเปญ (หน้า Direct Sale — เฉพาะแบรนด์ใหญ่ที่เลือก), เรียง, เซลล์ (หัวหน้า)
  */
 export function LeadToolbar({ base, withCampSelect }: { base: Lead[]; withCampSelect: boolean }) {
-  const { ui, today, isAdmin, reps, campaigns } = useAppState();
+  const { ui, today, isAdmin, reps, campaigns, brand } = useAppState();
   const { setUi } = useActions();
   const counts = useMemo(() => statusCounts(base, ui.period, today), [base, ui.period, today]);
+  const brandCamps = useMemo(() => campaigns.filter((c) => inBrand(brand, c.brand)), [campaigns, brand]);
+  // แคมเปญที่เลือกไว้เป็นของอีกแบรนด์ (เพิ่งสลับแบรนด์ใหญ่) = กลับเป็นแคมเปญทั้งหมด
+  const campOut = withCampSelect && campaigns.some((c) => c.id === ui.camp && !inBrand(brand, c.brand));
+  useEffect(() => {
+    if (campOut) setUi({ camp: 'all' });
+  }, [campOut, setUi]);
   return (
     <div className="toolbar">
       <label className="search" htmlFor="q">
@@ -29,10 +36,10 @@ export function LeadToolbar({ base, withCampSelect }: { base: Lead[]; withCampSe
         ))}
       </div>
       {withCampSelect ? (
-        <select id="camp-sel" className="select" aria-label="แคมเปญ" value={ui.camp} onChange={(e) => setUi({ camp: e.target.value })}>
+        <select id="camp-sel" className="select" aria-label="แคมเปญ" value={campOut ? 'all' : ui.camp} onChange={(e) => setUi({ camp: e.target.value })}>
           <option value="all">แคมเปญทั้งหมด</option>
           <option value="self">เซลล์ขุดเอง</option>
-          {campaigns.map((c) => (
+          {brandCamps.map((c) => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </select>
