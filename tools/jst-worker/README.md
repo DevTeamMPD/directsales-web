@@ -97,13 +97,13 @@ Supabase ใช้ไม่ได้ → รอแล้วลองใหม่
 - เครื่องสำรองตั้ง `"pollSeconds": 30` ใน `config.json` (ไม่ต้องถามคิวถี่) ค่าอื่นเหมือนเดิม
 - ปิดตัวปลุกชั่วคราว: ตั้ง `worker_tick_enabled` เป็น `false` (ตัวสำรองจะรับช่วงภายใน 3–4 นาที)
 - สถานะข้ามรอบของ `vercel` อยู่ในตาราง `dsales_worker_state` และ cookie ของ JST อยู่ใน Supabase Vault (`dsales_jst_session_vercel`) · รอบหนึ่งถือ lease 90 วินาที (ขั้นต่ำ 70 วินาที ต้องยาวกว่า `maxDuration` 60 วินาทีของ route) รอบที่ชนกันจะข้าม (`skipped: busy`)
-- route ตอบ 401 ถ้าไม่มี bearer ที่ถูก · 500 `not_configured` ถ้า env ของ worker ไม่ครบ · 500 `tick_failed` (+ `kind`; ข้อความ error อยู่ใน log ของ Vercel เท่านั้น ไม่อยู่ใน body เพราะ pg_net เก็บ body ลง `net._http_response`) · 503 เมื่อ Supabase ใช้ไม่ได้ระหว่างรอบ (`result: queue_error`) · ปกติ 200 พร้อม `result`, `links`, `pinged`, `state`, `cookiesSaved`, `region`
+- route ตอบ 401 ถ้าไม่มี bearer ที่ถูก · 500 `not_configured` เฉพาะเมื่อขาด `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `DSALES_WORKER_EMAIL` หรือ `DSALES_WORKER_PASSWORD` (ขาด `JST_USER` / `JST_PASSWORD` ไม่ทำให้ route ล้ม — มีผลเฉพาะตอนต้องล็อกอิน JST ซึ่งจะขึ้นเป็น `needs_login`) · 500 `tick_failed` (+ `kind`; ข้อความ error อยู่ใน log ของ Vercel เท่านั้น ไม่อยู่ใน body เพราะ pg_net เก็บ body ลง `net._http_response`) · 503 เมื่อ Supabase ใช้ไม่ได้ระหว่างรอบ (`result: queue_error`) · ปกติ 200 พร้อม `result`, `links`, `pinged`, `state`, `cookiesSaved`, `region`
 
 ### ทดสอบ `node worker.mjs` บนเครื่อง dev (ข้อควรระวัง)
 ตราบที่ `worker_primary` ชี้ worker ที่ยังมีชีวิต (ค่าเริ่ม `office-1`) worker id อื่นใด เช่น laptop ของ dev ที่รัน `node worker.mjs` จะ **ไม่ได้งานและไม่ได้รหัสให้ค้นโดยไม่มี error** · ถ้าจะทดสอบในเครื่อง ให้ตั้ง `worker_primary` เป็น `""` (ไม่มีตัวหลัก) หรือเป็น id ของตัวเอง แล้ว **คืนค่าเดิมเมื่อทดสอบเสร็จ** · SQL test ที่ใช้ worker id อื่น (08f, 10, 25) ล้าง `worker_primary` ในขั้นตอนเตรียมเอง
 
 ### เมื่อ `vercel` ขึ้น `needs_login` (JST ขอ captcha)
-รันจากเครื่องไหนก็ได้ที่มี repo นี้และ Chrome:
+รันจากเครื่องไหนก็ได้ที่มี repo นี้และ Chrome (คำสั่ง `import-session.mjs` ทั้งหมดรันในโฟลเดอร์ `tools/jst-worker`):
 ```powershell
 node import-session.mjs --login --upload vercel
 ```
