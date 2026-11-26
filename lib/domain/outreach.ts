@@ -13,6 +13,8 @@ export const DEFAULT_MAX_BATCH = 50;
 export const OUTREACH_POLL_MS = 10_000;
 /** worker ออนไลน์ = heartbeat ไม่เกิน 3 นาที */
 export const WORKER_ONLINE_MS = 3 * 60_000;
+/** worker ที่รันเป็นฟังก์ชันบน Vercel (ไม่มีเครื่องให้เปิดใหม่) */
+export const CLOUD_WORKER_ID = 'vercel';
 export const TEST_MODE_TEXT = 'โหมดทดสอบ: ข้อความทั้งหมดจะถูกส่งไปห้องทดสอบ';
 
 export const maxBatch = (s: { max_batch?: number | null } | null | undefined): number => {
@@ -235,16 +237,23 @@ export function isWorkerOnline(w: Pick<WorkerRow, 'heartbeat_at'> & { online?: b
 
 /** ป้ายสถานะการ์ด Worker: ออฟไลน์ = "ไม่ได้ทำงาน" เสมอ (state ที่เห็นคือค่าสุดท้ายที่เครื่องส่งมาก่อนหายไป) + บอกว่าขาดการติดต่อนานเท่าไร */
 export function workerBadge(
-  w: Pick<WorkerRow, 'heartbeat_at' | 'state'> & { online?: boolean | null }, now: number = Date.now(),
+  w: Pick<WorkerRow, 'heartbeat_at' | 'state'> & { online?: boolean | null; worker_id?: string }, now: number = Date.now(),
 ): { cls: string; text: string; hint: string | null } {
   if (isWorkerOnline(w, now)) return { cls: workerStateBadge(w.state), text: workerStateLabel(w.state), hint: null };
   const t = w.heartbeat_at ? Date.parse(w.heartbeat_at) : NaN;
   const min = Number.isFinite(t) ? Math.max(0, Math.floor((now - t) / 60_000)) : null;
   const ago = min === null ? '' : min < 60 ? `${min} นาที` : min < 1440 ? `${Math.floor(min / 60)} ชั่วโมง` : `${Math.floor(min / 1440)} วัน`;
-  return {
-    cls: 's-lost', text: 'ไม่ได้ทำงาน',
-    hint: `${ago ? `ขาดการติดต่อ ${ago} — ` : ''}เปิด worker ใหม่ที่เครื่องนี้ (run-worker.cmd หรือ task "JST Outreach Worker")`,
-  };
+  const fix = w.worker_id === CLOUD_WORKER_ID
+    ? 'ตรวจ cron dsales-outreach-tick และ deployment บน Vercel'
+    : 'เปิด worker ใหม่ที่เครื่องนี้ (run-worker.cmd หรือ task "JST Outreach Worker")';
+  return { cls: 's-lost', text: 'ไม่ได้ทำงาน', hint: `${ago ? `ขาดการติดต่อ ${ago} — ` : ''}${fix}` };
+}
+
+/** ป้ายบทบาทบนการ์ด Worker · ไม่ได้ตั้งตัวหลัก = ไม่แสดง */
+export function workerRole(w: Pick<WorkerRow, 'worker_id' | 'is_primary'>, primary: string | null | undefined): 'ตัวหลัก' | 'ตัวสำรอง' | null {
+  if (!primary) return null;
+  const isPrimary = typeof w.is_primary === 'boolean' ? w.is_primary : w.worker_id === primary;
+  return isPrimary ? 'ตัวหลัก' : 'ตัวสำรอง';
 }
 
 export interface Banner { kind: 'warn' | 'note'; text: string }

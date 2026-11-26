@@ -2,13 +2,13 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { errorMessage } from '@/lib/api/errors';
-import { findWorkerRooms, getTemplates, getWorkerStatus, saveTemplate, setWorkerSettings } from '@/lib/api/rpc';
+import { findWorkerRooms, getTemplates, getWorkerStatus, resetWorkerState, saveTemplate, setWorkerPrimary, setWorkerSettings } from '@/lib/api/rpc';
 import type { Template, WorkerRoom, WorkerStatus } from '@/lib/api/types';
 import { BRAND, FIXTURE_NO_WRITE, type Brand } from '@/lib/constants';
 import { pageBrand } from '@/lib/domain/brand';
 import {
-  isWorkerOnline, renderTemplate, roomLabel, SAMPLE_VALUES, stamp, TEMPLATE_VARS, toggleRoom, upsertTemplate, validateSettings, validateTemplate,
-  workerBadge,
+  CLOUD_WORKER_ID, isWorkerOnline, renderTemplate, roomLabel, SAMPLE_VALUES, stamp, TEMPLATE_VARS, toggleRoom, upsertTemplate, validateSettings, validateTemplate,
+  workerBadge, workerRole,
 } from '@/lib/domain/outreach';
 import { useActions, useAppState } from '@/lib/state/AppProvider';
 
@@ -172,6 +172,7 @@ export function WorkerPanel() {
   const [q, setQ] = useState('');
   const [rooms, setRooms] = useState<WorkerRoom[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [busyWorker, setBusyWorker] = useState('');
   // ป้ายของห้องที่เคยเห็นจากผลค้นหา (dsales_worker_status_get คืนแค่ ms_id ของห้องทดสอบ)
   const [known, setKnown] = useState<ReadonlyMap<number, WorkerRoom>>(() => new Map((outreachDemo?.rooms ?? []).map((r) => [r.ms_id, r])));
 
@@ -244,6 +245,25 @@ export function WorkerPanel() {
     });
   }
 
+  /** ปุ่มของ worker แต่ละตัว: ตั้งตัวหลัก / เริ่มใหม่ — ทั้งคู่คืนสถานะล่าสุด */
+  async function workerAction(id: string, run: (workerId: string) => Promise<WorkerStatus>, done: string) {
+    if (!live) {
+      toast(FIXTURE_NO_WRITE);
+      return;
+    }
+    await once(`worker-act-${id}`, async () => {
+      setBusyWorker(id);
+      try {
+        setLiveStatus(await run(id));
+        toast(done);
+      } catch (e2) {
+        toastError(e2);
+      } finally {
+        setBusyWorker('');
+      }
+    });
+  }
+
   const label = (id: number) => {
     const r = known.get(id);
     return r ? roomLabel(r) : `ห้อง ${id}`;
@@ -262,16 +282,35 @@ export function WorkerPanel() {
               status.workers.map((w) => {
                 const on = isWorkerOnline(w);
                 const badge = workerBadge(w);
+                const role = workerRole(w, status.primary);
+                const canReset = w.worker_id === CLOUD_WORKER_ID && w.state === 'stopped';
                 return (
                   <div key={w.worker_id} className="list-row" data-worker={w.worker_id}>
                     <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', flex: 'none', background: on ? 'var(--ok)' : 'var(--bad)' }} />
                     <div>
-                      <b>{w.worker_id}</b> <span className="sub">{on ? 'ออนไลน์' : 'ออฟไลน์'} · ล่าสุด {stamp(w.heartbeat_at)}</span>
+                      <b>{w.worker_id}</b>{role ? <> <span className="chip" data-role>{role}</span></> : null}{' '}
+                      <span className="sub">{on ? 'ออนไลน์' : 'ออฟไลน์'} · ล่าสุด {stamp(w.heartbeat_at)}</span>
                       <div className="sub">
                         JST {w.jst_session_ok ? 'เชื่อมต่อแล้ว' : 'ยังไม่ได้ล็อกอิน'} · ส่งชั่วโมงนี้ {Number(w.sent_last_hour || 0).toLocaleString('th-TH')} · คิวรอ {Number(w.queue_waiting || 0).toLocaleString('th-TH')}
                       </div>
                       {badge.hint ? <div className="sub" style={{ color: 'var(--bad)' }}>{badge.hint}</div> : null}
                       {w.last_error ? <div className="sub" style={{ color: 'var(--bad)' }}>error ล่าสุด: {w.last_error}</div> : null}
+                      {role !== 'ตัวหลัก' || canReset ? (
+                        <div className="toolbar" style={{ marginTop: 6 }}>
+                          {role !== 'ตัวหลัก' ? (
+                            <button type="button" className="btn sm" data-act="primary" disabled={!!busyWorker}
+                              onClick={() => void workerAction(w.worker_id, setWorkerPrimary, `ตั้ง ${w.worker_id} เป็นตัวหลักแล้ว`)}>
+                              ตั้งเป็นตัวหลัก
+                            </button>
+                          ) : null}
+                          {canReset ? (
+                            <button type="button" className="btn sm" data-act="reset" disabled={!!busyWorker}
+                              onClick={() => void workerAction(w.worker_id, resetWorkerState, `เริ่ม ${w.worker_id} ใหม่แล้ว — รอบถัดไปจะทำงานต่อ`)}>
+                              เริ่มใหม่
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                     <span className={`badge plain ${badge.cls}`}>{badge.text}</span>
                   </div>

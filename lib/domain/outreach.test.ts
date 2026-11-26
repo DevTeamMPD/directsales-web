@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatRoom, DemoCustomer, WorkerStatus } from '@/lib/api/types';
 import {
-  batchProgress, brandRoomCounts, brandRoomHint, channelLabel, countBadges, DEFAULT_MAX_BATCH, defaultOutreachBrand, demoPreview, hasPending, isWorkerOnline, itemErrorText, itemsPending, maxBatch,
+  batchProgress, CLOUD_WORKER_ID, workerRole, brandRoomCounts, brandRoomHint, channelLabel, countBadges, DEFAULT_MAX_BATCH, defaultOutreachBrand, demoPreview, hasPending, isWorkerOnline, itemErrorText, itemsPending, maxBatch,
   leadSelectable, leadSelRow, pageCheckState, phoneCheckState, pruneSelection, renderTemplate, roomLabel, selectionBar, setPageSelected, setPhones, shouldPoll, skipLabel, splitPreview, statusBadge, statusLabel,
   skipReasonText, TEST_MODE_TEXT, togglePhone, toggleRoom, toggleSelect, toSelRow, upsertTemplate, validateSettings, validateTemplate, workerBadge, workerBanners, workerStateLabel, type SelRow,
 } from './outreach';
@@ -116,6 +116,19 @@ describe('worker', () => {
     expect(workerBadge(worker({ online: false, heartbeat_at: '2026-11-25T02:30:00Z' }), now).hint).toMatch(/^ขาดการติดต่อ 30 นาที/);
     expect(workerBadge(worker({ online: false, heartbeat_at: '2026-11-24T22:00:00Z' }), now).hint).toMatch(/^ขาดการติดต่อ 5 ชั่วโมง/);
     expect(workerBadge(worker({ online: true, state: 'paused' }), now)).toEqual({ cls: 's-callback', text: 'พักชั่วคราว', hint: null });
+  });
+  it('labels the primary and the standby; no label when no primary is set', () => {
+    expect(workerRole(worker({ worker_id: 'vercel', is_primary: true }), 'vercel')).toBe('ตัวหลัก');
+    expect(workerRole(worker({ worker_id: 'office-1', is_primary: false }), 'vercel')).toBe('ตัวสำรอง');
+    expect(workerRole(worker({ worker_id: 'office-1' }), 'office-1')).toBe('ตัวหลัก'); // server รุ่นเก่าไม่ส่ง is_primary
+    expect(workerRole(worker({ worker_id: 'office-1' }), null)).toBeNull();
+    expect(workerRole(worker({ worker_id: 'office-1' }), '')).toBeNull();
+  });
+  it('an offline cloud worker gets its own hint (there is no machine to restart)', () => {
+    const now = Date.parse('2026-11-26T03:00:00Z');
+    expect(CLOUD_WORKER_ID).toBe('vercel');
+    expect(workerBadge(worker({ worker_id: 'vercel', online: false, heartbeat_at: '2026-11-26T02:30:00Z' }), now).hint)
+      .toBe('ขาดการติดต่อ 30 นาที — ตรวจ cron dsales-outreach-tick และ deployment บน Vercel');
   });
   it('offline banner says when the worker was last seen (latest heartbeat)', () => {
     const now = Date.parse('2026-11-25T03:00:00Z');

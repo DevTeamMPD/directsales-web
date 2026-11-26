@@ -165,10 +165,14 @@ export interface BatchDetail {
 export interface WorkerRow {
   worker_id: string; state: WorkerState; jst_session_ok: boolean | null; heartbeat_at: string | null; online: boolean;
   sent_last_hour: number; queue_waiting: number; last_error: string | null;
+  /** ตัวหลักตามค่า worker_primary (ไม่มี = server ยังไม่ส่ง) */
+  is_primary?: boolean;
 }
 export interface WorkerSettings { interval_seconds: number; line_monthly_cap: number; test_mode: boolean; test_ms_ids: number[]; max_batch: number }
 export interface WorkerStatus {
   workers: WorkerRow[];
+  /** worker_id ของตัวหลัก · null/ไม่มี = ไม่ได้ตั้ง (ทุกตัวรับงานได้) */
+  primary?: string | null;
   queue: { queued: number; sending: number; sent_last_hour: number; line_sent_this_month: number };
   settings: WorkerSettings;
 }

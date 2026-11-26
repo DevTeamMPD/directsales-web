@@ -122,3 +122,7 @@ export const getWorkerStatus = () => call<WorkerStatus>('dsales_worker_status_ge
 export const setWorkerSettings = (x: WorkerSettingsInput) =>
   call<WorkerStatus>('dsales_worker_settings_set', { p_interval: x.interval, p_line_cap: x.lineCap, p_test_mode: x.testMode, p_test_ms_ids: x.testMsIds });
 export const findWorkerRooms = (query: string) => call<WorkerRoom[]>('dsales_worker_find_rooms', { p_query: query.trim() });
+/** หัวหน้า: ตั้ง worker ตัวหลัก (ตัวอื่นเป็นตัวสำรอง) */
+export const setWorkerPrimary = (workerId: string) => call<WorkerStatus>('dsales_worker_primary_set', { p_worker: workerId });
+/** หัวหน้า: ล้างสถานะของ worker บน Vercel ที่หยุด (แทนการรีสตาร์ท) */
+export const resetWorkerState = (workerId: string) => call<WorkerStatus>('dsales_worker_state_reset', { p_worker: workerId });
