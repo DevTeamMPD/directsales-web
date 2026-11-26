@@ -7,7 +7,7 @@ import type {
   ProductRow,
   BaseFilterJson, BatchDetail, BatchRow, CampaignRow, ChannelRowJson, ChatSessionJson, ContactType, EnqueueResult, JstTagRow, LeadJson, LeadStatus, MeRow,
   MemberJson, MemberTagsRow, NewCampaign, PoolRowJson, PreviewRow, PurchaseRowJson, RoomsForPhoneRow, TeamRow, Template, TemplateInput, WorkerRoom,
-  WorkerSettingsInput, WorkerStatus,
+  WorkerSettingsInput, WorkerStatus, RfmMapRow, RfmSegJson,
 } from './types';
 
 type Result<T> = { data: T | null; error: { message: string; code?: string } | null; status?: number };
@@ -88,6 +88,11 @@ export const getBaseCustomers = (scope: BaseScope, q: Omit<PoolQuery, 'from' | '
 /** จำนวนลูกค้าต่อกลุ่ม RFM ตามขอบเขต + แบรนด์ ('' = ยังไม่จัดกลุ่ม) */
 export const getBaseSegmentCounts = (scope: BaseScope, brand: Brand | null, asUser?: string | null) =>
   call<Array<{ segment: string; n: number | string }>>('dsales_base_segment_counts', { p_scope: scope, p_brand: brand || null, ...(asUser ? { p_as: asUser } : {}) });
+/** กติกา + Action Context ของกลุ่ม RFM (โหลดครั้งเดียวตอนเปิดแอป) */
+export const getRfmConfig = () => call<RfmSegJson[]>('dsales_rfm_config_get');
+/** จำนวนลูกค้าต่อกลุ่มของหน้า /rfm ตามขอบเขต + แบรนด์ ('' = ยังไม่มีกลุ่ม) */
+export const getRfmMap = (scope: BaseScope, brand: Brand | null, asUser?: string | null) =>
+  call<RfmMapRow[]>('dsales_rfm_map', { p_scope: scope, p_brand: brand || null, ...(asUser ? { p_as: asUser } : {}) });
 export const getCustomerPurchases = (phone: string) => call<PurchaseRowJson[]>('dsales_customer_purchases', { p_phone: phone });
 export const getCustomerChannels = (phone: string) => call<ChannelRowJson[]>('dsales_customer_channels', { p_phone: phone });
 export const getCustomerChats = (phone: string, sinceIso: string | null) =>

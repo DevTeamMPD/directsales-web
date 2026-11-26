@@ -5,7 +5,7 @@ vi.mock('@/lib/supabase/client', () => ({ db: () => ({ rpc, from }) }));
 
 import {
   addMember, cancelOutreach, claimCustomer, enqueueOutreach, findWorkerRooms, getBaseCustomers, getMe, getRoomsForPhones, getOutreachBatch, getOutreachBatches,
-  getTemplates, getWorkerStatus, logContact, previewOutreach, saveTemplate, setCampaignClaimMode, setWorkerSettings,
+  getRfmConfig, getRfmMap, getTemplates, getWorkerStatus, logContact, previewOutreach, saveTemplate, setCampaignClaimMode, setWorkerSettings,
 } from './rpc';
 
 beforeEach(() => {
@@ -151,5 +151,17 @@ describe('getRoomsForPhones', () => {
     expect(rpc).not.toHaveBeenCalled();
     rpc.mockResolvedValue({ data: null, error: null });
     await expect(getRoomsForPhones(['0812345678'])).resolves.toEqual([]);
+  });
+});
+
+describe('RFM page RPCs', () => {
+  it('reads the config and the map with scope, brand and view-as', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    await getRfmConfig();
+    expect(rpc).toHaveBeenLastCalledWith('dsales_rfm_config_get', undefined);
+    await getRfmMap('team', null);
+    expect(rpc).toHaveBeenLastCalledWith('dsales_rfm_map', { p_scope: 'team', p_brand: null });
+    await getRfmMap('mine', 'hosttail', 'u-9');
+    expect(rpc).toHaveBeenLastCalledWith('dsales_rfm_map', { p_scope: 'mine', p_brand: 'hosttail', p_as: 'u-9' });
   });
 });
