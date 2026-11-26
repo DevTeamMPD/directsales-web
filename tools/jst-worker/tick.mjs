@@ -1,12 +1,12 @@
-// One worker run (per-tick mode on Vercel): take lease -> load state -> worker.tick() -> save state.
-// No I/O of its own: queue and the jst factory are injected (app/api/cron/outreach-tick/route.ts assembles them).
+// หนึ่งรอบของ worker (โหมดรอบบน Vercel): ถือ lease → โหลดสถานะ → worker.tick() → บันทึกสถานะ
+// ไม่มี I/O ของตัวเอง — รับ queue / ตัวสร้าง jst เข้ามา (app/api/cron/outreach-tick/route.ts เป็นผู้ประกอบ)
 import { createJstClient } from './jst-client.mjs';
 import { memoryStore } from './session-store.mjs';
 import { createWorker } from './worker-core.mjs';
 
 /**
- * -> { skipped: 'busy' } when the previous run has not finished
- * -> { skipped: null, result, links, pinged, state, cookiesSaved }
+ * → { skipped: 'busy' } เมื่อรอบก่อนยังไม่จบ
+ * → { skipped: null, result, links, pinged, state, cookiesSaved }
  */
 export async function runTick({
   workerId,
@@ -36,7 +36,7 @@ export async function runTick({
   } catch (e) {
     failure = e;
   }
-  // Always save (releases the lease + keeps pendingReports); write cookies back only if JST changed them
+  // บันทึกเสมอ (ปล่อย lease + เก็บ pendingReports) · cookie เขียนกลับเฉพาะเมื่อ JST เปลี่ยนค่า
   await queue.stateEnd(workerId, worker.exportState(), store.dirty ? store.cookies() : null);
   if (failure) throw failure;
   return { skipped: null, ...out, cookiesSaved: store.dirty };

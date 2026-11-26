@@ -9,8 +9,8 @@ export class QueueError extends Error {
 }
 
 /**
- * autoRefreshToken: true = office loop (supabase-js renews the token itself)
- * false = per-tick mode on Vercel (no timer between runs) -> sign in again when the token is older than maxSessionAgeMs (tokens last 1h)
+ * autoRefreshToken: true = ลูปบนเครื่อง worker (supabase-js ต่ออายุ token เอง)
+ * false = โหมดรอบบน Vercel (ไม่มี timer ข้ามรอบ) → ล็อกอินใหม่เมื่อ token อายุเกิน maxSessionAgeMs (token อยู่ได้ 1 ชม.)
  */
 export function createQueueClient({
   supabaseUrl, anonKey, email, password, createClient,
@@ -89,16 +89,16 @@ export function createQueueClient({
       });
       return Number(data) || 0;
     },
-    /** Start a run: null = another run holds the lease, else { runtime, cookies } */
+    /** เริ่มรอบ: null = รอบอื่นถือ lease อยู่ · ไม่เช่นนั้น { runtime, cookies } */
     async stateBegin(workerId, leaseSeconds = 90) {
       const data = await rpc('dsales_worker_state_begin', { p_worker: workerId, p_lease_seconds: leaseSeconds });
       return data ?? null;
     },
-    /** End a run: save runtime; cookies = null means unchanged */
+    /** จบรอบ: บันทึก runtime · cookies = null คือไม่เปลี่ยน */
     async stateEnd(workerId, runtime, cookies = null) {
       await rpc('dsales_worker_state_end', { p_worker: workerId, p_runtime: runtime ?? {}, p_cookies: cookies ?? null });
     },
-    /** Upload a session someone logged in by hand (import-session.mjs --upload) */
+    /** อัปโหลด session ที่คนล็อกอินเอง (import-session.mjs --upload) */
     async sessionPut(workerId, cookies) {
       await rpc('dsales_worker_session_put', { p_worker: workerId, p_cookies: cookies });
     },

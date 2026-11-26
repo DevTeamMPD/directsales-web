@@ -1,4 +1,4 @@
-// node --test — runTick: lease -> worker.tick -> save state (fake queue / jst)
+// node --test — runTick: lease → worker.tick → บันทึกสถานะ (fake queue / jst)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runTick } from './tick.mjs';
@@ -39,7 +39,7 @@ function fakeQueue({ begun, jobs = [] } = {}) {
   return q;
 }
 
-/** Fake createJst: records the options it received; onPing simulates JST changing a cookie */
+/** createJst ปลอม: เก็บ options ที่ได้รับ · onPing ใช้จำลอง JST เปลี่ยน cookie */
 function fakeJstFactory({ onPing = () => {} } = {}) {
   const seen = { opts: null, sends: [] };
   const create = (opts) => {
@@ -95,7 +95,7 @@ test('normal tick: stored cookies and runtime go in, one job is sent, state is s
   assert.equal(queue.ends.length, 1);
   assert.equal(queue.ends[0].workerId, 'vercel');
   assert.equal(queue.ends[0].runtime.state, 'running');
-  assert.equal(queue.ends[0].runtime.failures, 0); // successful send clears the counter
+  assert.equal(queue.ends[0].runtime.failures, 0); // ส่งสำเร็จ = ล้างตัวนับ
   assert.equal(queue.ends[0].cookies, null);
 });
 
