@@ -10,6 +10,10 @@ describe('bearerMatches', () => {
     expect(bearerMatches('s3cret', 's3cret')).toBe(false);
     expect(bearerMatches('bearer s3cret', 's3cret')).toBe(false);
   });
+  it('rejects tokens of a different length without throwing', () => {
+    expect(bearerMatches('Bearer a', 's3cret')).toBe(false);
+    expect(bearerMatches(`Bearer ${'x'.repeat(500)}`, 's3cret')).toBe(false);
+  });
   it('rejects everything when no secret is configured or no header is sent', () => {
     expect(bearerMatches('Bearer ', '')).toBe(false);
     expect(bearerMatches('Bearer x', undefined)).toBe(false);
