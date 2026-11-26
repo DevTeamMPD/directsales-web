@@ -204,3 +204,18 @@ test('default sleep is a real timer (runs without a sleep argument)', async () =
   const out = await runTick({ workerId: 'vercel', queue, createJst: create, jstConfig: {}, now: () => 1_000_000 });
   assert.equal(out.skipped, null);
 });
+
+test('stateEnd rejects while cookies are sent: third attempt saves the runtime with cookies=null', async () => {
+  const queue = fakeQueue();
+  const { create } = fakeJstFactory({ onPing: (store) => store.save([{ name: 'a', value: '2' }]) });
+  const calls = [];
+  queue.stateEnd = async (workerId, runtime, cookies) => {
+    calls.push({ workerId, runtime, cookies });
+    if (cookies !== null) throw new Error('invalid_cookies');
+  };
+  const out = await runTick(args({ queue, createJst: create }));
+  assert.equal(calls.length, 3);
+  assert.equal(calls[2].cookies, null);
+  assert.equal(calls[2].runtime.state, 'running');
+  assert.equal(out.skipped, null);
+});

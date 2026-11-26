@@ -315,3 +315,32 @@ test('no ping unless at least 15 s remain before the deadline', async () => {
   assert.equal(far.pinged, true);
   assert.equal(jst.pings, 1);
 });
+
+test('tick: near the deadline a successful re-login does not retry the send — requeue', async () => {
+  let rooms = 0;
+  const t = setup({
+    jobs: [job()],
+    jst: {
+      async room(msId) {
+        if (rooms++ === 0) throw new SessionExpired();
+        return { ...ROOM, msId: Number(msId) };
+      },
+    },
+  });
+  // deadline อยู่ใกล้: เหลือไม่ถึง 25 วินาทีหลัง login
+  const out = await t.worker.tick({ deadlineMs: T0 + 20_000 });
+  assert.equal(out.result, 'requeued');
+  assert.deepEqual(t.jst.sends, []);
+  assert.equal(t.jst.logins, 1);
+  assert.deepEqual(t.queue.reports.map((r) => [r.status, r.error]), [['requeue', 'session_expired']]);
+});
+
+test('tick: with enough time left the re-login retry still sends; office path (no tick) always retries', async () => {
+  let rooms = 0;
+  const flaky = { async room(msId) { if (rooms++ === 0) throw new SessionExpired(); return { ...ROOM, msId: Number(msId) }; } };
+  const a = setup({ jobs: [job()], jst: flaky });
+  assert.equal((await a.worker.tick({ deadlineMs: T0 + 40_000 })).result, 'sent');
+  rooms = 0;
+  const b = setup({ jobs: [job()], jst: flaky });
+  assert.equal(await b.worker.processOne(), 'sent');
+});

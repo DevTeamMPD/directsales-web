@@ -49,11 +49,22 @@ export async function runTick({
   }
   // บันทึกเสมอ (ปล่อย lease + เก็บ pendingReports) · cookie เขียนกลับเฉพาะเมื่อ JST เปลี่ยนค่า · ลองซ้ำหนึ่งครั้ง
   let saveError = null;
+  const cookiesOut = store.dirty ? store.cookies() : null;
   for (let i = 0; i < 2; i++) {
     try {
-      await queue.stateEnd(workerId, worker.exportState(), store.dirty ? store.cookies() : null);
+      await queue.stateEnd(workerId, worker.exportState(), cookiesOut);
       saveError = null;
       break;
+    } catch (e) {
+      saveError = e;
+    }
+  }
+  // ถ้าพังเพราะ cookie (เช่น DB ปฏิเสธ invalid_cookies) อย่างน้อยเก็บ runtime (loginTimes / needs_login) ไว้
+  if (saveError && cookiesOut !== null) {
+    log('error', 'state save with cookies failed — saving runtime only', { error: String(saveError?.message || saveError).slice(0, 200), result: out?.result ?? null });
+    try {
+      await queue.stateEnd(workerId, worker.exportState(), null);
+      saveError = null;
     } catch (e) {
       saveError = e;
     }

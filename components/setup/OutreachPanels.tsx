@@ -7,7 +7,7 @@ import type { Template, WorkerRoom, WorkerStatus } from '@/lib/api/types';
 import { BRAND, FIXTURE_NO_WRITE, type Brand } from '@/lib/constants';
 import { pageBrand } from '@/lib/domain/brand';
 import {
-  CLOUD_WORKER_ID, isWorkerOnline, renderTemplate, roomLabel, SAMPLE_VALUES, stamp, TEMPLATE_VARS, toggleRoom, upsertTemplate, validateSettings, validateTemplate,
+  canBePrimary, CLOUD_WORKER_ID, isWorkerOnline, renderTemplate, roomLabel, SAMPLE_VALUES, stamp, TEMPLATE_VARS, toggleRoom, upsertTemplate, validateSettings, validateTemplate,
   standbyActive, workerBadge, workerRole,
 } from '@/lib/domain/outreach';
 import { useActions, useAppState } from '@/lib/state/AppProvider';
@@ -206,6 +206,15 @@ export function WorkerPanel() {
 
   const status = live ? liveStatus : outreachDemo?.worker ?? null;
   const covering = status ? standbyActive(status) : false;
+  // หลังกด "เริ่มใหม่" แถวจะรอ heartbeat ใหม่ — โหลดสถานะซ้ำครั้งเดียวหลัง 70 วินาที (รอบ cron 1 นาที) ไม่ poll ตลอด
+  const anyWaiting = live && !!liveStatus?.workers.some((w) => resetAt.has(w.worker_id) && resetAt.get(w.worker_id) === w.heartbeat_at);
+  useEffect(() => {
+    if (!anyWaiting) return;
+    const t = setTimeout(() => {
+      getWorkerStatus().then(setLiveStatus, () => {});
+    }, 70_000);
+    return () => clearTimeout(t);
+  }, [anyWaiting]);
 
   async function onSearch(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -313,6 +322,7 @@ export function WorkerPanel() {
                 const waiting = resetAt.has(w.worker_id) && resetAt.get(w.worker_id) === w.heartbeat_at;
                 const canReset = w.worker_id === CLOUD_WORKER_ID && w.state === 'stopped' && !waiting;
                 const isArmed = armed === w.worker_id;
+                const canPrimary = canBePrimary(w, status.primary);
                 return (
                   <div key={w.worker_id} className="list-row" data-worker={w.worker_id}>
                     <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', flex: 'none', background: on ? 'var(--ok)' : 'var(--bad)' }} />
@@ -326,9 +336,10 @@ export function WorkerPanel() {
                       {w.last_error ? <div className="sub" style={{ color: 'var(--bad)' }}>error ล่าสุด: {w.last_error}</div> : null}
                       {role === 'ตัวสำรอง' && covering ? <div className="sub">กำลังรับงานแทนตัวหลัก</div> : null}
                       {waiting ? <div className="sub">รอรอบถัดไป…</div> : null}
-                      {role !== 'ตัวหลัก' || canReset ? (
+                      {role !== 'ตัวหลัก' && !on ? <div className="sub">ออฟไลน์ ตั้งเป็นตัวหลักไม่ได้</div> : null}
+                      {canPrimary || canReset ? (
                         <div className="toolbar" style={{ marginTop: 6 }}>
-                          {role !== 'ตัวหลัก' ? (
+                          {canPrimary ? (
                             <button type="button" className="btn sm" data-act="primary" disabled={!!busyWorker}
                               aria-label={`ตั้ง ${w.worker_id} เป็นตัวหลัก`}
                               onClick={() => void workerAction(w, 'primary')}>

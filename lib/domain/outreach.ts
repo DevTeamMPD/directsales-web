@@ -256,6 +256,13 @@ export function workerRole(w: Pick<WorkerRow, 'worker_id' | 'is_primary'>, prima
   return isPrimary ? 'ตัวหลัก' : 'ตัวสำรอง';
 }
 
+/** ตั้งเป็นตัวหลักได้เฉพาะตัวที่ออนไลน์และยังไม่ใช่ตัวหลัก — ตั้งตัวที่ตายแล้วเป็นตัวหลักจะปิดกติกาตัวสำรอง */
+export function canBePrimary(
+  w: Pick<WorkerRow, 'worker_id' | 'is_primary' | 'heartbeat_at'> & { online?: boolean | null }, primary: string | null | undefined, now: number = Date.now(),
+): boolean {
+  return workerRole(w, primary) !== 'ตัวหลัก' && isWorkerOnline(w, now);
+}
+
 /** มีตัวหลัก แต่ตัวหลักไม่ได้ทำงาน (ไม่มีแถว / ออฟไลน์ / state ไม่ใช่ running) = ตัวสำรองรับงานแทน */
 export function standbyActive(s: Pick<WorkerStatus, 'workers' | 'primary'>, now: number = Date.now()): boolean {
   if (!s.primary) return false;

@@ -130,6 +130,7 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
     linkDisabled: false,
     linkLookups: 0,
     linksWritten: 0,
+    deadlineMs: null, // ตั้งเฉพาะระหว่าง tick() — โหมดออฟฟิศไม่ตั้ง = ไม่เปลี่ยนพฤติกรรม
     lastJstOkAt: 0, // เวลาที่เรียก JST สำเร็จครั้งล่าสุด — tick ใช้ตัดสินว่าต้อง ping หรือไม่
   };
   const canLink = () =>
@@ -320,6 +321,10 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
       log('warn', 'JST session expired — logging in again');
       const lr = await relogin();
       if (!lr.ok) return { decision: lr.decision, countFailure: lr.countFailure };
+      // โหมดรอบ: เหลือเวลาไม่พอลองส่งซ้ำ (เสี่ยงเกิน 60 วินาทีของ Vercel) → คืนคิว session ใหม่แล้วสำหรับรอบหน้า
+      if (s.deadlineMs != null && clock.now() + 25_000 > s.deadlineMs) {
+        return { decision: { status: 'requeue', error: 'session_expired' } };
+      }
       try {
         return { decision: await attempt(job) };
       } catch (e2) {
@@ -512,6 +517,7 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
    */
   async function tick({ deadlineMs = clock.now() + 40_000, maxLinks = 10, pingAfterMs = 600_000 } = {}) {
     s.ticks++;
+    s.deadlineMs = deadlineMs;
     const out = { result: null, links: 0, pinged: false };
     try {
       out.result = await processOne();
@@ -530,6 +536,7 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
       if (!(e instanceof QueueUnavailable)) {
         // error ที่ไม่คาด: แจ้ง heartbeat ก่อน แล้วโยนต่อให้ผู้เรียกเห็น
         s.lastError = `tick: ${clip(e?.message || e)}`;
+        s.deadlineMs = null;
         await heartbeat({ force: true });
         throw e;
       }
@@ -537,6 +544,7 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
       log('warn', 'supabase unavailable during tick', { error: clip(e.message) });
       out.result = 'queue_error';
     }
+    s.deadlineMs = null;
     await heartbeat({ force: true });
     return { ...out, state: s.state };
   }
