@@ -14,7 +14,7 @@ export async function runTick({
   jstConfig = {},
   now = () => Date.now(),
   sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
-  log = () => {},
+  log = (_level, _msg, _fields) => {},
   budgetMs = 40_000,
   maxLinks = 10,
   leaseSeconds = 90,

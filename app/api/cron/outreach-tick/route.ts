@@ -41,8 +41,7 @@ export async function POST(request: Request) {
       queue,
       jstConfig: { accountId: env.JST_USER || '', password: env.JST_PASSWORD || '' },
       sleep,
-      // tick.mjs infers `() => void` from its default param; the worker really calls log(level, msg, fields)
-      log: log as () => void,
+      log,
     });
     return NextResponse.json({ ok: true, region: env.VERCEL_REGION ?? null, ...out }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (e) {
