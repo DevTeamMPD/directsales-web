@@ -15,7 +15,16 @@ export function readEnvFile(path) {
 /** ค่าที่ใช้ล็อกอิน Supabase ด้วยบัญชี worker — ไม่ต้องมี config.json (ใช้กับ import-session.mjs --upload) */
 export function loadSupabaseConfig({ configPath, envPath, env = process.env }) {
   let c = {};
-  if (configPath && existsSync(configPath)) c = JSON.parse(readFileSync(configPath, 'utf8'))?.supabase || {};
+  if (configPath && existsSync(configPath)) {
+    let parsed;
+    try {
+      parsed = JSON.parse(readFileSync(configPath, 'utf8'));
+    } catch {
+      // ไม่ใส่ข้อความ error ของ JSON.parse เพราะอาจมีส่วนของรหัสผ่านติดมา
+      throw new Error(`${configPath} ไม่ใช่ JSON ที่ถูกต้อง`);
+    }
+    c = parsed?.supabase || {};
+  }
   const e = { ...readEnvFile(envPath), ...env };
   const out = {
     url: c.url || e.NEXT_PUBLIC_SUPABASE_URL || '',

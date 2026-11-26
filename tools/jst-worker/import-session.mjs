@@ -2,7 +2,8 @@
 //   node import-session.mjs                 ใช้โปรไฟล์ ../jst-worker-spike/.profile (ต้องล็อกอินไว้แล้ว)
 //   node import-session.mjs --login         เปิดหน้าต่าง Chrome ให้ล็อกอิน JST เอง (เช่น JST ขอ captcha) แล้วบันทึก
 //   node import-session.mjs --profile <dir> ใช้โปรไฟล์อื่น
-//   node import-session.mjs --login --upload vercel   ล็อกอินเองแล้วส่ง session ให้ worker บน Vercel (dsales_worker_session_put)
+//   node import-session.mjs --upload vercel         (ไม่เปิดหน้าต่าง: โปรไฟล์ล็อกอินไว้แล้ว) ส่ง session ให้ worker บน Vercel
+//   node import-session.mjs --login --upload vercel  ล็อกอินเองแล้วส่ง session ให้ worker บน Vercel (dsales_worker_session_put)
 // Playwright ใช้เฉพาะคำสั่งนี้ (worker ส่งข้อความด้วย HTTP ล้วน) · ไม่พิมพ์ค่า cookie ออกหน้าจอ
 import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -42,15 +43,19 @@ export function toJar(cookies, host = new URL(BASE).hostname) {
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** ส่ง cookie ให้ worker บน cloud — ถ้า worker กำลังทำรอบอยู่ (worker_busy) รอแล้วลองใหม่; error อื่น/ยังไม่ว่างหลังครบรอบ = โยน error (ไม่พิมพ์ cookie) */
-export async function uploadSession(queue, workerId, jar, { sleep = wait, log = console.log, attempts = 6, waitMs = 10_000 } = {}) {
+/**
+ * ส่ง cookie ให้ worker บน cloud — ถ้า worker กำลังทำรอบอยู่ (worker_busy) รอแล้วลองใหม่
+ * ค่าเริ่มต้น 11 ครั้ง (รอ 10 ครั้ง × 10 วินาที = 100 วินาที) นานกว่า lease 90 วินาทีที่รอบที่ถูกฆ่ากลางคันทิ้งไว้
+ * error อื่น/ยังไม่ว่างหลังครบรอบ = โยน error (ไม่พิมพ์ cookie)
+ */
+export async function uploadSession(queue, workerId, jar, { sleep = wait, log = console.log, attempts = 11, waitMs = 10_000 } = {}) {
   for (let i = 1; ; i++) {
     try {
       await queue.sessionPut(workerId, jar);
       return;
     } catch (e) {
       if (!String(e?.message || e).includes('worker_busy') || i >= attempts) throw e;
-      log(`worker กำลังทำงานรอบหนึ่งอยู่ — รอ ${Math.round(waitMs / 1000)} วินาทีแล้วลองใหม่`);
+      log(`worker กำลังทำงานรอบหนึ่งอยู่ — รอ ${Math.round(waitMs / 1000)} วินาทีแล้วลองใหม่ (ครั้งที่ ${i}/${attempts - 1})`);
       await sleep(waitMs);
     }
   }
@@ -61,6 +66,27 @@ async function main() {
   const profileDir = resolve(ROOT, typeof args.profile === 'string' ? args.profile : '../jst-worker-spike/.profile');
   const headed = args.login === true;
   const out = join(ROOT, typeof args.out === 'string' ? args.out : '.session.json');
+
+  // ตรวจก่อนเปิด Chrome: จะได้ไม่ต้องแก้ captcha เสร็จแล้วค่อยพบว่าขาดค่าตั้ง
+  let sb;
+  if (args.upload !== undefined) {
+    if (typeof args.upload !== 'string') {
+      console.error('ระบุชื่อ worker ด้วย เช่น --upload vercel');
+      process.exitCode = 1;
+      return;
+    }
+    const { loadSupabaseConfig } = await import('./config.mjs');
+    try {
+      sb = loadSupabaseConfig({
+        configPath: resolve(ROOT, typeof args.config === 'string' ? args.config : 'config.json'),
+        envPath: resolve(ROOT, '..', '..', '.env.local'),
+      });
+    } catch (e) {
+      console.error(String(e?.message || e).split('\n')[0]);
+      process.exitCode = 1;
+      return;
+    }
+  }
 
   const { chromium } = await import('playwright');
   mkdirSync(profileDir, { recursive: true });
@@ -102,24 +128,15 @@ async function main() {
     writeFileSync(tmp, JSON.stringify(jar, null, 2), { mode: 0o600 });
     renameSync(tmp, out);
     console.log(`บันทึก ${jar.length} cookie ลง ${out} แล้ว — worker ที่รออยู่ในสถานะ needs_login จะทำงานต่อเอง`);
-    if (args.upload !== undefined) {
-      if (typeof args.upload !== 'string') {
-        console.error('ระบุชื่อ worker ด้วย เช่น --upload vercel');
-        process.exitCode = 1;
-        return;
-      }
+    if (sb) {
       const { createClient } = await import('@supabase/supabase-js');
       const { createQueueClient } = await import('./queue-client.mjs');
-      const { loadSupabaseConfig } = await import('./config.mjs');
-      const sb = loadSupabaseConfig({
-        configPath: resolve(ROOT, typeof args.config === 'string' ? args.config : 'config.json'),
-        envPath: resolve(ROOT, '..', '..', '.env.local'),
-      });
       const queue = createQueueClient({ supabaseUrl: sb.url, anonKey: sb.anonKey, email: sb.email, password: sb.password, createClient });
       try {
         await uploadSession(queue, args.upload, jar);
       } catch (e) {
         console.error(`ส่ง session ให้ worker "${args.upload}" ไม่สำเร็จ: ${String(e?.message || e).split('\n')[0]}`);
+        console.error(`ลองใหม่: node import-session.mjs --upload ${args.upload} (ไม่ต้อง --login เพราะโปรไฟล์จำการล็อกอินไว้แล้ว)`);
         process.exitCode = 1;
         return;
       }

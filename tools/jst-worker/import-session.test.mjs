@@ -46,6 +46,15 @@ test('uploadSession: busy 6 times throws without a 7th call and never logs cooki
   assert.ok(!s.logs.join('\n').includes('secret-cookie-value'));
 });
 
+test('uploadSession: defaults wait longer than the 90s lease and show progress', async () => {
+  const s = setup([new Error('worker_busy')]);
+  const { sleep, log } = s.opts;
+  await assert.rejects(() => uploadSession(s.queue, 'vercel', JAR, { sleep, log }), /worker_busy/);
+  assert.equal(s.calls.length, 11);
+  assert.ok(s.sleeps.reduce((a, b) => a + b, 0) > 90_000);
+  assert.match(s.logs[0], /ครั้งที่ 1\/10/);
+});
+
 test('uploadSession: any other error throws immediately', async () => {
   const s = setup([new Error('not_worker')]);
   await assert.rejects(() => uploadSession(s.queue, 'vercel', JAR, s.opts), /not_worker/);
