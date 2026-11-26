@@ -39,6 +39,8 @@ export interface LeadJson {
   dsSince?: string | null;
   ai?: LeadAi | null;
   bills: string[] | null; total: number | null; lastBuy: string | null; orders: number | null;
+  /** กลุ่มลูกค้า RFM + วันที่ไม่ได้ซื้อ จาก dsales_customer_base (ค่าเดียวกับ /mine) — null = เบอร์ไม่อยู่ในฐานลูกค้า (20261126140000) */
+  rfm?: string | null; dormantDays?: number | null;
   interactions: InteractionJson[] | null;
 }
 
@@ -50,6 +52,8 @@ export interface Lead {
   claimedBy?: string | null; claimedAt?: string | null; claimedAtIso?: string | null;
   noCall?: boolean; noCallBy?: string | null; noCallAt?: string | null; releasedBy?: string[]; autoSkip?: boolean; identityId?: string | null;
   bills?: string[]; total?: number | null; lastBuy?: string | null; orders?: number | null;
+  /** จาก server เท่านั้น (fixture ไม่มี — leadRfm คำนวณจากประวัติซื้อแทน) */
+  rfm?: string | null; dormantDays?: number | null;
   interactions: Interaction[]; purchases: Purchase[];
   dsSince?: string | null; systemLog?: SystemNote[]; ai?: LeadAi | null;
   _pl?: 'loading' | 'done'; chatCheck?: ChatCheck | null;

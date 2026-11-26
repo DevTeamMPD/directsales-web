@@ -238,9 +238,9 @@ async function leadsText(page: Page) {
         id: s.id, options: Array.from((s as HTMLSelectElement).options).map((o) => o.text), value: (s as HTMLSelectElement).value,
       })),
       search: (view?.querySelector('#q') as HTMLInputElement | null)?.placeholder ?? null,
-      // คอลัมน์ติ๊กส่งข้อความ (.sel-col) มีเฉพาะฝั่ง Next (spec 2026-11-23 ข้อ 5.3) — ไม่เทียบกับ prototype
-      head: all('thead th:not(.sel-col)').map(t),
-      rows: all('tbody tr').map((tr) => Array.from(tr.children).filter((c) => !c.classList.contains('sel-col')).map(t)),
+      // คอลัมน์ติ๊กส่งข้อความ (.sel-col) และกลุ่มลูกค้า RFM (.rfm-col) มีเฉพาะฝั่ง Next (spec 2026-11-23 ข้อ 5.3 / migration 20261126140000) — ไม่เทียบกับ prototype
+      head: all('thead th:not(.sel-col):not(.rfm-col)').map(t),
+      rows: all('tbody tr').map((tr) => Array.from(tr.children).filter((c) => !c.classList.contains('sel-col') && !c.classList.contains('rfm-col')).map(t)),
       badges: all('tbody .badge').map(cls),
       actions: all('tbody .actions').map((a) => Array.from(a.children).map((b) => `${cls(b)}|${t(b)}`)),
       icons: all('tbody .ch-bar').map((bar) => Array.from(bar.querySelectorAll('img')).map((i) => i.getAttribute('alt'))),

@@ -160,7 +160,7 @@ migration `20261117100000_dsales_members_only.sql`, `20261117100100_dsales_acces
 | `dsales_uid()`, `dsales_is_admin()`, `dsales_is_member()` | ตรวจสิทธิ์ (ใช้ใน RPC และ RLS) | — ไม่เรียกตรง |
 | `dsales_register()` | ตรวจสิทธิ์เท่านั้น (ไม่เพิ่มสมาชิกแล้ว) | — |
 | `dsales_refresh_customer_base()`, `dsales_seed_chat_links_by_name()` | งานเบื้องหลัง (pg_cron วันละ 3 รอบ) — ไม่มี grant ให้ `authenticated` | — |
-| `dsales_lead_json`, `dsales_norm_phone`, `dsales_norm_platform`, `dsales_valid_phone`, `dsales_touch_updated_at` | helper / trigger | — |
+| `dsales_lead_json` (JSON ของลีดที่ทุก RPC คืน — รวม `rfm` / `dormantDays` จาก `dsales_customer_base` ตั้งแต่ 20261126140000), `dsales_norm_phone`, `dsales_norm_platform`, `dsales_valid_phone`, `dsales_touch_updated_at` | helper / trigger | — |
 | `dsales_templates_list(p_brand)` / `dsales_template_save(p_id, p_brand, p_name, p_body, p_active)` | template ข้อความต่อแบรนด์ (เซลล์เห็นเฉพาะ active; หัวหน้าสร้าง/แก้ — `forbidden`, `invalid_template`, `not_found`) | หน้าตั้งค่า, popup ส่งข้อความ |
 | `dsales_outreach_preview(p_phones, p_template)` / `dsales_enqueue_outreach(p_phones, p_template)` | ดูตัวอย่างข้อความ + ห้อง + เหตุผลที่ข้าม (`customer_not_found`, `taken`, `already_queued`, `no_chat_room`, `window_closed`) / จองลูกค้าแล้วเข้าคิว (`{batch_id, queued, skipped}` เพิ่ม `no_call`, `claim_failed`) · `template_not_found`, `batch_too_large` | popup ส่งข้อความใน `/mine` `/pool` |
 | `dsales_outreach_batches_mine(p_limit, p_offset)` / `dsales_outreach_batch(p_batch)` / `dsales_outreach_cancel(p_ids)` | รายการชุดส่ง + จำนวนตามสถานะ (หัวหน้าเห็นทุกชุด) / รายละเอียดชุด (`not_found`, `forbidden`) / ยกเลิกรายการที่ยัง `queued` | หน้า `/outreach` |

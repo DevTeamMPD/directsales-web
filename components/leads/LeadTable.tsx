@@ -9,7 +9,9 @@ import { SendOutreachModal } from '@/components/modals/SendOutreachModal';
 import { AiTag, DueTag, ReleaseTag, StatusBadge } from '@/components/ui/StatusBadge';
 import type { Campaign, ChatRoom, ClaimMode, Lead, Rep } from '@/lib/api/types';
 import { pageBrand } from '@/lib/domain/brand';
-import { bills, lastSeller, repName, total } from '@/lib/domain/leads';
+import { bills, lastSeller, leadRfm, repName, total } from '@/lib/domain/leads';
+import { dormantText } from '@/lib/domain/pool';
+import { rfmRule } from '@/lib/domain/rfm';
 import { canUnclaimAs } from '@/lib/domain/viewAs';
 import {
   defaultOutreachBrand, leadSelectable, leadSelRow, phoneCheckState, pruneSelection, selectionBar, setPhones, togglePhone,
@@ -23,12 +25,13 @@ import { useLeadActions, type LeadActions } from './useLeadActions';
 import { useLeadRooms } from './useLeadRooms';
 
 /** mode = วิธีจองของแคมเปญที่เลือก (หน้าแคมเปญ); perCamp = มุม "ลูกค้าทุกแคมเปญ" ใช้วิธีจองของแคมเปญของแต่ละลีด;
- *  selectable = คอลัมน์ติ๊กลีดของฉันเพื่อส่งข้อความ (หน้า Direct Sale เท่านั้น) */
-export interface TableOpts { mode?: ClaimMode; perCamp?: boolean; selectable?: boolean }
+ *  selectable = คอลัมน์ติ๊กลีดของฉันเพื่อส่งข้อความ (หน้า Direct Sale เท่านั้น);
+ *  rfm = คอลัมน์ "กลุ่มลูกค้า" (กลุ่ม RFM + ไม่ซื้อมา N วัน — ค่าเดียวกับหน้าลูกค้าของฉัน, หน้า Direct Sale เท่านั้น) */
+export interface TableOpts { mode?: ClaimMode; perCamp?: boolean; selectable?: boolean; rfm?: boolean }
 
 interface RowCtx {
   reps: Rep[]; campaigns: Campaign[]; meId: string; isAdmin: boolean; today: string; act: LeadActions; openJst: OpenJst;
-  rooms: ReadonlyMap<string, ChatRoom[]>; selectable: boolean; toggle: (phone: string) => void;
+  rooms: ReadonlyMap<string, ChatRoom[]>; selectable: boolean; showRfm: boolean; toggle: (phone: string) => void;
 }
 
 export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts }) {
@@ -38,6 +41,7 @@ export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts 
   const openJst = useJst();
   const rooms = useLeadRooms(list);
   const selectable = !!opts.selectable;
+  const showRfm = !!opts.rfm;
   // เก็บแค่เบอร์ — สร้างแถวส่งตอนกดส่งจากลีด/ห้องล่าสุด (ห้องโหลดเสร็จทีหลังก็ได้แบรนด์ถูก)
   const [sel, setSel] = useState<ReadonlySet<string>>(() => new Set());
   const max = useOutreachMax(sel.size > 0);
@@ -58,8 +62,8 @@ export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts 
   const toggle = useCallback((phone: string) => setSel((s) => togglePhone(s, phone)), []);
   // ctx คงที่จนกว่าทีม/แคมเปญ/วันนี้/ห้องเปลี่ยน → พิมพ์ค้นหา/ติ๊กแล้วแถวอื่นไม่ต้องวาดใหม่ (memo; ติ๊กส่งเป็น prop checked แยก)
   const ctx = useMemo<RowCtx>(
-    () => ({ reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, toggle }),
-    [reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, toggle],
+    () => ({ reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, showRfm, toggle }),
+    [reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, showRfm, toggle],
   );
   const openSend = () => {
     if (!selectionBar(sel.size, max).canSend) return;
@@ -86,7 +90,7 @@ export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts 
                   />
                 </th>
               ) : null}
-              <th>ชื่อ / เบอร์</th><th>เลขบิลที่เคยซื้อ</th><th>ร้านค้า</th><th>แคมเปญ</th><th>พนักงานขาย</th>
+              <th>ชื่อ / เบอร์</th>{showRfm ? <th className="rfm-col">กลุ่มลูกค้า</th> : null}<th>เลขบิลที่เคยซื้อ</th><th>ร้านค้า</th><th>แคมเปญ</th><th>พนักงานขาย</th>
               <th className="r">ยอดซื้อรวม</th><th>สถานะ</th><th>บันทึกล่าสุด</th><th>ปุ่มดำเนินการ</th>
             </tr>
           </thead>
@@ -97,7 +101,7 @@ export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts 
                 return <LeadRow key={l.id} l={l} mode={mode} ctx={ctx} checked={sel.has(l.phone)} />;
               })
             ) : (
-              <tr><td colSpan={selectable ? 10 : 9} className="empty">ไม่พบรายการที่ตรงกับตัวกรอง</td></tr>
+              <tr><td colSpan={9 + (selectable ? 1 : 0) + (showRfm ? 1 : 0)} className="empty">ไม่พบรายการที่ตรงกับตัวกรอง</td></tr>
             )}
           </tbody>
         </table>
@@ -115,7 +119,7 @@ export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts 
 }
 
 const LeadRow = memo(function LeadRow({ l, mode, ctx, checked }: { l: Lead; mode?: ClaimMode; ctx: RowCtx; checked: boolean }) {
-  const { reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, toggle } = ctx;
+  const { reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, showRfm, toggle } = ctx;
   const owner = repName(reps, l.owner);
   const seller = lastSeller(l, reps);
   const lastNote = l.interactions[l.interactions.length - 1]?.note;
@@ -142,6 +146,7 @@ const LeadRow = memo(function LeadRow({ l, mode, ctx, checked }: { l: Lead; mode
           <ContactBar x={l} chans={channelsOf(l)} mini openJst={openJst} />
         )}
       </td>
+      {showRfm ? <RfmCell l={l} today={today} /> : null}
       <td>
         <div className="bills">{bills(l).map((b, i) => <span key={`${b}-${i}`} className="bill">{b}</span>)}</div>
       </td>
@@ -201,6 +206,17 @@ const LeadRow = memo(function LeadRow({ l, mode, ctx, checked }: { l: Lead; mode
     </tr>
   );
 });
+
+/** กลุ่ม RFM (ชี้แล้วเห็นกติกา) + "ไม่ซื้อมา N วัน" ของลูกค้ารายนั้น — ไม่มีข้อมูล = — */
+function RfmCell({ l, today }: { l: Lead; today: string }) {
+  const r = leadRfm(l, today);
+  return (
+    <td className="rfm-col">
+      {r.segment ? <span className="tag" title={rfmRule(r.segment)}>{r.segment}</span> : <span className="sub">—</span>}
+      {r.dormantDays != null ? <div className="sub">{dormantText(r.dormantDays)}</div> : null}
+    </td>
+  );
+}
 
 /** L106-113: ไม่มีวิธีจองหรือมีเจ้าของแล้ว → ว่าง; หัวหน้าได้ select มอบหมาย */
 function ClaimCell({ l, mode, ctx }: { l: Lead; mode?: ClaimMode; ctx: RowCtx }) {
