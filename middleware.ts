@@ -3,6 +3,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
   if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_FIXTURES === '1') return NextResponse.next();
+  // route ที่ pg_cron ปลุก ไม่ใช้ session ของ Supabase — ตรวจรหัสลับเองใน route (lib/cron/auth.ts)
+  if (request.nextUrl.pathname.startsWith('/api/cron/')) return NextResponse.next();
   let response = NextResponse.next({ request });
   const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
     cookies: {
