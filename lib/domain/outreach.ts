@@ -256,6 +256,13 @@ export function workerRole(w: Pick<WorkerRow, 'worker_id' | 'is_primary'>, prima
   return isPrimary ? 'ตัวหลัก' : 'ตัวสำรอง';
 }
 
+/** มีตัวหลัก แต่ตัวหลักไม่ได้ทำงาน (ไม่มีแถว / ออฟไลน์ / state ไม่ใช่ running) = ตัวสำรองรับงานแทน */
+export function standbyActive(s: Pick<WorkerStatus, 'workers' | 'primary'>, now: number = Date.now()): boolean {
+  if (!s.primary) return false;
+  const p = s.workers.find((w) => w.worker_id === s.primary);
+  return !p || !isWorkerOnline(p, now) || p.state !== 'running';
+}
+
 export interface Banner { kind: 'warn' | 'note'; text: string }
 /** แถบเตือนด้านบนของหน้า /outreach */
 export function workerBanners(s: WorkerStatus | null | undefined, now: number = Date.now()): Banner[] {

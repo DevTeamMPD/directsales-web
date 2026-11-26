@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { errorMessage } from '@/lib/api/errors';
 import { findWorkerRooms, getTemplates, getWorkerStatus, resetWorkerState, saveTemplate, setWorkerPrimary, setWorkerSettings } from '@/lib/api/rpc';
 import type { Template, WorkerRoom, WorkerStatus } from '@/lib/api/types';
@@ -8,7 +8,7 @@ import { BRAND, FIXTURE_NO_WRITE, type Brand } from '@/lib/constants';
 import { pageBrand } from '@/lib/domain/brand';
 import {
   CLOUD_WORKER_ID, isWorkerOnline, renderTemplate, roomLabel, SAMPLE_VALUES, stamp, TEMPLATE_VARS, toggleRoom, upsertTemplate, validateSettings, validateTemplate,
-  workerBadge, workerRole,
+  standbyActive, workerBadge, workerRole,
 } from '@/lib/domain/outreach';
 import { useActions, useAppState } from '@/lib/state/AppProvider';
 
@@ -173,6 +173,15 @@ export function WorkerPanel() {
   const [rooms, setRooms] = useState<WorkerRoom[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [busyWorker, setBusyWorker] = useState('');
+  const [busyKind, setBusyKind] = useState<'primary' | 'reset' | ''>('');
+  /** worker ที่กดตั้งตัวหลักครั้งแรกแล้ว (รอกดยืนยัน) */
+  const [armed, setArmed] = useState('');
+  const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** worker_id → heartbeat_at ตอนกดเริ่มใหม่ · ล้างเมื่อ heartbeat เปลี่ยน */
+  const [resetAt, setResetAt] = useState<ReadonlyMap<string, string | null>>(new Map());
+  useEffect(() => () => {
+    if (armTimer.current) clearTimeout(armTimer.current);
+  }, []);
   // ป้ายของห้องที่เคยเห็นจากผลค้นหา (dsales_worker_status_get คืนแค่ ms_id ของห้องทดสอบ)
   const [known, setKnown] = useState<ReadonlyMap<number, WorkerRoom>>(() => new Map((outreachDemo?.rooms ?? []).map((r) => [r.ms_id, r])));
 
@@ -196,6 +205,7 @@ export function WorkerPanel() {
   }, [live, handleAuthError]);
 
   const status = live ? liveStatus : outreachDemo?.worker ?? null;
+  const covering = status ? standbyActive(status) : false;
 
   async function onSearch(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -245,21 +255,38 @@ export function WorkerPanel() {
     });
   }
 
-  /** ปุ่มของ worker แต่ละตัว: ตั้งตัวหลัก / เริ่มใหม่ — ทั้งคู่คืนสถานะล่าสุด */
-  async function workerAction(id: string, run: (workerId: string) => Promise<WorkerStatus>, done: string) {
+  function disarm() {
+    if (armTimer.current) clearTimeout(armTimer.current);
+    armTimer.current = null;
+    setArmed('');
+  }
+
+  /** ปุ่มของ worker แต่ละตัว: ตั้งตัวหลัก (กด 2 ครั้ง) / เริ่มใหม่ — ทั้งคู่คืนสถานะล่าสุด */
+  async function workerAction(w: WorkerStatus['workers'][number], kind: 'primary' | 'reset') {
+    const id = w.worker_id;
+    if (kind === 'primary' && armed !== id) {
+      disarm();
+      setArmed(id);
+      armTimer.current = setTimeout(() => setArmed(''), 5000);
+      return;
+    }
+    disarm();
     if (!live) {
       toast(FIXTURE_NO_WRITE);
       return;
     }
     await once(`worker-act-${id}`, async () => {
       setBusyWorker(id);
+      setBusyKind(kind);
       try {
-        setLiveStatus(await run(id));
-        toast(done);
+        setLiveStatus(await (kind === 'primary' ? setWorkerPrimary(id) : resetWorkerState(id)));
+        if (kind === 'reset') setResetAt((m) => new Map([...m, [id, w.heartbeat_at]]));
+        toast(kind === 'primary' ? `ตั้ง ${id} เป็นตัวหลักแล้ว` : `เริ่ม ${id} ใหม่แล้ว — รอบถัดไปจะทำงานต่อ`);
       } catch (e2) {
         toastError(e2);
       } finally {
         setBusyWorker('');
+        setBusyKind('');
       }
     });
   }
@@ -283,30 +310,36 @@ export function WorkerPanel() {
                 const on = isWorkerOnline(w);
                 const badge = workerBadge(w);
                 const role = workerRole(w, status.primary);
-                const canReset = w.worker_id === CLOUD_WORKER_ID && w.state === 'stopped';
+                const waiting = resetAt.has(w.worker_id) && resetAt.get(w.worker_id) === w.heartbeat_at;
+                const canReset = w.worker_id === CLOUD_WORKER_ID && w.state === 'stopped' && !waiting;
+                const isArmed = armed === w.worker_id;
                 return (
                   <div key={w.worker_id} className="list-row" data-worker={w.worker_id}>
                     <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', flex: 'none', background: on ? 'var(--ok)' : 'var(--bad)' }} />
                     <div>
-                      <b>{w.worker_id}</b>{role ? <> <span className="chip" data-role>{role}</span></> : null}{' '}
+                      <b>{w.worker_id}</b>{role ? <> <span className="tag" data-role>{role}</span></> : null}{' '}
                       <span className="sub">{on ? 'ออนไลน์' : 'ออฟไลน์'} · ล่าสุด {stamp(w.heartbeat_at)}</span>
                       <div className="sub">
                         JST {w.jst_session_ok ? 'เชื่อมต่อแล้ว' : 'ยังไม่ได้ล็อกอิน'} · ส่งชั่วโมงนี้ {Number(w.sent_last_hour || 0).toLocaleString('th-TH')} · คิวรอ {Number(w.queue_waiting || 0).toLocaleString('th-TH')}
                       </div>
                       {badge.hint ? <div className="sub" style={{ color: 'var(--bad)' }}>{badge.hint}</div> : null}
                       {w.last_error ? <div className="sub" style={{ color: 'var(--bad)' }}>error ล่าสุด: {w.last_error}</div> : null}
+                      {role === 'ตัวสำรอง' && covering ? <div className="sub">กำลังรับงานแทนตัวหลัก</div> : null}
+                      {waiting ? <div className="sub">รอรอบถัดไป…</div> : null}
                       {role !== 'ตัวหลัก' || canReset ? (
                         <div className="toolbar" style={{ marginTop: 6 }}>
                           {role !== 'ตัวหลัก' ? (
                             <button type="button" className="btn sm" data-act="primary" disabled={!!busyWorker}
-                              onClick={() => void workerAction(w.worker_id, setWorkerPrimary, `ตั้ง ${w.worker_id} เป็นตัวหลักแล้ว`)}>
-                              ตั้งเป็นตัวหลัก
+                              aria-label={`ตั้ง ${w.worker_id} เป็นตัวหลัก`}
+                              onClick={() => void workerAction(w, 'primary')}>
+                              {busyWorker === w.worker_id && busyKind === 'primary' ? 'กำลังตั้ง…' : isArmed ? `ยืนยัน: ให้ ${w.worker_id} ส่งข้อความแทนตัวอื่น` : 'ตั้งเป็นตัวหลัก'}
                             </button>
                           ) : null}
                           {canReset ? (
                             <button type="button" className="btn sm" data-act="reset" disabled={!!busyWorker}
-                              onClick={() => void workerAction(w.worker_id, resetWorkerState, `เริ่ม ${w.worker_id} ใหม่แล้ว — รอบถัดไปจะทำงานต่อ`)}>
-                              เริ่มใหม่
+                              aria-label={`เริ่ม ${w.worker_id} ใหม่`}
+                              onClick={() => void workerAction(w, 'reset')}>
+                              {busyWorker === w.worker_id && busyKind === 'reset' ? 'กำลังเริ่มใหม่…' : 'เริ่มใหม่'}
                             </button>
                           ) : null}
                         </div>
