@@ -10,7 +10,7 @@ begin
   assert dsales.dsales_rfm(4, 90) = 'Loyal' and dsales.dsales_rfm(5, 91) = 'Sleepers' and dsales.dsales_rfm(3, 91) = 'Sleepers', 'F 3-5';
   assert dsales.dsales_rfm(3, 60) = 'Promising' and dsales.dsales_rfm(2, 61) = 'Need Attention' and dsales.dsales_rfm(3, 90) = 'Need Attention', 'F 2-3';
   assert dsales.dsales_rfm(2, 91) = 'Lost' and dsales.dsales_rfm(1, 91) = 'Lost', 'F 1-2 > 90 = Lost';
-  assert dsales.dsales_rfm(1, 10) = 'Warm' and dsales.dsales_rfm(1, 60) = 'Warm' and dsales.dsales_rfm(1, 61) = 'Cold' and dsales.dsales_rfm(1, 90) = 'Cold', 'one-time buyers';
+  assert dsales.dsales_rfm(1, 10) = 'Hot' and dsales.dsales_rfm(1, 31) = 'Warm' and dsales.dsales_rfm(1, 60) = 'Warm' and dsales.dsales_rfm(1, 61) = 'Cold' and dsales.dsales_rfm(1, 90) = 'Cold', 'one-time buyers';
   assert dsales.dsales_rfm(null, 10) is null and dsales.dsales_rfm(0, 10) is null and dsales.dsales_rfm(3, null) is null, 'no data = null';
 
   -- คอลัมน์ generated ตรงกับฟังก์ชันทุกแถว
