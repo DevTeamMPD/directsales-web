@@ -16,6 +16,7 @@ begin
   update dsales.dsales_settings set value = '0'::jsonb where key = 'line_monthly_cap';
   update dsales.dsales_settings set value = 'true'::jsonb where key = 'outreach_test_mode';
   update dsales.dsales_settings set value = '[999]'::jsonb where key = 'outreach_test_ms_ids';
+  update dsales.dsales_buyer_lookups set looked_up_at = looked_up_at - interval '15 days'; -- buyer ids are due for lookup, whatever the live worker did
   insert into dsales.dsales_templates (brand, name, body, created_by) values ('bebeplay', 't25', 'x', v_admin) returning id into v_tpl;
   insert into dsales.dsales_outreach_batches (requested_by, template_id, brand) values (v_admin, v_tpl, 'bebeplay') returning id into v_b;
   insert into dsales.dsales_outreach_queue (batch_id, lead_id, phone_normalized, ms_id, provider, chat_name, message_text, requested_by, enqueued_at) values
@@ -28,6 +29,8 @@ begin
 
   set local role authenticated;
   perform set_config('request.jwt.claims', json_build_object('sub', v_w, 'role', 'authenticated')::text, true);
+  select count(*) into v_n from dsales.dsales_worker_link_targets('t25-primary', 5);
+  assert v_n > 0, 'the primary gets link targets (so the standby''s 0 below means something)';
   assert dsales.dsales_worker_claim('t25-standby') is null, 'standby gets nothing while the primary is fresh and running';
   select count(*) into v_n from dsales.dsales_worker_link_targets('t25-standby', 5);
   assert v_n = 0, 'standby gets no link targets';
@@ -41,6 +44,8 @@ begin
   set local role authenticated;
   c := dsales.dsales_worker_claim('t25-standby');
   assert (c ->> 'ms_id')::bigint = 711 and (c ->> 'attempts')::int = 2, format('standby takes over on a stale heartbeat, got %s', c);
+  select count(*) into v_n from dsales.dsales_worker_link_targets('t25-standby', 5);
+  assert v_n > 0, 'standby gets link targets once the primary is stale';
   perform dsales.dsales_worker_report((c ->> 'id')::uuid, 'requeue', 'x', null);
 
   -- fresh heartbeat but not running -> the standby takes over

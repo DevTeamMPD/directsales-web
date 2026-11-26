@@ -6,9 +6,14 @@
 -- 3) dsales_tick_kick(): pg_cron every minute -> net.http_post to /api/cron/outreach-tick (same pattern as
 --    cdp.trigger_cron_route). Off until worker_tick_enabled = true AND Vault has dsales_app_url + dsales_cron_secret.
 -- Defaults keep today's behaviour: worker_primary = office-1, worker_tick_enabled = false.
--- Rollback: select cron.unschedule('dsales-outreach-tick'); restore dsales_worker_claim / dsales_worker_link_targets /
---   dsales_worker_status_get from 20261120100500 / 20261120150000 / 20261120100600; drop the new functions and table;
---   delete settings worker_primary, worker_tick_enabled; delete Vault secrets dsales_jst_session_*.
+-- Go-live (by hand, not in this migration): Vault secrets dsales_app_url (base URL of the web app) and
+--   dsales_cron_secret (the tick route's bearer secret), then set worker_tick_enabled = true.
+-- Rollback, in this order:
+--   1) select cron.unschedule('dsales-outreach-tick');
+--   2) restore dsales_worker_claim / dsales_worker_link_targets / dsales_worker_status_get from 20261120100500 /
+--      20261120150000 / 20261120100600 BEFORE dropping dsales_worker_is_standby (claim and link_targets call it);
+--   3) drop the new functions and the table; delete settings worker_primary, worker_tick_enabled;
+--   4) delete from vault.secrets where name like 'dsales\_jst\_session\_%' or name in ('dsales_app_url', 'dsales_cron_secret');
 
 insert into dsales.dsales_settings (key, value) values
   ('worker_primary', '"office-1"'::jsonb),
@@ -148,6 +153,7 @@ declare v_name text := 'dsales_jst_session_' || p_worker; v_secret uuid;
 begin
   if p_worker !~ '^[A-Za-z0-9_-]{1,64}$' then raise exception 'invalid_worker'; end if;
   if jsonb_typeof(p_cookies) is distinct from 'array' then raise exception 'invalid_cookies'; end if;
+  if jsonb_array_length(p_cookies) = 0 or pg_column_size(p_cookies) > 65536 then raise exception 'invalid_cookies'; end if;
   select s.id into v_secret from vault.secrets s where s.name = v_name;
   if v_secret is null then
     perform vault.create_secret(p_cookies::text, v_name, 'JST session cookies of dsales worker ' || p_worker);
@@ -168,33 +174,40 @@ begin
   insert into dsales.dsales_worker_state (worker_id) values (v_id) on conflict (worker_id) do nothing;
   select * into r from dsales.dsales_worker_state where worker_id = v_id for update;
   if r.lease_until is not null and r.lease_until > now() then return null; end if;
+  -- the lease must outlive the tick route's maxDuration (60 s), so a running tick never loses it: at least 70 s
   update dsales.dsales_worker_state
-     set lease_until = now() + make_interval(secs => least(greatest(coalesce(p_lease_seconds, 90), 10), 600)), updated_at = now()
+     set lease_until = now() + make_interval(secs => least(greatest(coalesce(p_lease_seconds, 90), 70), 600)), updated_at = now()
    where worker_id = v_id;
   select s.decrypted_secret::jsonb into v_cookies from vault.decrypted_secrets s where s.name = 'dsales_jst_session_' || v_id;
   return jsonb_build_object('runtime', r.runtime, 'cookies', coalesce(v_cookies, '[]'::jsonb));
 end $$;
 
--- end of a tick: store runtime, write cookies when they changed (p_cookies not null), free the lease
+-- end of a tick: store runtime, write cookies when they changed (p_cookies not null), free the lease.
+-- Unconditional on purpose (no lease check): the tick's runtime carries its pendingReports and must always be saved.
 create or replace function dsales.dsales_worker_state_end(p_worker text, p_runtime jsonb, p_cookies jsonb default null) returns void
 language plpgsql security definer set search_path = dsales, public as $$
 declare me uuid := dsales.dsales_worker_uid(); v_id text := btrim(coalesce(p_worker, ''));
 begin
   if v_id !~ '^[A-Za-z0-9_-]{1,64}$' then raise exception 'invalid_worker'; end if;
   if jsonb_typeof(coalesce(p_runtime, '{}'::jsonb)) <> 'object' then raise exception 'invalid_runtime'; end if;
+  if pg_column_size(p_runtime) > 65536 then raise exception 'invalid_runtime'; end if;
   if p_cookies is not null then perform dsales.dsales_worker_session_write(v_id, p_cookies); end if;
   insert into dsales.dsales_worker_state as t (worker_id, runtime, lease_until, updated_at)
   values (v_id, coalesce(p_runtime, '{}'::jsonb), null, now())
   on conflict (worker_id) do update set runtime = excluded.runtime, lease_until = null, updated_at = now();
 end $$;
 
--- a person logged in to JST by hand (captcha) and uploads the cookies: store them and leave needs_login
+-- a person logged in to JST by hand (captcha) and uploads the cookies: store them and leave needs_login.
+-- worker_busy while a tick holds the lease (its state_end would overwrite the upload); try again after the tick.
 create or replace function dsales.dsales_worker_session_put(p_worker text, p_cookies jsonb) returns void
 language plpgsql security definer set search_path = dsales, public as $$
-declare me uuid := dsales.dsales_worker_uid(); v_id text := btrim(coalesce(p_worker, ''));
+declare me uuid := dsales.dsales_worker_uid(); v_id text := btrim(coalesce(p_worker, '')); v_lease timestamptz;
 begin
-  perform dsales.dsales_worker_session_write(v_id, p_cookies);
+  if v_id !~ '^[A-Za-z0-9_-]{1,64}$' then raise exception 'invalid_worker'; end if;
   insert into dsales.dsales_worker_state (worker_id) values (v_id) on conflict (worker_id) do nothing;
+  select lease_until into v_lease from dsales.dsales_worker_state where worker_id = v_id for update;
+  if v_lease > now() then raise exception 'worker_busy'; end if;
+  perform dsales.dsales_worker_session_write(v_id, p_cookies);
   update dsales.dsales_worker_state
      set runtime = case when runtime ->> 'state' = 'needs_login'
                         then (runtime - 'lastError') || '{"state":"running","sessionOk":null}'::jsonb
@@ -210,14 +223,19 @@ grant execute on function dsales.dsales_worker_state_begin(text, int), dsales.ds
 
 /* ---------- admin (setup page) ---------- */
 
--- "restart" for a worker that has no process to restart (state stopped after a ShapeError, once a dev has checked)
+-- "restart" for a worker that has no process to restart (state stopped after a ShapeError, once a dev has checked).
+-- worker_busy while a tick holds the lease (its state_end would undo the reset, and freeing the lease could let
+-- two ticks overlap); try again after the tick. A worker with no state row has nothing to reset.
 create or replace function dsales.dsales_worker_state_reset(p_worker text) returns jsonb
 language plpgsql security definer set search_path = dsales, public as $$
+declare v_id text := btrim(coalesce(p_worker, '')); v_lease timestamptz;
 begin
   perform dsales.dsales_uid();
   if not dsales.dsales_is_admin() then raise exception 'forbidden'; end if;
+  select lease_until into v_lease from dsales.dsales_worker_state where worker_id = v_id for update;
+  if v_lease > now() then raise exception 'worker_busy'; end if;
   update dsales.dsales_worker_state set runtime = '{}'::jsonb, lease_until = null, updated_at = now()
-   where worker_id = btrim(coalesce(p_worker, ''));
+   where worker_id = v_id;
   return dsales.dsales_worker_status_get();
 end $$;
 
@@ -244,7 +262,8 @@ create or replace function dsales.dsales_tick_kick() returns bigint
 language plpgsql security definer set search_path = '' as $$
 declare v_url text; v_secret text;
 begin
-  if coalesce((dsales.dsales_setting('worker_tick_enabled') #>> '{}')::boolean, false) is not true then return null; end if;
+  -- text compare, not a boolean cast: a malformed value must never make the per-minute job raise
+  if (dsales.dsales_setting('worker_tick_enabled') #>> '{}') is distinct from 'true' then return null; end if;
   select decrypted_secret into v_url from vault.decrypted_secrets where name = 'dsales_app_url';
   select decrypted_secret into v_secret from vault.decrypted_secrets where name = 'dsales_cron_secret';
   if coalesce(v_url, '') = '' or coalesce(v_secret, '') = '' then return null; end if;

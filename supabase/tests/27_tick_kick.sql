@@ -25,6 +25,7 @@ begin
   begin perform dsales.dsales_tick_kick(); exception when insufficient_privilege then v_ok := true; end;
   assert v_ok, 'authenticated cannot call the kick';
   reset role;
+  assert not has_function_privilege('anon', 'dsales.dsales_tick_kick()', 'execute'), 'anon cannot call the kick';
   raise notice 'OK 27_tick_kick';
 end $$;
 rollback;

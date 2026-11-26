@@ -34,19 +34,30 @@ begin
   r := dsales.dsales_worker_state_begin('t26', 90);
   assert r is not null, 'an expired lease can be taken';
 
-  -- session upload: new cookies, needs_login -> running
+  -- while a tick holds the lease: no session upload, no reset (the tick's state_end would undo them)
+  v_ok := false;
+  begin perform dsales.dsales_worker_session_put('t26', '[{"name":"b","value":"2"}]'::jsonb); exception when others then v_ok := sqlerrm = 'worker_busy'; end;
+  assert v_ok, 'session upload while a tick holds the lease -> worker_busy';
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  v_ok := false;
+  begin perform dsales.dsales_worker_state_reset('t26'); exception when others then v_ok := sqlerrm = 'worker_busy'; end;
+  assert v_ok, 'reset while a tick holds the lease -> worker_busy';
+  perform set_config('request.jwt.claims', json_build_object('sub', v_w, 'role', 'authenticated')::text, true);
+  perform dsales.dsales_worker_state_end('t26', '{"state":"needs_login"}'::jsonb, null);
+
+  -- session upload (no lease held): new cookies, needs_login -> running
   perform dsales.dsales_worker_session_put('t26', '[{"name":"b","value":"2"}]'::jsonb);
   reset role;
   select runtime ->> 'state' into v_t from dsales.dsales_worker_state where worker_id = 't26';
   assert v_t = 'running', format('session upload clears needs_login, got %s', v_t);
-  update dsales.dsales_worker_state set lease_until = null where worker_id = 't26';
   select count(*) into v_n from vault.secrets where name = 'dsales_jst_session_t26';
   assert v_n = 1, 'upload updates the same Vault secret';
   set local role authenticated;
   r := dsales.dsales_worker_state_begin('t26', 90);
   assert r #>> '{cookies,0,name}' = 'b', 'uploaded cookies are returned';
+  perform dsales.dsales_worker_state_end('t26', '{}'::jsonb, null);
 
-  -- bad ids / bad payloads
+  -- bad ids / bad payloads (no lease held)
   v_ok := false;
   begin perform dsales.dsales_worker_state_begin('bad id!', 90); exception when others then v_ok := sqlerrm = 'invalid_worker'; end;
   assert v_ok, 'worker id must be [A-Za-z0-9_-]';
@@ -56,6 +67,9 @@ begin
   v_ok := false;
   begin perform dsales.dsales_worker_session_put('t26', '{}'::jsonb); exception when others then v_ok := sqlerrm = 'invalid_cookies'; end;
   assert v_ok, 'cookies must be an array';
+  v_ok := false;
+  begin perform dsales.dsales_worker_session_put('t26', '[]'::jsonb); exception when others then v_ok := sqlerrm = 'invalid_cookies'; end;
+  assert v_ok, 'cookies must not be empty';
 
   -- sales: no worker RPCs, no table, no admin RPCs
   perform set_config('request.jwt.claims', json_build_object('sub', v_s, 'role', 'authenticated')::text, true);
@@ -71,6 +85,9 @@ begin
   v_ok := false;
   begin perform 1 from dsales.dsales_worker_state limit 1; exception when insufficient_privilege then v_ok := true; end;
   assert v_ok, 'the state table is not readable directly';
+  v_ok := false;
+  begin perform 1 from vault.decrypted_secrets limit 1; exception when insufficient_privilege then v_ok := true; end;
+  assert v_ok, 'Vault is not readable directly';
   v_ok := false;
   begin perform dsales.dsales_worker_state_reset('t26'); exception when others then v_ok := sqlerrm = 'forbidden'; end;
   assert v_ok, 'sales cannot reset';
@@ -94,6 +111,10 @@ begin
   r := dsales.dsales_worker_primary_set('');
   assert r ->> 'primary' is null, 'empty clears the primary';
   reset role;
+  assert not has_function_privilege('authenticated', 'dsales.dsales_worker_session_write(text, jsonb)', 'execute'),
+         'session_write is internal';
+  assert not has_function_privilege('authenticated', 'dsales.dsales_worker_is_standby(text)', 'execute'),
+         'is_standby is internal';
   raise notice 'OK 26_worker_state';
 end $$;
 rollback;
