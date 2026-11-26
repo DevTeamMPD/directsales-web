@@ -2,7 +2,7 @@
 // endpoint/body อ้างอิง docs/superpowers/plans/2026-11-20-outreach-contract.md §3
 // ห้าม log รหัสผ่าน cookie หรือ header · error ที่โยนออกไปมีแค่ข้อความจาก JST / ชื่อ field
 import crypto from 'node:crypto';
-import { existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { fileStore } from './session-store.mjs';
 
 /* ---------- error ---------- */
 
@@ -113,6 +113,7 @@ export function createJstClient({
   accountId,
   password,
   sessionFile,
+  sessionStore,
   fetch = globalThis.fetch,
   userAgent = DEFAULT_UA,
 } = {}) {
@@ -123,26 +124,18 @@ export function createJstClient({
   }
   const origin = base.origin;
   const jar = new Map();
+  // ที่เก็บ cookie: ส่ง sessionStore มาเอง (โหมดรอบ) หรือใช้ไฟล์ sessionFile แบบเดิม
+  const store = sessionStore || (sessionFile ? fileStore(sessionFile) : null);
 
   function loadSession() {
     jar.clear();
-    if (!sessionFile || !existsSync(sessionFile)) return false;
-    try {
-      const arr = JSON.parse(readFileSync(sessionFile, 'utf8'));
-      if (!Array.isArray(arr)) return false;
-      for (const c of arr) if (c && typeof c.name === 'string' && typeof c.value === 'string') jar.set(c.name, c.value);
-      return jar.size > 0;
-    } catch {
-      return false;
-    }
+    if (!store) return false;
+    for (const c of store.load()) jar.set(c.name, c.value);
+    return jar.size > 0;
   }
 
   function saveSession() {
-    if (!sessionFile) return;
-    const data = JSON.stringify([...jar].map(([name, value]) => ({ name, value })), null, 2);
-    const tmp = `${sessionFile}.tmp`;
-    writeFileSync(tmp, data, { mode: 0o600 });
-    renameSync(tmp, sessionFile);
+    if (store) store.save([...jar].map(([name, value]) => ({ name, value })));
   }
 
   function mergeCookies(res) {
@@ -356,6 +349,14 @@ export function createJstClient({
     return out;
   }
 
+  /** ยืนยันว่า session ยังใช้ได้: ขอ 1 ห้องแล้วทิ้งผล (session หลุด → SessionExpired จาก post) */
+  async function ping() {
+    const body = await post('/iim/getSessions', { ...sessionBody(0, false), precise_query_ms_ids: [] });
+    requireSuccess('/iim/getSessions', body);
+    if (!Array.isArray(body.data?.data)) throw new ShapeError('/iim/getSessions: data.data is not an array');
+    return true;
+  }
+
   /** ข้อความล่าสุด 20 รายการของห้อง */
   async function recentMessages(r) {
     const body = await post('/iim/getMsgs', {
@@ -395,13 +396,7 @@ export function createJstClient({
     return { ok: true, raw: body };
   }
 
-  function sessionMtime() {
-    try {
-      return sessionFile ? statSync(sessionFile).mtimeMs : 0;
-    } catch {
-      return 0;
-    }
-  }
+  const sessionMtime = () => (store && typeof store.mtime === 'function' ? store.mtime() : 0);
 
   loadSession();
 
@@ -410,6 +405,7 @@ export function createJstClient({
     post,
     room,
     searchByBuyerId,
+    ping,
     recentMessages,
     send,
     /** โหลด cookie จากไฟล์ใหม่ (หลัง import-session.mjs) */
