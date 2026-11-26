@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_RFM_CONFIG, RFM_SEGMENTS, rfmCountMap, rfmRule, rfmRuleText, rfmSegment, rfmSlug, type RfmSeg } from './rfm';
 
@@ -8,6 +10,7 @@ describe('RFM segments (same rules as the seed of dsales.dsales_rfm_segments)', 
       [4, 30, 'Loyal'], [4, 90, 'Loyal'], [5, 91, 'Sleepers'], [3, 91, 'Sleepers'],
       [3, 60, 'Promising'], [2, 61, 'Need Attention'], [3, 90, 'Need Attention'],
       [2, 91, 'Lost'], [1, 91, 'Lost'], [1, 0, 'Hot'], [1, 30, 'Hot'], [1, 31, 'Warm'], [1, 60, 'Warm'], [1, 61, 'Cold'], [1, 90, 'Cold'],
+      [6, -1, 'Champion'], [1, -3, 'Hot'],
       [null, 10, null], [0, 10, null], [3, null, null],
     ];
     for (const [o, d, want] of cases) expect([o, d, rfmSegment(o, d)]).toEqual([o, d, want]);
@@ -37,6 +40,7 @@ describe('RFM segments (same rules as the seed of dsales.dsales_rfm_segments)', 
     expect(rfmRule('Lost')).toBe('ลูกค้าที่เหลือทั้งหมดที่ไม่เข้ากลุ่มอื่น');
     expect(rfmRule('อื่น')).toBe('');
     expect(rfmRuleText({ ...DEFAULT_RFM_CONFIG[4], fMin: 2, fMax: 2, rMin: 10, rMax: 20 })).toBe('ซื้อ 2 ครั้ง · ซื้อล่าสุด 10–20 วัน');
+    expect(rfmRuleText({ ...DEFAULT_RFM_CONFIG[0], rMin: 0, rMax: null })).toBe('ซื้อ 6 ครั้งขึ้นไป · ซื้อล่าสุดเมื่อไรก็ได้');
     expect(rfmRule('Hot', DEFAULT_RFM_CONFIG.map((s) => (s.key === 'Hot' ? { ...s, rMax: 20 } : s)))).toBe('ซื้อครั้งเดียว · ซื้อล่าสุดไม่เกิน 20 วัน');
   });
   it('rfmSlug gives the CSS name of a segment', () => {
@@ -45,5 +49,19 @@ describe('RFM segments (same rules as the seed of dsales.dsales_rfm_segments)', 
   it('rfmCountMap turns RPC rows / demo rows into counts', () => {
     expect(rfmCountMap([{ segment: 'Warm' }, { segment: 'Warm' }, { segment: null }].map((r) => ({ segment: r.segment ?? '', n: 1 })))).toEqual({ Warm: 2, '': 1 });
     expect(rfmCountMap([{ segment: 'Lost', n: '12' }])).toEqual({ Lost: 12 });
+  });
+});
+
+describe('DEFAULT_RFM_CONFIG = seed of dsales_rfm_segments', () => {
+  it('matches the migration row by row (ranges, fallback and the three texts)', () => {
+    const sql = readFileSync(join(process.cwd(), 'supabase/migrations/20261126150000_dsales_rfm_config.sql'), 'utf8');
+    const row = /\('((?:[^']|'')+)', (\d+), (\w+), (\w+), (\w+), (\w+), (true|false), '([^']*)', '([^']*)',\s*'([^']*)'\)/g;
+    const num = (v: string): number | null => (v === 'null' ? null : Number(v));
+    const seed = [...sql.matchAll(row)].map((m) => ({
+      key: m[1].replace(/''/g, "'"), sort: Number(m[2]), fMin: num(m[3]), fMax: num(m[4]), rMin: num(m[5]), rMax: num(m[6]), fallback: m[7] === 'true',
+      tone: m[8], behavior: m[9], action: m[10],
+    }));
+    expect(seed).toHaveLength(10);
+    expect(seed).toEqual(DEFAULT_RFM_CONFIG.map(({ key, sort, fMin, fMax, rMin, rMax, fallback, tone, behavior, action }) => ({ key, sort, fMin, fMax, rMin, rMax, fallback, tone, behavior, action })));
   });
 });

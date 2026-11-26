@@ -289,7 +289,7 @@ export function BasePage({ scope, fixedRfm }: { scope: BaseScopeKey; fixedRfm?: 
             {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
           <button type="button" className="btn sm" id="base-clear" disabled={!filtered} onClick={() => setFilters(() => EMPTY_FILTERS)}>ล้างตัวกรอง</button>
-          <span className="sub num" id="base-count">{busy ? '' : resultCountText(total)}</span>
+          <span className="sub num" id="base-count">{busy ? '' : embedded && total != null ? `ติดต่อได้ตอนนี้ ${total.toLocaleString('th-TH')} คน` : resultCountText(total)}</span>
         </div>
       </div>
       {data.err ? <div className="login-err">{data.err}</div> : null}
@@ -335,7 +335,7 @@ export function BasePage({ scope, fixedRfm }: { scope: BaseScopeKey; fixedRfm?: 
                 );
               })
             ) : (
-              <tr><td colSpan={10} className="empty">{busy ? 'กำลังโหลด…' : filtered ? 'ไม่พบลูกค้าที่ตรงกับตัวกรอง' : 'ไม่พบลูกค้าที่ตรงกับคำค้น'}</td></tr>
+              <tr><td colSpan={10} className="empty">{busy ? 'กำลังโหลด…' : embedded && !f.q && !filtered ? 'ยังไม่มีลูกค้าในกลุ่มนี้ที่ติดต่อได้ (ต้องไม่ซื้อมา 30 วันขึ้นไป)' : filtered ? 'ไม่พบลูกค้าที่ตรงกับตัวกรอง' : 'ไม่พบลูกค้าที่ตรงกับคำค้น'}</td></tr>
             )}
           </tbody>
         </table>

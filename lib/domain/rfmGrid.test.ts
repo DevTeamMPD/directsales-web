@@ -36,4 +36,9 @@ describe('rfmGrid (map of the /rfm page)', () => {
     const area = g.rects.reduce((n, x) => n + x.rowSpan * x.colSpan, 0);
     expect(area).toBe(g.fBands.length * g.rBands.length);
   });
+  it('without a fallback segment the uncovered cells have no rectangle', () => {
+    const g = rfmGrid(DEFAULT_RFM_CONFIG.filter((s) => !s.fallback));
+    expect(g.rects.some((x) => x.key === 'Lost')).toBe(false);
+    expect(g.rects.reduce((n, x) => n + x.rowSpan * x.colSpan, 0)).toBe(g.fBands.length * g.rBands.length - 2);
+  });
 });

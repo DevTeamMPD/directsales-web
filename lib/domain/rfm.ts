@@ -48,14 +48,15 @@ const matches = (s: RfmSeg, orders: number, days: number): boolean =>
 /** config ต้องเรียงตาม sort แล้ว (mapRfmConfig / DEFAULT_RFM_CONFIG เรียงให้) */
 export function rfmSegment(orders: number | null | undefined, days: number | null | undefined, config: ReadonlyArray<RfmSeg> = DEFAULT_RFM_CONFIG): string | null {
   if (orders == null || orders < 1 || days == null) return null;
-  return config.find((s) => matches(s, orders, days))?.key ?? null;
+  const d = Math.max(days, 0); // วันซื้อล่าสุดอยู่หลังวันนี้ (ข้อมูลผิด) = นับเป็นซื้อวันนี้ เหมือนกติกาเดิม
+  return config.find((s) => matches(s, orders, d))?.key ?? null;
 }
 
 /** ข้อความเงื่อนไขของกลุ่มจากตัวเลขกติกา (tooltip ของป้ายกลุ่ม, การ์ดแนวทางในหน้า /rfm) */
 export function rfmRuleText(s: RfmSeg): string {
   if (s.fallback || s.fMin == null || s.rMin == null) return 'ลูกค้าที่เหลือทั้งหมดที่ไม่เข้ากลุ่มอื่น';
   const f = s.fMax == null ? `ซื้อ ${s.fMin} ครั้งขึ้นไป` : s.fMax === s.fMin ? (s.fMin === 1 ? 'ซื้อครั้งเดียว' : `ซื้อ ${s.fMin} ครั้ง`) : `ซื้อ ${s.fMin}–${s.fMax} ครั้ง`;
-  const r = s.rMax == null ? `หายไปเกิน ${s.rMin - 1} วัน` : s.rMin === 0 ? `ซื้อล่าสุดไม่เกิน ${s.rMax} วัน` : `ซื้อล่าสุด ${s.rMin}–${s.rMax} วัน`;
+  const r = s.rMax == null ? (s.rMin === 0 ? 'ซื้อล่าสุดเมื่อไรก็ได้' : `หายไปเกิน ${s.rMin - 1} วัน`) : s.rMin === 0 ? `ซื้อล่าสุดไม่เกิน ${s.rMax} วัน` : `ซื้อล่าสุด ${s.rMin}–${s.rMax} วัน`;
   return `${f} · ${r}`;
 }
 

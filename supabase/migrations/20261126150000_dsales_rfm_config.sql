@@ -4,7 +4,8 @@
 --    seed = กติกาเดิมของ dsales_rfm (20261125140000) + แยก Hot (ซื้อครั้งเดียว 0–30 วัน) ออกจาก Warm
 -- 2) dsales_rfm(orders, days) อ่านกติกาจากตาราง (stable) · dsales_customer_base.rfm เลิกเป็น generated,
 --    trigger ตั้งค่าเมื่อ insert / update order_count, dormant_days (refresh ของ cron ไม่ต้องแก้) · dsales_rfm_apply() คำนวณทั้งตาราง
--- 3) dsales_rfm_config_get(): กติกา + Action Context ให้เว็บ (สมาชิกทุกคน)
+--    วันติดลบ (วันซื้อล่าสุดอยู่หลังวันนี้) นับเป็น 0 เหมือนกติกาเดิม
+-- 3) dsales_rfm_config_get():กติกา + Action Context ให้เว็บ (สมาชิกทุกคน)
 -- 4) dsales_rfm_map(p_scope, p_brand, p_as): จำนวนลูกค้าต่อกลุ่มของหน้า /rfm — n = ทุกคนที่อยู่ในขอบเขต,
 --    contactable = เฉพาะ eligible (ไม่ซื้อมา >= 30 วัน) ขอบเขต/แบรนด์/ตัด CS-B2B เหมือน dsales_base_segment_counts
 -- Rollback: drop function dsales.dsales_rfm_map(text, text, uuid), dsales.dsales_rfm_config_get(), dsales.dsales_rfm_apply();
@@ -64,7 +65,8 @@ language sql stable set search_path = dsales, public as $$
   select case when p_orders is null or p_orders < 1 or p_days is null then null else (
     select s.key from dsales.dsales_rfm_segments s
     where s.is_fallback
-       or (p_orders >= s.f_min and (s.f_max is null or p_orders <= s.f_max) and p_days >= s.r_min and (s.r_max is null or p_days <= s.r_max))
+       or (p_orders >= s.f_min and (s.f_max is null or p_orders <= s.f_max)
+           and greatest(p_days, 0) >= s.r_min and (s.r_max is null or greatest(p_days, 0) <= s.r_max))
     order by s.sort_order limit 1) end
 $$;
 revoke all on function dsales.dsales_rfm(integer, integer) from public, anon, authenticated;

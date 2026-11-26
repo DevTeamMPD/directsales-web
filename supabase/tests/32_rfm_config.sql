@@ -20,6 +20,7 @@ begin
   assert dsales.dsales_rfm(1, 0) = 'Hot' and dsales.dsales_rfm(1, 30) = 'Hot' and dsales.dsales_rfm(1, 31) = 'Warm' and dsales.dsales_rfm(1, 60) = 'Warm'
      and dsales.dsales_rfm(1, 61) = 'Cold' and dsales.dsales_rfm(1, 90) = 'Cold', 'one-time buyers: Hot / Warm / Cold';
   assert dsales.dsales_rfm(null, 10) is null and dsales.dsales_rfm(0, 10) is null and dsales.dsales_rfm(3, null) is null, 'no data = null';
+  assert dsales.dsales_rfm(6, -1) = 'Champion' and dsales.dsales_rfm(1, -3) = 'Hot', 'a purchase dated after today counts as today';
 
   -- (c) stored column = function on every row; the trigger keeps it on write
   select count(*) into v_bad from dsales.dsales_customer_base b where b.rfm is distinct from dsales.dsales_rfm(b.order_count, b.dormant_days);
@@ -31,6 +32,10 @@ begin
   assert (select rfm from dsales.dsales_customer_base where phone_normalized = '0899999951') = 'Warm', 'update of dormant_days sets rfm';
   update dsales.dsales_customer_base set order_count = 7, dormant_days = 200 where phone_normalized = '0899999951';
   assert (select rfm from dsales.dsales_customer_base where phone_normalized = '0899999951') = 'Shouldn''t Lose', 'update of order_count sets rfm';
+  insert into dsales.dsales_customer_base (phone_normalized, name, order_count, dormant_days, last_order_date)
+    values ('0899999951', 'ทดสอบ RFM config', 1, 70, current_date - 70)
+    on conflict (phone_normalized) do update set order_count = excluded.order_count, dormant_days = excluded.dormant_days;
+  assert (select rfm from dsales.dsales_customer_base where phone_normalized = '0899999951') = 'Cold', 'upsert (the way the refresh writes) sets rfm';
 
   -- changing a rule + dsales_rfm_apply moves customers, a second apply writes nothing
   update dsales.dsales_rfm_segments set r_max = 20 where key = 'Hot';
@@ -78,6 +83,7 @@ begin
   assert v_ok, 'p_as only for admins';
   perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
   select coalesce(sum(n), 0), coalesce(sum(n) filter (where segment = ''), 0) into v_sum, v_un from dsales.dsales_rfm_map('team', null);
+  assert not exists (select 1 from dsales.dsales_rfm_map('mine', null, v_sales)), 'admin viewing as the new rep sees that rep''s (empty) map';
   reset role;
   select count(*) into v_n from dsales.dsales_customer_base b
   where not (b.phone_normalized = any (array(select x.phone from dsales.dsales_excluded_customers() x)));
