@@ -16,6 +16,7 @@ import {
   SessionExpired,
   ShapeError,
 } from './jst-client.mjs';
+import { memoryStore } from './session-store.mjs';
 
 const BASE = 'https://asia-web.jsterp.com';
 const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -270,4 +271,53 @@ test('searchByBuyerId(): empty id rejected; bad shape → ShapeError; success:fa
   await assert.rejects(mk({ success: true, data: {} }).searchByBuyerId('U1'), ShapeError);
   await assert.rejects(mk({ success: false, message: 'busy' }).searchByBuyerId('U1'), (e) => e instanceof JstError && e.message === 'busy');
   assert.deepEqual(await mk({ success: true, data: { data: [] } }).searchByBuyerId('U1'), []);
+});
+
+test('sessionStore: cookies are read from and written to the store, not a file', async () => {
+  const store = memoryStore([{ name: 'auth', value: 'OLD' }]);
+  const fetch = fakeFetch({
+    'POST /iim/getSessions': (req) => {
+      assert.match(req.headers.Cookie, /auth=OLD/);
+      return res({ success: true, data: { data: [ROOM] } }, { cookies: ['auth=NEW; Path=/'] });
+    },
+  });
+  const jst = createJstClient({ accountId: 'u', password: 'p', sessionStore: store, fetch });
+  assert.equal(jst.hasSession(), true);
+  assert.equal(store.dirty, false);
+  assert.equal(await jst.ping(), true);
+  assert.equal(store.dirty, true);
+  assert.deepEqual(store.cookies(), [{ name: 'auth', value: 'NEW' }]);
+  assert.equal(jst.sessionMtime(), 0);
+});
+
+test('ping: asks for one session with no ids; 401 → SessionExpired; bad shape → ShapeError', async () => {
+  let seen;
+  const ok = createJstClient({
+    sessionStore: memoryStore([{ name: 'auth', value: 'T' }]),
+    fetch: fakeFetch({ 'POST /iim/getSessions': (req) => ((seen = req.body), res({ success: true, data: { data: [] } })) }),
+  });
+  assert.equal(await ok.ping(), true);
+  assert.equal(seen.page_size, 1);
+  assert.deepEqual(seen.precise_query_ms_ids, []);
+  assert.equal(seen.is_precise_query, false);
+
+  const expired = createJstClient({ sessionStore: memoryStore(), fetch: fakeFetch({ 'POST /iim/getSessions': () => res('', { status: 401 }) }) });
+  await assert.rejects(expired.ping(), SessionExpired);
+
+  const odd = createJstClient({ sessionStore: memoryStore(), fetch: fakeFetch({ 'POST /iim/getSessions': () => res({ success: true, data: {} }) }) });
+  await assert.rejects(odd.ping(), ShapeError);
+
+  const busy = createJstClient({ sessionStore: memoryStore(), fetch: fakeFetch({ 'POST /iim/getSessions': () => res({ success: false, message: 'busy' }) }) });
+  await assert.rejects(busy.ping(), (e) => e instanceof JstError && e.message === 'busy');
+});
+
+test('requests carry an abort timeout signal (timeoutMs option) and a timeout becomes JstError network', async () => {
+  let seen;
+  const fetch = async (url, init) => {
+    seen = init.signal;
+    return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new Error('aborted by timeout'))));
+  };
+  const c = createJstClient({ accountId: 'dev', password: 'pw', sessionFile: tmpSession(), fetch, timeoutMs: 20 });
+  await assert.rejects(c.ping(), (e) => e instanceof JstError && /^network:/.test(e.message));
+  assert.ok(seen instanceof AbortSignal);
 });

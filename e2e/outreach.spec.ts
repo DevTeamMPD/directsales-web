@@ -188,6 +188,13 @@ for (const s of SIZES) {
       await expect(page.locator('#wk-panel h2')).toHaveText('Worker ส่งข้อความ');
       await expect(page.locator('[data-worker=office-pc-1]')).toContainText('ออนไลน์');
       await expect(page.locator('[data-worker=office-pc-1] .badge')).toHaveText('กำลังทำงาน');
+      await expect(page.locator('[data-worker=vercel] [data-role]')).toHaveText('ตัวหลัก');
+      await expect(page.locator('[data-worker=office-pc-1] [data-role]')).toHaveText('ตัวสำรอง');
+      await expect(page.locator('[data-worker=vercel] [data-act=primary]')).toHaveCount(0);
+      await page.locator('[data-worker=office-pc-1] [data-act=primary]').click();
+      await expect(page.locator('[data-worker=office-pc-1] [data-act=primary]')).toHaveText('ยืนยัน: ให้ office-pc-1 ส่งข้อความแทนตัวอื่น');
+      await page.locator('[data-worker=office-pc-1] [data-act=primary]').click();
+      await expect(page.locator('#toast')).toHaveText(FIXTURE_NO_WRITE);
       await expect(page.locator('#wk-interval')).toHaveValue('60');
       await expect(page.locator('#wk-test')).toBeChecked();
       await expect(page.locator('#wk-rooms [data-room]')).toHaveText(['Dev MPD · LINE · bebeplayspace (900001) ✕']);

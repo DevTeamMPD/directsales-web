@@ -107,7 +107,7 @@ export function findAlreadySent(messages, text, enqueuedAt) {
   );
 }
 
-export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sleep, log = () => {}, config = {} }) {
+export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sleep, log = () => {}, config = {}, initialState = null }) {
   const cfg = { ...DEFAULTS, ...config };
   if (!cfg.workerId) throw new Error('config.workerId is required');
 
@@ -130,10 +130,60 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
     linkDisabled: false,
     linkLookups: 0,
     linksWritten: 0,
+    deadlineMs: null, // ตั้งเฉพาะระหว่าง tick() — โหมดออฟฟิศไม่ตั้ง = ไม่เปลี่ยนพฤติกรรม
+    lastJstOkAt: 0, // เวลาที่เรียก JST สำเร็จครั้งล่าสุด — tick ใช้ตัดสินว่าต้อง ping หรือไม่
   };
   const canLink = () =>
     cfg.linkSync !== false && !s.linkDisabled &&
     typeof queue.linkTargets === 'function' && typeof queue.linkSave === 'function' && typeof jst.searchByBuyerId === 'function';
+
+  /* ---------- สถานะข้ามรอบ (โหมดรอบบน Vercel) ---------- */
+
+  const num = (v) => typeof v === 'number' && Number.isFinite(v);
+  /** รับค่าที่ exportState() ของรอบก่อนบันทึกไว้ — ค่าที่รูปแบบผิดถูกข้าม */
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  function importState(src) {
+    if (!src || typeof src !== 'object') return;
+    const now = clock.now();
+    if (Object.values(STATES).includes(src.state)) s.state = src.state;
+    if (typeof src.sessionOk === 'boolean') s.sessionOk = src.sessionOk;
+    if (typeof src.lastError === 'string') s.lastError = src.lastError;
+    if (num(src.failures)) s.failures = src.failures;
+    // ค่าเวลาที่เกินช่วงที่เป็นไปได้ถูกตัด — กันสถานะเสียค้างข้ามรอบตลอดไป
+    if (num(src.pausedUntil)) s.pausedUntil = Math.min(src.pausedUntil, now + cfg.pauseMinutes * 60_000);
+    if (num(src.linkPausedUntil)) {
+      s.linkPausedUntil = Math.min(src.linkPausedUntil, now + Math.max(cfg.linkIdleMinutes, cfg.linkPauseMinutes, 360) * 60_000);
+    }
+    if (num(src.lastJstOkAt)) s.lastJstOkAt = Math.min(src.lastJstOkAt, now);
+    if (Array.isArray(src.loginTimes)) {
+      s.loginTimes = src.loginTimes.filter((t) => num(t) && t > now - 3600_000 && t <= now).sort((a, b) => b - a).slice(0, cfg.maxLoginsPerHour);
+    }
+    if (Array.isArray(src.pendingReports)) {
+      // รายการรูปแบบผิดทำให้ flushPending โยน error ทุกรอบ — รับเฉพาะที่ถูกต้อง และไม่เกิน 20 รายการ
+      s.pendingReports = src.pendingReports
+        .filter((r) => r && typeof r === 'object' && typeof r.id === 'string' && UUID_RE.test(r.id) && ['sent', 'failed', 'requeue'].includes(r.status))
+        .slice(0, 20)
+        .map((r) => ({ id: r.id, status: r.status, error: r.error ?? null, jstMsgId: r.jstMsgId ?? null }));
+    }
+    if (Array.isArray(src.linkTargets)) {
+      s.linkTargets = src.linkTargets.filter((t) => t && typeof t.buyer_id === 'string' && t.buyer_id.trim() !== '').slice(0, cfg.linkBatch);
+    }
+  }
+  importState(initialState);
+
+  /** ค่าที่ต้องจำข้ามรอบ (ต้องแปลงเป็น JSON ได้) */
+  function exportState() {
+    return {
+      state: s.state, sessionOk: s.sessionOk, lastError: s.lastError, failures: s.failures, pausedUntil: s.pausedUntil,
+      loginTimes: [...s.loginTimes], pendingReports: s.pendingReports.map((r) => ({ ...r })),
+      linkTargets: s.linkTargets.map((t) => ({ ...t })), linkPausedUntil: s.linkPausedUntil, lastJstOkAt: s.lastJstOkAt,
+    };
+  }
+
+  function jstOk() {
+    s.sessionOk = true;
+    s.lastJstOkAt = clock.now();
+  }
 
   /* ---------- heartbeat ---------- */
 
@@ -208,7 +258,7 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
     s.loginTimes.push(clock.now());
     try {
       await jst.login();
-      s.sessionOk = true;
+      jstOk();
       log('info', 'JST login ok');
       return { ok: true };
     } catch (e) {
@@ -230,7 +280,7 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
   /** ห้อง → ตรวจ → (dedupe) → ส่ง · คืน decision ยังไม่ report */
   async function attempt(job) {
     const r = await jst.room(job.target_ms_id);
-    s.sessionOk = true;
+    jstOk();
     if (!r) return { status: 'failed', error: 'room_not_found' };
     if (!job.test_redirect && typeof job.chat_name === 'string' && job.chat_name.trim() !== '' && r.name.trim() !== job.chat_name.trim()) {
       return { status: 'failed', error: 'room_mismatch' };
@@ -271,6 +321,10 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
       log('warn', 'JST session expired — logging in again');
       const lr = await relogin();
       if (!lr.ok) return { decision: lr.decision, countFailure: lr.countFailure };
+      // โหมดรอบ: เหลือเวลาไม่พอลองส่งซ้ำ (เสี่ยงเกิน 60 วินาทีของ Vercel) → คืนคิว session ใหม่แล้วสำหรับรอบหน้า
+      if (s.deadlineMs != null && clock.now() + 25_000 > s.deadlineMs) {
+        return { decision: { status: 'requeue', error: 'session_expired' } };
+      }
       try {
         return { decision: await attempt(job) };
       } catch (e2) {
@@ -329,10 +383,11 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
         }
         rooms = await search();
       }
-      s.sessionOk = true;
+      jstOk();
     } catch (e) {
       if (e instanceof ShapeError) {
         s.linkDisabled = true;
+        s.linkPausedUntil = clock.now() + 6 * 3600_000; // จำข้ามรอบ — ไม่ลองค้นที่พังซ้ำทุกนาที
         log('error', 'link sync off for this run: unexpected JST response', { error: clip(e.message) });
       } else if (e instanceof SessionExpired) {
         enterNeedsLogin(`SessionExpired after re-login: ${clip(e.message)}`);
@@ -426,6 +481,74 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
     return decision.status === 'failed' ? 'failed' : 'requeued';
   }
 
+  /* ---------- หนึ่งรอบ (โหมดรอบ) ---------- */
+
+  /** ไม่ได้เรียก JST สำเร็จเกิน maxAgeMs → ping หนึ่งครั้ง (session หลุด = ล็อกอินใหม่ตามกติกาเดิม) · คืน true ถ้าได้ลอง */
+  async function pingIfQuiet(maxAgeMs) {
+    if (s.state !== STATES.running || typeof jst.ping !== 'function') return false;
+    if (clock.now() - s.lastJstOkAt < maxAgeMs) return false;
+    try {
+      try {
+        await jst.ping();
+      } catch (e) {
+        if (!(e instanceof SessionExpired)) throw e;
+        s.sessionOk = false;
+        log('warn', 'JST session expired (ping) — logging in again');
+        const lr = await relogin();
+        if (!lr.ok) return true;
+        await jst.ping();
+      }
+      jstOk();
+    } catch (e) {
+      // ล็อกอิน/session ล้มเหลว → enterNeedsLogin ตั้ง sessionOk ให้แล้ว · error ทั่วไป (เครือข่าย) ไม่ถือว่า session เสีย
+      if (e instanceof ShapeError) {
+        s.sessionOk = false;
+        setState(STATES.stopped, `ShapeError: ${clip(e.message)}`);
+      } else if (e instanceof SessionExpired) enterNeedsLogin(`SessionExpired after re-login: ${clip(e.message)}`);
+      else if (e instanceof CaptchaRequired || e instanceof LoginFailed || e instanceof LoginUnavailable) enterNeedsLogin(`${e.name}: ${clip(e.message)}`);
+      else s.lastError = `ping: ${clip(e?.message || e)}`;
+    }
+    return true;
+  }
+
+  /**
+   * หนึ่งรอบ: งานส่งไม่เกิน 1 งาน (processOne) · ไม่มีงานส่ง = ผูกห้องต่อจนครบ maxLinks หรือใกล้ deadlineMs
+   * แล้ว ping ถ้าเงียบนาน และ heartbeat 1 ครั้ง → { result, links, pinged, state }
+   */
+  async function tick({ deadlineMs = clock.now() + 40_000, maxLinks = 10, pingAfterMs = 600_000 } = {}) {
+    s.ticks++;
+    s.deadlineMs = deadlineMs;
+    const out = { result: null, links: 0, pinged: false };
+    try {
+      out.result = await processOne();
+      s.backoffMs = 0;
+      if (out.result === 'linked') {
+        out.links = 1;
+        while (out.links < maxLinks && clock.now() + cfg.linkIntervalMs < deadlineMs) {
+          await sleep(cfg.linkIntervalMs);
+          if ((await linkOne()) !== 'linked') break;
+          out.links++;
+        }
+      }
+      // ping ช้าได้ถึง ~10 วินาที — ทำเมื่อเหลือเวลาอย่างน้อย 15 วินาทีก่อน deadline เท่านั้น
+      if (clock.now() + 15_000 < deadlineMs) out.pinged = await pingIfQuiet(pingAfterMs);
+    } catch (e) {
+      if (!(e instanceof QueueUnavailable)) {
+        // error ที่ไม่คาด: แจ้ง heartbeat ก่อน แล้วโยนต่อให้ผู้เรียกเห็น
+        s.lastError = `tick: ${clip(e?.message || e)}`;
+        s.deadlineMs = null;
+        await heartbeat({ force: true });
+        throw e;
+      }
+      s.lastError = clip(e.message);
+      log('warn', 'supabase unavailable during tick', { error: clip(e.message) });
+      out.result = 'queue_error';
+    }
+    s.deadlineMs = null;
+    await heartbeat({ force: true });
+    return { ...out, state: s.state };
+  }
+
   /* ---------- ลูป ---------- */
 
   async function run({ once = false } = {}) {
@@ -461,6 +584,8 @@ export function createWorker({ jst, queue, clock = { now: () => Date.now() }, sl
   return {
     processOne,
     run,
+    tick,
+    exportState,
     heartbeat,
     stop() {
       s.stopRequested = true;

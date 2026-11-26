@@ -8,45 +8,63 @@ export class QueueError extends Error {
   }
 }
 
-export function createQueueClient({ supabaseUrl, anonKey, email, password, createClient }) {
+/**
+ * autoRefreshToken: true = ลูปบนเครื่อง worker (supabase-js ต่ออายุ token เอง)
+ * false = โหมดรอบบน Vercel (ไม่มี timer ข้ามรอบ) → ล็อกอินใหม่เมื่อ token อายุเกิน maxSessionAgeMs (token อยู่ได้ 1 ชม.)
+ */
+export function createQueueClient({
+  supabaseUrl, anonKey, email, password, createClient,
+  autoRefreshToken = true, now = () => Date.now(), maxSessionAgeMs = 45 * 60_000,
+}) {
   if (typeof createClient !== 'function') throw new Error('createClient is required');
   if (!supabaseUrl || !anonKey) throw new Error('supabase url / anonKey missing');
   const client = createClient(supabaseUrl, anonKey, {
     db: { schema: 'dsales' },
-    auth: { persistSession: false, autoRefreshToken: true },
+    auth: { persistSession: false, autoRefreshToken },
   });
   let signedIn = null; // Promise ของการล็อกอินที่สำเร็จ
+  let signedInAt = 0;
 
+  // signedInAt = 0 หมายถึงกำลังล็อกอินอยู่ (ถือว่าสด ไม่เริ่มล็อกอินซ้ำ)
   function ensureAuth() {
+    if (signedIn && !autoRefreshToken && signedInAt && now() - signedInAt > maxSessionAgeMs) signedIn = null;
     if (!signedIn) {
-      signedIn = (async () => {
+      signedInAt = 0;
+      const attempt = (async () => {
         if (!email || !password) throw new QueueError('supabase: worker email/password missing');
         const { data, error } = await client.auth.signInWithPassword({ email, password });
         if (error) throw new QueueError(`supabase sign-in: ${error.message}`);
+        if (signedIn === attempt) signedInAt = now();
         return data;
       })().catch((e) => {
-        signedIn = null; // ลองใหม่รอบหน้า
+        if (signedIn === attempt) signedIn = null; // ลองใหม่รอบหน้า (ไม่ล้างของใหม่ที่เริ่มแล้ว)
         throw e instanceof QueueError ? e : new QueueError(`supabase sign-in: ${e?.message || e}`);
       });
+      signedIn = attempt;
     }
     return signedIn;
   }
 
+  const AUTH_ERROR = /jwt|not authenticated|invalid claim|401/i;
+
   async function rpc(name, args) {
-    await ensureAuth();
-    let res;
-    try {
-      res = await client.rpc(name, args);
-    } catch (e) {
-      throw new QueueError(`${name}: ${e?.message || e}`);
-    }
-    if (res.error) {
+    for (let attempt = 0; ; attempt++) {
+      await ensureAuth();
+      let res;
+      try {
+        res = await client.rpc(name, args);
+      } catch (e) {
+        throw new QueueError(`${name}: ${e?.message || e}`);
+      }
+      if (!res.error) return res.data;
       const msg = res.error.message || String(res.error);
-      // token หมดอายุ/ไม่ถูกต้อง → ล็อกอินใหม่รอบหน้า
-      if (/jwt|token|not authenticated/i.test(msg)) signedIn = null;
+      // token หมดอายุ/ไม่ถูกต้อง → ล็อกอินใหม่แล้วลองซ้ำหนึ่งครั้ง
+      if (AUTH_ERROR.test(msg)) {
+        signedIn = null;
+        if (attempt === 0) continue;
+      }
       throw new QueueError(`${name}: ${msg}`);
     }
-    return res.data;
   }
 
   return {
@@ -78,6 +96,20 @@ export function createQueueClient({ supabaseUrl, anonKey, email, password, creat
         p_error: error ?? null,
       });
       return Number(data) || 0;
+    },
+    /** เริ่มรอบ: null = รอบอื่นถือ lease อยู่ · ไม่เช่นนั้น { runtime, cookies } */
+    async stateBegin(workerId, leaseSeconds = 90) {
+      const data = await rpc('dsales_worker_state_begin', { p_worker: workerId, p_lease_seconds: leaseSeconds });
+      return data ?? null;
+    },
+    /** จบรอบ: บันทึก runtime · cookies = null คือไม่เปลี่ยน */
+    async stateEnd(workerId, runtime, cookies = null) {
+      if (!runtime || typeof runtime !== 'object' || Array.isArray(runtime)) throw new Error('stateEnd: runtime is required');
+      await rpc('dsales_worker_state_end', { p_worker: workerId, p_runtime: runtime, p_cookies: cookies ?? null });
+    },
+    /** อัปโหลด session ที่คนล็อกอินเอง (import-session.mjs --upload) */
+    async sessionPut(workerId, cookies) {
+      await rpc('dsales_worker_session_put', { p_worker: workerId, p_cookies: cookies });
     },
     async heartbeat(workerId, state, sessionOk, lastError = null) {
       await rpc('dsales_worker_heartbeat', {

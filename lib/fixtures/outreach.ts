@@ -82,10 +82,15 @@ export const FIXTURE_OUTREACH: OutreachDemo = {
     },
   },
   worker: {
+    primary: 'vercel',
     workers: [
       {
+        worker_id: 'vercel', state: 'running', jst_session_ok: true, heartbeat_at: '2026-11-04T02:20:30Z', online: true,
+        sent_last_hour: 2, queue_waiting: 2, last_error: null, is_primary: true,
+      },
+      {
         worker_id: 'office-pc-1', state: 'running', jst_session_ok: true, heartbeat_at: '2026-11-04T02:20:00Z', online: true,
-        sent_last_hour: 2, queue_waiting: 2, last_error: null,
+        sent_last_hour: 2, queue_waiting: 2, last_error: null, is_primary: false,
       },
     ],
     queue: { queued: 1, sending: 1, sent_last_hour: 2, line_sent_this_month: 14 },

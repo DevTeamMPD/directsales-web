@@ -17,6 +17,7 @@ begin
   update dsales.dsales_settings set value = '0'::jsonb where key = 'line_monthly_cap';
   update dsales.dsales_settings set value = 'true'::jsonb where key = 'outreach_test_mode';
   update dsales.dsales_settings set value = '[999, 998]'::jsonb where key = 'outreach_test_ms_ids';
+  update dsales.dsales_settings set value = '""'::jsonb where key = 'worker_primary'; -- no primary: every worker may claim (20261126120000)
 
   insert into dsales.dsales_templates (brand, name, body, created_by) values ('bebeplay', 't', 'x', v_admin) returning id into v_tpl;
   insert into dsales.dsales_leads (source, brand, name, phone, phone_normalized, owner_id, claimed_by, claimed_at, created_by)
