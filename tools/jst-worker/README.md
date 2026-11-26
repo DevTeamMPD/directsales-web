@@ -89,13 +89,13 @@ copy config.example.json config.json
 
 Supabase ใช้ไม่ได้ → รอแล้วลองใหม่ (5 → 10 → … → 60 วินาที) และ **ไม่ส่ง JST** ระหว่างนั้น · ถ้าส่งแล้วแต่รายงานผลไม่ได้ worker จะเก็บผลไว้และรายงานให้ได้ก่อนรับงานใหม่
 
-## ตัวหลักบน Vercel + เครื่องนี้เป็นตัวสำรอง
-สเปก: `docs/superpowers/specs/2026-11-26-cloud-tick-worker-design.md`
+## เครื่องนี้ (`office-1`) เป็นตัวหลัก + ตัวสำรองบน Vercel
+สเปก: `docs/superpowers/specs/2026-11-26-cloud-tick-worker-design.md` · ผู้ใช้เลือก 2026-11-26 ให้ `office-1` เป็นตัวหลัก (ส่งข้อความแรกได้ในไม่กี่วินาที) และ `vercel` เป็นตัวสำรองที่รับงานแทนเมื่อเครื่องนี้ดับ — สลับได้ทุกเมื่อด้วยปุ่ม "ตั้งเป็นตัวหลัก" บนการ์ด Worker
 
-- worker ตัวหลักชื่อ `vercel` รันเป็น route `POST /api/cron/outreach-tick` (logic อยู่ใน `lib/cron/tick-handler.ts`) ที่ pg_cron (`dsales-outreach-tick`) ปลุกทุกนาที — หนึ่งรอบส่งได้ไม่เกิน 1 ข้อความ หรือผูกห้องไม่เกิน 10 รหัส ใช้โค้ดชุดเดียวกับลูปของเครื่องนี้ · request ไป JST หมดเวลา 8 วินาทีบน cloud (เครื่องนี้ 15 วินาที)
-- ค่า `worker_primary` ใน `dsales_settings` (ตั้งจากการ์ด Worker หน้าตั้งค่า) บอกว่าใครเป็นตัวหลัก · ตัวที่ไม่ใช่ตัวหลักจะได้ `claim` เป็น `null` และไม่ได้รหัสให้ค้น ตราบที่ตัวหลักยัง `running` และ heartbeat ไม่เกิน 3 นาที — เกินนั้นเครื่องนี้รับงานเอง ไม่ต้องสั่ง
-- เครื่องสำรองตั้ง `"pollSeconds": 30` ใน `config.json` (ไม่ต้องถามคิวถี่) ค่าอื่นเหมือนเดิม
-- ปิดตัวปลุกชั่วคราว: ตั้ง `worker_tick_enabled` เป็น `false` (ตัวสำรองจะรับช่วงภายใน 3–4 นาที)
+- worker ตัวสำรองชื่อ `vercel` รันเป็น route `POST /api/cron/outreach-tick` (logic อยู่ใน `lib/cron/tick-handler.ts`) ที่ pg_cron (`dsales-outreach-tick`) ปลุกทุกนาที — หนึ่งรอบส่งได้ไม่เกิน 1 ข้อความ หรือผูกห้องไม่เกิน 10 รหัส ใช้โค้ดชุดเดียวกับลูปของเครื่องนี้ · request ไป JST หมดเวลา 8 วินาทีบน cloud (เครื่องนี้ 15 วินาที)
+- ค่า `worker_primary` ใน `dsales_settings` (ตั้งจากการ์ด Worker หน้าตั้งค่า) บอกว่าใครเป็นตัวหลัก · ตัวที่ไม่ใช่ตัวหลักจะได้ `claim` เป็น `null` และไม่ได้รหัสให้ค้น ตราบที่ตัวหลักยัง `running` และ heartbeat ไม่เกิน 3 นาที — เกินนั้นตัวสำรองรับงานเอง ไม่ต้องสั่ง (ระหว่างนั้นการ์ด Worker แสดง "กำลังรับงานแทนตัวหลัก")
+- เครื่องนี้เป็นตัวหลักจึงคง `"pollSeconds"` 5 ตามเดิม · ถ้าวันหลังสลับให้ `vercel` เป็นตัวหลัก ให้ตั้ง `"pollSeconds": 30` ใน `config.json` ของเครื่องนี้ (ตัวสำรองไม่ต้องถามคิวถี่)
+- ปิดตัวปลุกของ Vercel: ตั้ง `worker_tick_enabled` เป็น `false` (เครื่องนี้ทำงานเหมือนก่อนมีฟีเจอร์นี้ แต่ไม่มีตัวสำรอง)
 - สถานะข้ามรอบของ `vercel` อยู่ในตาราง `dsales_worker_state` และ cookie ของ JST อยู่ใน Supabase Vault (`dsales_jst_session_vercel`) · รอบหนึ่งถือ lease 90 วินาที (ขั้นต่ำ 70 วินาที ต้องยาวกว่า `maxDuration` 60 วินาทีของ route) รอบที่ชนกันจะข้าม (`skipped: busy`)
 - route ตอบ 401 ถ้าไม่มี bearer ที่ถูก · 500 `not_configured` เฉพาะเมื่อขาด `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `DSALES_WORKER_EMAIL` หรือ `DSALES_WORKER_PASSWORD` (ขาด `JST_USER` / `JST_PASSWORD` ไม่ทำให้ route ล้ม — มีผลเฉพาะตอนต้องล็อกอิน JST ซึ่งจะขึ้นเป็น `needs_login`) · 500 `tick_failed` (+ `kind`; ข้อความ error อยู่ใน log ของ Vercel เท่านั้น ไม่อยู่ใน body เพราะ pg_net เก็บ body ลง `net._http_response`) · 503 เมื่อ Supabase ใช้ไม่ได้ระหว่างรอบ (`result: queue_error`) · ปกติ 200 พร้อม `result`, `links`, `pinged`, `state`, `cookiesSaved`, `region`
 

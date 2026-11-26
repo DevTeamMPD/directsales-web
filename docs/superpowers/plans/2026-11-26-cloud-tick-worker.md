@@ -2243,26 +2243,22 @@ select status_code, left(content, 200) as body, created from net._http_response
 Expected: `vercel` = `running`, `jst_session_ok = true`, age < 1 นาที · response ล่าสุด `status_code = 200` และ body มี `"ok":true` กับ `"region":"icn1"` · `office-1` ยัง `running`
 ถ้า `vercel` เป็น `needs_login` (JST ขอ captcha จาก IP ของโซล) → ทำตาม README หัวข้อ "เมื่อ `vercel` ขึ้น `needs_login`"
 
-- [ ] **Step 6: สลับตัวหลักเป็น `vercel` และส่งชุดทดสอบ**
+> **ผู้ใช้เลือก 2026-11-26: `office-1` เป็นตัวหลักต่อไป, `vercel` เป็นตัวสำรอง** (`office-1` ส่งข้อความแรกได้ในราว 2 วินาที ส่วนรอบปลุกนาทีละครั้งรอได้ถึง 60 วินาที) — คงค่า `worker_primary = "office-1"` ไม่ต้องสลับ · `office-1` คง `pollSeconds` 5 ตามเดิม
 
-ผู้ใช้กด "ตั้งเป็นตัวหลัก" ที่แถว `vercel` บนการ์ด Worker (โหมดทดสอบต้องเปิดอยู่) แล้วส่งชุดทดสอบ 2–3 รายการจากหน้าเว็บ ตรวจ:
+- [ ] **Step 6: ทดสอบการรับช่วง = ทดสอบ `SendMsg` จาก Vercel ครั้งแรก**
+
+นัดเวลากับผู้ใช้ (โหมดทดสอบต้องเปิดอยู่และมีห้องทดสอบ) แล้วให้ผู้ใช้หยุด worker บน `office-1` ชั่วคราว (Ctrl+C ในหน้าต่าง `run-worker.cmd` — task จะเปิดใหม่เองภายใน 15 นาที จึงทดสอบให้จบในช่วงนั้น หรือปิด task ชั่วคราว) → รอให้การ์ด Worker แสดง `office-1` ออฟไลน์และ `vercel` มีป้าย "กำลังรับงานแทนตัวหลัก" (3–4 นาที) → ส่งชุดทดสอบ 2 รายการจากหน้าเว็บ ตรวจ:
 
 ```sql
-select status, locked_by, attempts, sent_at, left(coalesce(error, ''), 80) as error
-from dsales.dsales_outreach_queue order by enqueued_at desc limit 3;
+select status, attempts, sent_at, left(coalesce(error, ''), 80) as error
+from dsales.dsales_outreach_queue order by enqueued_at desc limit 2;
 ```
-Expected: `sent` ทุกแถว ห่างกันราว 1 นาที และข้อความ `[ทดสอบ → …]` ถึงห้องทดสอบ — นี่คือการทดสอบ `SendMsg` จาก Vercel ครั้งแรก
-(`locked_by` ถูกล้างเมื่อส่งเสร็จ จึงยืนยันผู้ส่งจาก log ของ function บน Vercel: บรรทัด `"msg":"job sent"` ที่มี `"worker":"vercel"`)
+Expected: `sent` ทั้งสองแถว ห่างกันราว 1 นาที และข้อความ `[ทดสอบ → …]` ถึงห้องทดสอบ (`locked_by` ถูกล้างเมื่อส่งเสร็จ จึงยืนยันผู้ส่งจาก log ของ function บน Vercel: บรรทัด `"msg":"job sent"` ที่มี `"worker":"vercel"`)
+แล้วเปิด worker บน `office-1` กลับ → ภายใน 1 นาที `office-1` online และ `vercel` กลับเป็นตัวสำรอง (ป้าย "กำลังรับงานแทน…" หายไป) → ส่งชุดทดสอบอีก 1 รายการ ต้องส่งภายในไม่กี่วินาที (= `office-1` ส่ง)
 
-- [ ] **Step 7: ทดสอบการรับช่วง**
+- [ ] **Step 7: งานบนเครื่องออฟฟิศและเก็บกวาด (ผู้ใช้)**
 
-ถามผู้ใช้ แล้วปิดตัวปลุก: `update dsales.dsales_settings set value = 'false'::jsonb, updated_at = now() where key = 'worker_tick_enabled';`
-ส่งชุดทดสอบ 1 รายการ → ภายใน 3–4 นาที `office-1` ต้องส่ง (ดู `logs/worker-YYYY-MM-DD.jsonl` บนเครื่องออฟฟิศ หรือสถานะ `sent` ในคิว) → เปิดตัวปลุกกลับเป็น `true` แล้วยืนยันว่า `vercel` กลับมา online
-
-- [ ] **Step 8: งานบนเครื่องออฟฟิศและเก็บกวาด (ผู้ใช้)**
-
-- `office-1` (ที่ `C:\Users\Dev\Directsale\directsales-web`): `git fetch`, `git switch main`, `git pull`, ตั้ง `"pollSeconds": 30` ใน `tools\jst-worker\config.json`, รีสตาร์ท worker
+- `office-1` (ที่ `C:\Users\Dev\Directsale\directsales-web`): `git fetch`, `git switch main`, `git pull`, รีสตาร์ท worker (คง `pollSeconds` 5 เพราะเป็นตัวหลัก) — สังเกต: โค้ดใหม่ตั้งเวลาหมดของคำขอ JST 15 วินาที และลองซ้ำหนึ่งครั้งเมื่อ token ของ Supabase หมดอายุ
 - ลบของ spike: branch `spike/jst-from-vercel` (GitHub + worktree `directsales-web-spike`), Preview 2 ตัว, env `JST_USER` / `JST_PASSWORD` ของ Preview บน Vercel, ไฟล์ session ในโฟลเดอร์ชั่วคราว, config `directsale-spike` ใน `.claude/launch.json`
-- อัปเดต memory ของโปรเจกต์: ตัวหลัก = `vercel`, ตัวสำรอง = `office-1`
 
-**ย้อนกลับได้ทุกขั้น:** กด "ตั้งเป็นตัวหลัก" ที่ `office-1` หรือปิด `worker_tick_enabled` — มีผลรอบถัดไป ไม่ต้อง deploy
+**ย้อนกลับได้ทุกขั้น:** ปิด `worker_tick_enabled` (Vercel หยุดทั้งหมด `office-1` ทำงานเหมือนก่อนมีฟีเจอร์นี้) — มีผลรอบถัดไป ไม่ต้อง deploy · ถ้าวันหลังอยากให้ Vercel เป็นตัวหลัก กด "ตั้งเป็นตัวหลัก" ที่แถว `vercel` บนการ์ด Worker
