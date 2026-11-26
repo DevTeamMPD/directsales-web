@@ -3,7 +3,7 @@ import type { Lead } from '@/lib/api/types';
 import { fixturePayload } from '@/lib/fixtures/load';
 import type { Period } from '@/lib/state/reducer';
 import {
-  bills, canUnclaim, canUnclaimAny, releaseInfo, releaseTagShown, chipLabel, CHIP_DOT, claimBlock, contactedIn, dueInfo, filtered, isDnc, lastSeller, mineOrAll,
+  bills, canUnclaim, canUnclaimAny, releaseInfo, releaseTagShown, chipLabel, CHIP_DOT, claimBlock, contactedIn, dueInfo, filtered, isDnc, lastSeller, leadRfm, mineOrAll,
   periodOk, releasedByMe, statusCounts, STATUS_CHIPS, total, visible, wonIn, type LeadFilter,
 } from './leads';
 
@@ -167,5 +167,26 @@ describe('releaseInfo (Direct Sale 30-day auto-release)', () => {
     expect(releaseTagShown(releaseInfo('2026-11-03T03:00:00+00:00', 'new', today))).toBe(false);
     expect(releaseTagShown(releaseInfo('2026-10-31T18:00:00+00:00', 'new', today))).toBe(true);
     expect(releaseTagShown(null)).toBe(false);
+  });
+});
+
+describe('leadRfm (กลุ่มลูกค้า + ไม่ซื้อมา N วัน ของหน้า Direct Sale)', () => {
+  const today = '2026-11-04';
+  it('live: uses the customer-base values the server sent (same as /mine), not the lead purchases', () => {
+    expect(leadRfm(lead({ rfm: 'Loyal', dormantDays: 45 }), today)).toEqual({ segment: 'Loyal', dormantDays: 45 });
+    expect(leadRfm(lead({ rfm: "Shouldn't Lose", dormantDays: 120, purchases: [] }), today)).toEqual({ segment: "Shouldn't Lose", dormantDays: 120 });
+  });
+  it('live: a customer missing from the base stays empty even when purchases are loaded', () => {
+    expect(leadRfm(lead({ rfm: null, dormantDays: null }), today)).toEqual({ segment: null, dormantDays: null });
+  });
+  it('fixture (no server values): days since the latest purchase and the RFM rule on distinct bills', () => {
+    // L1000: 1 บิล วันที่ 2025-09-07 → 423 วันถึง 2026-11-04
+    expect(leadRfm(byId('L1000'), today)).toEqual({ segment: 'Lost', dormantDays: 423 });
+    const p = byId('L1000').purchases[0];
+    const two = lead({ purchases: [{ ...p, date: '2026-09-01', bill: 'A' }, { ...p, date: '2026-10-05', bill: 'B' }, { ...p, date: '2026-10-05', bill: 'B' }] });
+    expect(leadRfm(two, today)).toEqual({ segment: 'Promising', dormantDays: 30 });
+  });
+  it('fixture: no purchases = empty', () => {
+    expect(leadRfm(lead({ purchases: [] }), today)).toEqual({ segment: null, dormantDays: null });
   });
 });

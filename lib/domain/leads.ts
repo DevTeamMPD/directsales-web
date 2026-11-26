@@ -3,6 +3,7 @@ import { STATUS, type LeadStatus } from '@/lib/constants';
 import { fmtDate, todayBangkok } from '@/lib/format';
 import type { Period, UiFilters } from '@/lib/state/reducer';
 import { hasPeriod, inPeriod } from './period';
+import { rfmSegment } from './rfm';
 
 // กติกาลีดของ prototype (legacy/app.js L28-45, L80, L89-90, L122, L165-191, L219-225, L884-887) เป็นฟังก์ชันล้วน ไม่อ่าน state เอง
 
@@ -138,6 +139,19 @@ export function releaseInfo(
   const days = Math.max(0, maxDays - (dayNo(today) - dayNo(since)));
   if (days === 0) return { days, cls: 'overdue', text: `ครบ ${maxDays} วัน รอคืนอัตโนมัติ` };
   return { days, cls: days <= 3 ? 'overdue' : days <= DS_WARN_DAYS ? 'today' : '', text: `เหลือ ${days} วัน` };
+}
+
+/**
+ * กลุ่มลูกค้า RFM + วันที่ไม่ได้ซื้อ ของลีด (คอลัมน์ "กลุ่มลูกค้า" หน้า Direct Sale)
+ * live: ค่าจาก dsales_customer_base ที่ server ส่งมา (เดียวกับหน้าลูกค้าของฉัน) — ไม่คำนวณจากบิลของลีดเพราะตัวเลขไม่ตรงกับฐานลูกค้า
+ * fixture (ไม่มีค่าจาก server): วันจากรายการซื้อล่าสุด + กติกา rfmSegment บนจำนวนบิลไม่ซ้ำ
+ */
+export function leadRfm(l: Pick<Lead, 'rfm' | 'dormantDays' | 'purchases'>, today: string): { segment: string | null; dormantDays: number | null } {
+  if (l.rfm !== undefined || l.dormantDays !== undefined) return { segment: l.rfm || null, dormantDays: l.dormantDays ?? null };
+  if (!l.purchases.length) return { segment: null, dormantDays: null };
+  const last = l.purchases.reduce((m, p) => (p.date > m ? p.date : m), '');
+  const days = Math.max(0, dayNo(today) - dayNo(last));
+  return { segment: rfmSegment(new Set(l.purchases.map((p) => p.bill)).size, days), dormantDays: days };
 }
 
 export const releaseTagShown = (r: ReturnType<typeof releaseInfo>): boolean => !!r && r.days <= DS_WARN_DAYS;
