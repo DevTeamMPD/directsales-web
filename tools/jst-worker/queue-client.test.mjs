@@ -78,3 +78,49 @@ test('linkTargets with null data returns []', async () => {
   const q = createQueueClient({ ...base, createClient: fakeCreateClient([]) });
   assert.deepEqual(await q.linkTargets('w1', 10), []);
 });
+
+test('state RPCs use the contract args; begin returns null when the lease is held', async () => {
+  const log = [];
+  const begun = { runtime: { failures: 1 }, cookies: [{ name: 'a', value: '1' }] };
+  let n = 0;
+  const q = createQueueClient({
+    ...base,
+    createClient: fakeCreateClient(log, { rpcResult: (name) => ({ data: name === 'dsales_worker_state_begin' && n++ === 0 ? begun : null, error: null }) }),
+  });
+  assert.deepEqual(await q.stateBegin('vercel'), begun);
+  assert.equal(await q.stateBegin('vercel', 30), null);
+  await q.stateEnd('vercel', { state: 'running' });
+  await q.stateEnd('vercel', { state: 'running' }, [{ name: 'a', value: '2' }]);
+  await q.sessionPut('vercel', [{ name: 'b', value: '3' }]);
+  assert.deepEqual(log.filter((l) => l.rpc).map((r) => [r.rpc, r.args]), [
+    ['dsales_worker_state_begin', { p_worker: 'vercel', p_lease_seconds: 90 }],
+    ['dsales_worker_state_begin', { p_worker: 'vercel', p_lease_seconds: 30 }],
+    ['dsales_worker_state_end', { p_worker: 'vercel', p_runtime: { state: 'running' }, p_cookies: null }],
+    ['dsales_worker_state_end', { p_worker: 'vercel', p_runtime: { state: 'running' }, p_cookies: [{ name: 'a', value: '2' }] }],
+    ['dsales_worker_session_put', { p_worker: 'vercel', p_cookies: [{ name: 'b', value: '3' }] }],
+  ]);
+});
+
+test('autoRefreshToken false: no refresh timer, and a sign-in older than 45 minutes is redone', async () => {
+  const log = [];
+  let t = 1_000_000;
+  const q = createQueueClient({ ...base, autoRefreshToken: false, now: () => t, createClient: fakeCreateClient(log) });
+  assert.deepEqual(log[0].create.opts, { db: { schema: 'dsales' }, auth: { persistSession: false, autoRefreshToken: false } });
+  await q.claim('w1');
+  t += 44 * 60_000;
+  await q.claim('w1');
+  assert.equal(log.filter((l) => l.signIn).length, 1);
+  t += 2 * 60_000;
+  await q.claim('w1');
+  assert.equal(log.filter((l) => l.signIn).length, 2);
+});
+
+test('autoRefreshToken true (office loop): the sign-in is kept however old it is', async () => {
+  const log = [];
+  let t = 0;
+  const q = createQueueClient({ ...base, now: () => t, createClient: fakeCreateClient(log) });
+  await q.claim('w1');
+  t += 5 * 3600_000;
+  await q.claim('w1');
+  assert.equal(log.filter((l) => l.signIn).length, 1);
+});

@@ -8,21 +8,31 @@ export class QueueError extends Error {
   }
 }
 
-export function createQueueClient({ supabaseUrl, anonKey, email, password, createClient }) {
+/**
+ * autoRefreshToken: true = office loop (supabase-js renews the token itself)
+ * false = per-tick mode on Vercel (no timer between runs) -> sign in again when the token is older than maxSessionAgeMs (tokens last 1h)
+ */
+export function createQueueClient({
+  supabaseUrl, anonKey, email, password, createClient,
+  autoRefreshToken = true, now = () => Date.now(), maxSessionAgeMs = 45 * 60_000,
+}) {
   if (typeof createClient !== 'function') throw new Error('createClient is required');
   if (!supabaseUrl || !anonKey) throw new Error('supabase url / anonKey missing');
   const client = createClient(supabaseUrl, anonKey, {
     db: { schema: 'dsales' },
-    auth: { persistSession: false, autoRefreshToken: true },
+    auth: { persistSession: false, autoRefreshToken },
   });
   let signedIn = null; // Promise ของการล็อกอินที่สำเร็จ
+  let signedInAt = 0;
 
   function ensureAuth() {
+    if (signedIn && !autoRefreshToken && now() - signedInAt > maxSessionAgeMs) signedIn = null;
     if (!signedIn) {
       signedIn = (async () => {
         if (!email || !password) throw new QueueError('supabase: worker email/password missing');
         const { data, error } = await client.auth.signInWithPassword({ email, password });
         if (error) throw new QueueError(`supabase sign-in: ${error.message}`);
+        signedInAt = now();
         return data;
       })().catch((e) => {
         signedIn = null; // ลองใหม่รอบหน้า
@@ -78,6 +88,19 @@ export function createQueueClient({ supabaseUrl, anonKey, email, password, creat
         p_error: error ?? null,
       });
       return Number(data) || 0;
+    },
+    /** Start a run: null = another run holds the lease, else { runtime, cookies } */
+    async stateBegin(workerId, leaseSeconds = 90) {
+      const data = await rpc('dsales_worker_state_begin', { p_worker: workerId, p_lease_seconds: leaseSeconds });
+      return data ?? null;
+    },
+    /** End a run: save runtime; cookies = null means unchanged */
+    async stateEnd(workerId, runtime, cookies = null) {
+      await rpc('dsales_worker_state_end', { p_worker: workerId, p_runtime: runtime ?? {}, p_cookies: cookies ?? null });
+    },
+    /** Upload a session someone logged in by hand (import-session.mjs --upload) */
+    async sessionPut(workerId, cookies) {
+      await rpc('dsales_worker_session_put', { p_worker: workerId, p_cookies: cookies });
     },
     async heartbeat(workerId, state, sessionOk, lastError = null) {
       await rpc('dsales_worker_heartbeat', {
