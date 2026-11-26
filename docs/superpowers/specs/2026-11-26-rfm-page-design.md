@@ -47,14 +47,15 @@
 | 1 | Champion | 6 | — | 0 | 30 | ดูแลพิเศษ |
 | 2 | Shouldn't Lose | 6 | — | 91 | — | Hard winback |
 | 3 | Loyal | 4 | — | 0 | 90 | กระตุ้นซื้อซ้ำ |
-| 4 | Sleepers | 3 | — | 91 | — | Soft winback |
-| 5 | Promising | 2 | — | 0 | 60 | Up-sell |
-| 6 | Need Attention | 2 | — | 61 | 90 | Up-sell / Cross-sell |
+| 4 | Sleepers | 3 | 5 | 91 | — | Soft winback |
+| 5 | Promising | 2 | 3 | 0 | 60 | Up-sell |
+| 6 | Need Attention | 2 | 3 | 61 | 90 | Up-sell / Cross-sell |
 | 7 | Hot | 1 | 1 | 0 | 30 | ต้อนรับ |
 | 8 | Warm | 1 | 1 | 31 | 60 | Hard conversation |
 | 9 | Cold | 1 | 1 | 61 | 90 | Soft conversation |
 | 10 | Lost | (ที่เหลือทั้งหมด) | | | | หยุดส่ง |
 
+- Sleepers / Promising / Need Attention ใส่ขอบบนของ F ไว้ชัด ๆ (ผลเท่ากับไม่ใส่เพราะลำดับกติกา แต่ข้อความเงื่อนไขที่สร้างจากตัวเลขจะตรง เช่น "ซื้อ 3–5 ครั้ง")
 - "—" = ไม่จำกัด · ไม่มีจำนวนออเดอร์ (< 1) หรือไม่มีวันซื้อล่าสุด = ไม่มีกลุ่ม (null) เหมือนเดิม
 - Lost เป็นกลุ่มรับที่เหลือ (fallback) อยู่ท้ายสุดเสมอ ไม่มีช่วงให้แก้
 - กติกาซ้อนกันได้ (ลำดับตัดสิน) ช่องว่างระหว่างกติกาตกไป Lost — หน้าตั้งค่าแสดงผลก่อนบันทึกให้เห็น
@@ -189,5 +190,7 @@ seed 10 แถวตามข้อ 3 · `no_outreach` เริ่มเป็�
 2. เว็บ: หน้า `/rfm` + config ใน state + ชิป Hot
 3. เว็บ: `/rfm/settings`
 4. migration `dsales_rfm_no_outreach` + เหตุผลข้ามใน popup ส่งข้อความ
+
+แผนลงมือทำแบ่ง 3 แผน: แผน 1 = ข้อ 1–2 เฉพาะ RPC อ่าน (`docs/superpowers/plans/2026-11-26-rfm-page-plan-1.md`) · แผน 2 = ข้อ 3 พร้อม RPC preview/save · แผน 3 = ข้อ 4
 
 apply migration ขึ้น production และ push/merge ถามผู้ใช้ก่อนทุกครั้ง
