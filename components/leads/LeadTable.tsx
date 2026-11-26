@@ -11,7 +11,7 @@ import type { Campaign, ChatRoom, ClaimMode, Lead, Rep } from '@/lib/api/types';
 import { pageBrand } from '@/lib/domain/brand';
 import { bills, lastSeller, leadRfm, repName, total } from '@/lib/domain/leads';
 import { dormantText } from '@/lib/domain/pool';
-import { rfmRule } from '@/lib/domain/rfm';
+import { rfmRule, type RfmSeg } from '@/lib/domain/rfm';
 import { canUnclaimAs } from '@/lib/domain/viewAs';
 import {
   defaultOutreachBrand, leadSelectable, leadSelRow, phoneCheckState, pruneSelection, selectionBar, setPhones, togglePhone,
@@ -32,10 +32,11 @@ export interface TableOpts { mode?: ClaimMode; perCamp?: boolean; selectable?: b
 interface RowCtx {
   reps: Rep[]; campaigns: Campaign[]; meId: string; isAdmin: boolean; today: string; act: LeadActions; openJst: OpenJst;
   rooms: ReadonlyMap<string, ChatRoom[]>; selectable: boolean; showRfm: boolean; toggle: (phone: string) => void;
+  rfmConfig: ReadonlyArray<RfmSeg>;
 }
 
 export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts }) {
-  const { reps, campaigns, meId, isAdmin, today, leads, brand, live } = useAppState();
+  const { reps, campaigns, meId, isAdmin, today, leads, brand, live, rfmConfig } = useAppState();
   const { openModal } = useActions();
   const act = useLeadActions();
   const openJst = useJst();
@@ -62,8 +63,8 @@ export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts 
   const toggle = useCallback((phone: string) => setSel((s) => togglePhone(s, phone)), []);
   // ctx คงที่จนกว่าทีม/แคมเปญ/วันนี้/ห้องเปลี่ยน → พิมพ์ค้นหา/ติ๊กแล้วแถวอื่นไม่ต้องวาดใหม่ (memo; ติ๊กส่งเป็น prop checked แยก)
   const ctx = useMemo<RowCtx>(
-    () => ({ reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, showRfm, toggle }),
-    [reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, showRfm, toggle],
+    () => ({ reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, showRfm, toggle, rfmConfig }),
+    [reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, showRfm, toggle, rfmConfig],
   );
   const openSend = () => {
     if (!selectionBar(sel.size, max).canSend) return;
@@ -119,7 +120,7 @@ export function LeadTable({ list, opts = {} }: { list: Lead[]; opts?: TableOpts 
 }
 
 const LeadRow = memo(function LeadRow({ l, mode, ctx, checked }: { l: Lead; mode?: ClaimMode; ctx: RowCtx; checked: boolean }) {
-  const { reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, showRfm, toggle } = ctx;
+  const { reps, campaigns, meId, isAdmin, today, act, openJst, rooms, selectable, showRfm, toggle, rfmConfig } = ctx;
   const owner = repName(reps, l.owner);
   const seller = lastSeller(l, reps);
   const lastNote = l.interactions[l.interactions.length - 1]?.note;
@@ -146,7 +147,7 @@ const LeadRow = memo(function LeadRow({ l, mode, ctx, checked }: { l: Lead; mode
           <ContactBar x={l} chans={channelsOf(l)} mini openJst={openJst} />
         )}
       </td>
-      {showRfm ? <RfmCell l={l} today={today} /> : null}
+      {showRfm ? <RfmCell l={l} today={today} config={rfmConfig} /> : null}
       <td>
         <div className="bills">{bills(l).map((b, i) => <span key={`${b}-${i}`} className="bill">{b}</span>)}</div>
       </td>
@@ -208,11 +209,11 @@ const LeadRow = memo(function LeadRow({ l, mode, ctx, checked }: { l: Lead; mode
 });
 
 /** กลุ่ม RFM (ชี้แล้วเห็นกติกา) + "ไม่ซื้อมา N วัน" ของลูกค้ารายนั้น — ไม่มีข้อมูล = — */
-function RfmCell({ l, today }: { l: Lead; today: string }) {
+function RfmCell({ l, today, config }: { l: Lead; today: string; config: ReadonlyArray<RfmSeg> }) {
   const r = leadRfm(l, today);
   return (
     <td className="rfm-col">
-      {r.segment ? <span className="tag" title={rfmRule(r.segment)}>{r.segment}</span> : <span className="sub">—</span>}
+      {r.segment ? <span className="tag" title={rfmRule(r.segment, config)}>{r.segment}</span> : <span className="sub">—</span>}
       {r.dormantDays != null ? <div className="sub">{dormantText(r.dormantDays)}</div> : null}
     </td>
   );

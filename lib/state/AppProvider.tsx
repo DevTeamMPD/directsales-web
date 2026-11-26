@@ -4,8 +4,8 @@ import {
   createContext, useContext, useEffect, useMemo, useReducer, useState, type Dispatch, type ReactNode,
 } from 'react';
 import { errorMessage, kindOf } from '@/lib/api/errors';
-import { buildReps, mapCampaign, mapLead } from '@/lib/api/map';
-import { getMe, getMyLeads, getTeam, listCampaigns } from '@/lib/api/rpc';
+import { buildReps, mapCampaign, mapLead, mapRfmConfig } from '@/lib/api/map';
+import { getMe, getMyLeads, getRfmConfig, getTeam, listCampaigns } from '@/lib/api/rpc';
 import type { Lead, LeadJson } from '@/lib/api/types';
 import { readStoredBrand, writeStoredBrand, type BrandScope } from '@/lib/domain/brand';
 import { readStoredViewAs, writeStoredViewAs } from '@/lib/domain/viewAs';
@@ -79,12 +79,13 @@ async function loadLive(): Promise<Action | 'login'> {
   const me = await getMe();
   if (!me || !me.is_member) return { type: 'noAccess', email, inactive: false };
   if (!me.active) return { type: 'noAccess', email, inactive: true };
-  const [team, campaigns, leads] = await Promise.all([getTeam(), listCampaigns(), getMyLeads(1000, 0)]);
+  // กติกา RFM โหลดไม่ได้ (เช่น migration ยังไม่ขึ้น) ไม่ทำให้แอปเปิดไม่ได้ — ใช้กติกาเริ่มต้นในโค้ดแทน
+  const [team, campaigns, leads, rfm] = await Promise.all([getTeam(), listCampaigns(), getMyLeads(1000, 0), getRfmConfig().catch(() => null)]);
   return {
     type: 'loaded',
     payload: {
       email, meId: me.user_id, isAdmin: me.is_admin, live: true, reps: buildReps(team, me),
-      campaigns: campaigns.map(mapCampaign), leads: leads.map(mapLead), customers: [], today: todayBangkok(),
+      campaigns: campaigns.map(mapCampaign), leads: leads.map(mapLead), customers: [], today: todayBangkok(), rfmConfig: mapRfmConfig(rfm),
     },
   };
 }

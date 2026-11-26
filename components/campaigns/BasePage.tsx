@@ -58,7 +58,7 @@ function initialFilter(): BaseFilter {
  *   popup เริ่มที่แบรนด์ที่คนที่เลือกมีห้องแชตมากที่สุด แล้ว preview แสดงรายการที่ถูกข้าม
  */
 export function BasePage({ scope }: { scope: BaseScopeKey }) {
-  const { live, customers, leads, today, poolVersion, isAdmin, brand: scopeBrand } = useAppState();
+  const { live, customers, leads, today, poolVersion, isAdmin, brand: scopeBrand, rfmConfig } = useAppState();
   // โหมดหัวหน้าดูในมุมมองเซลล์: meId ของหน้านี้ = เซลล์ที่เลือก (ลูกค้าของฉัน = ของเซลล์คนนั้น, จอง/ส่ง = ในนามเซลล์)
   const { actorId: meId, forUser } = useActor();
   const { openModal, toast, handleAuthError, setBrand } = useActions();
@@ -236,7 +236,7 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
             if (!o.value && !on && !n) return null; // ยังไม่จัดกลุ่ม: แสดงเฉพาะเมื่อมีลูกค้า
             return (
               <button key={o.value || 'none'} type="button" className={`chip ${on ? 'active' : ''}`} data-rfm={o.value} aria-pressed={on}
-                title={rfmRule(o.value) || 'ไม่มีจำนวนออเดอร์หรือวันซื้อล่าสุด'} onClick={() => setFilters((x) => toggleRfm(x, o.value))}>
+                title={rfmRule(o.value, rfmConfig) || 'ไม่มีจำนวนออเดอร์หรือวันซื้อล่าสุด'} onClick={() => setFilters((x) => toggleRfm(x, o.value))}>
                 <span className="lbl">{o.label}</span>{n !== null ? <span className="count num">{n.toLocaleString('th-TH')}</span> : null}
               </button>
             );
@@ -314,7 +314,7 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
                       <div>{dormantText(r.dormantDays)}</div>
                       {r.ownerTag ? <span className="tag">{r.ownerTag}</span> : null}
                     </td>
-                    <td>{r.segment ? <span className="tag" title={rfmRule(r.segment)}>{r.segment}</span> : <span className="sub">—</span>}</td>
+                    <td>{r.segment ? <span className="tag" title={rfmRule(r.segment, rfmConfig)}>{r.segment}</span> : <span className="sub">—</span>}</td>
                     <td className="r num">{r.ltv == null ? '—' : baht(Math.round(r.ltv))}</td>
                     <td className="r num">{r.orders ?? '—'}</td>
                     <td>{r.last ? fmtDate(r.last) : '—'}</td>

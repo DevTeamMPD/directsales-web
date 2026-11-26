@@ -43,4 +43,8 @@ describe('fixturePayload', () => {
     const l = fixturePayload('?claim=L1002').leads.find((x) => x.id === 'L1002');
     expect(l).toMatchObject({ owner: 'r4', claimedBy: 'r4', claimedAt: '2026-11-04T10:00' });
   });
+
+  it('carries the built-in RFM rules', () => {
+    expect(fixturePayload().rfmConfig.map((s) => s.key)).toHaveLength(10);
+  });
 });

@@ -1,4 +1,5 @@
 import type { LoadedPayload } from '@/lib/state/reducer';
+import { DEFAULT_RFM_CONFIG } from '@/lib/domain/rfm';
 import { withBaseExtras } from './base';
 import { FIXTURE_DATA } from './data';
 import { FIXTURE_OUTREACH } from './outreach';
@@ -28,6 +29,7 @@ export function fixturePayload(search = ''): LoadedPayload {
     leads: d.leads,
     customers: withBaseExtras(d.customers), // + ห้องแชต / RFM / tag ของ /mine /pool
     today: d.today,
+    rfmConfig: [...DEFAULT_RFM_CONFIG],
     outreachDemo: structuredClone(FIXTURE_OUTREACH),
   };
 }

@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { leadJson } from '@/lib/api/test-helpers';
 import type { Campaign } from '@/lib/api/types';
+import { DEFAULT_RFM_CONFIG } from '@/lib/domain/rfm';
 import { initialState, reducer, type AppState, type LoadedPayload } from './reducer';
 
 const payload: LoadedPayload = {
   email: 'a@example.com', meId: 'u1', isAdmin: true, live: true, reps: [{ id: 'u1', name: 'Dev MPD', initials: 'DE', role: 'admin' }],
   campaigns: [], leads: [], customers: [], today: '2026-11-04',
+  rfmConfig: DEFAULT_RFM_CONFIG.filter((s) => s.key !== 'Hot'),
 };
 const ready: AppState = reducer(initialState, { type: 'loaded', payload });
 
@@ -97,5 +99,12 @@ describe('global brand', () => {
     const s = reducer({ ...initialState, brand: 'all' }, { type: 'loaded', payload: { ...payload, isAdmin: false } });
     expect(s.brand).toBe('bebeplay');
     expect(reducer({ ...initialState, brand: 'all' }, { type: 'loaded', payload }).brand).toBe('all');
+  });
+});
+
+describe('rfmConfig', () => {
+  it('starts with the built-in rules and takes the loaded ones', () => {
+    expect(initialState.rfmConfig.map((s) => s.key)).toContain('Hot');
+    expect(ready.rfmConfig.map((s) => s.key)).not.toContain('Hot');
   });
 });

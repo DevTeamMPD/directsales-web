@@ -1,5 +1,6 @@
 import { upsertLead } from '@/lib/api/map';
 import type { Brand, Campaign, DemoCustomer, Lead, LeadJson, OutreachDemo, Rep } from '@/lib/api/types';
+import { DEFAULT_RFM_CONFIG, type RfmSeg } from '@/lib/domain/rfm';
 import { effectiveBrand, type BrandScope } from '@/lib/domain/brand';
 import { effectiveViewAs } from '@/lib/domain/viewAs';
 import { upsertRep } from '@/lib/domain/setup';
@@ -32,6 +33,8 @@ export interface LoadedPayload {
   /** ลูกค้าของถัง/ตัวสร้างแคมเปญในโหมดตัวอย่าง — ล็อกอินจริง = [] (prototype loadLive L980) */
   customers: DemoCustomer[];
   today: string;
+  /** กติกา + Action Context ของกลุ่ม RFM (dsales_rfm_config_get; โหลดไม่ได้/โหมด fixture = ค่าเริ่มต้นในโค้ด) */
+  rfmConfig: RfmSeg[];
   /** ข้อมูลตัวอย่างของหน้าส่งข้อความ (template / ชุดที่ส่ง / worker) — โหมด fixture เท่านั้น ล็อกอินจริงไม่มี */
   outreachDemo?: OutreachDemo | null;
 }
@@ -48,6 +51,7 @@ export interface AppState extends LoadedPayload {
 
 export const initialState: AppState = {
   phase: 'loading', error: '', email: '', meId: '', isAdmin: false, live: false, reps: [], campaigns: [], leads: [], customers: [], today: '',
+  rfmConfig: [...DEFAULT_RFM_CONFIG],
   ui: initialUi, poolVersion: 0, pool: initialPool, brand: 'bebeplay', viewAs: null,
 };
 
