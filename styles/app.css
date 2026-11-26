@@ -405,6 +405,8 @@ tr.total td { border-top: 2px solid var(--border); background: var(--surface-2);
 .rfm-cell .n { font-size: 24px; font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .rfm-cell.on { outline: 3px solid var(--fg); outline-offset: 2px; }
 .rfm-cell:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* selected + keyboard focus: keep the "selected" outline and add the focus ring outside it */
+.rfm-cell.on:focus-visible { outline-color: var(--fg); box-shadow: 0 0 0 8px var(--accent); }
 .rfm-seg-champion { background: var(--rfm-champion); color: var(--rfm-champion-fg); }
 .rfm-seg-shouldn-t-lose { background: var(--rfm-shouldn-t-lose); color: var(--rfm-shouldn-t-lose-fg); }
 .rfm-seg-loyal { background: var(--rfm-loyal); color: var(--rfm-loyal-fg); }
