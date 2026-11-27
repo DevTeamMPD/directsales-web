@@ -4,10 +4,10 @@ import { expectAllBrands, pinAllBrands } from './brand-pin';
 // มือถือ 390px: ทุกหน้าต้องไม่เลื่อนแนวนอนทั้งหน้า (ตารางเลื่อนในกล่องของตัวเองได้), ปุ่มบน topbar อยู่แถวเดียว,
 // แถวชิปสถานะไม่ตัดหลายบรรทัด และปุ่ม/ช่องกรอกที่แตะได้สูงอย่างน้อย 44px
 const APP = 'http://127.0.0.1:3100';
-const PAGES = ['/leads', '/mine', '/pool', '/outreach', '/campaigns/bebeplay', '/campaigns/hosttail', '/dashboard', '/setup'];
+const PAGES = ['/leads', '/mine', '/pool', '/rfm', '/outreach', '/campaigns/bebeplay', '/campaigns/hosttail', '/dashboard', '/setup'];
 
 test.use({ viewport: { width: 390, height: 844 } });
-// เมนูครบทุกแบรนด์ (8 เมนู) — ตัวสลับแบรนด์ที่ 390px ตรวจเพิ่มใน brand-switch.spec.ts
+// เมนูครบทุกแบรนด์ (9 เมนู) — ตัวสลับแบรนด์ที่ 390px ตรวจเพิ่มใน brand-switch.spec.ts
 test.beforeEach(async ({ page }) => {
   await pinAllBrands(page);
 });
@@ -50,7 +50,7 @@ test('menu drawer opens and lists every page without scrolling sideways', async 
   await page.locator('#menu-btn').click();
   await expect(page.locator('#sidebar')).toHaveClass(/\bopen\b/);
   const items = page.locator('#sidebar .nav-item');
-  await expect(items).toHaveCount(8);
+  await expect(items).toHaveCount(9);
   for (const h of await items.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height))) expect(h).toBeGreaterThanOrEqual(44);
   const sb = await page.locator('#sidebar').evaluate((el) => ({ w: el.getBoundingClientRect().width, over: el.scrollWidth - el.clientWidth }));
   expect(sb.w).toBeLessThanOrEqual(300);

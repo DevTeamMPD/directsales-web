@@ -7,6 +7,7 @@ describe('routes', () => {
   it('maps paths to prototype route keys; unknown paths fall back to leads', () => {
     expect(routeKey('/leads')).toBe('leads');
     expect(routeKey('/mine/')).toBe('mine');
+    expect(routeKey('/rfm')).toBe('rfm');
     expect(routeKey('/campaigns/hosttail')).toBe('campaign-hosttail');
     expect(routeKey('/nope')).toBe('leads');
     expect(routeKey(null)).toBe('leads');
@@ -18,6 +19,7 @@ describe('routes', () => {
     expect(routeMeta('/mine', [])).toEqual({ key: 'mine', title: 'ลูกค้าของฉัน', sub: '' });
     expect(routeMeta('/pool', [])).toEqual({ key: 'pool', title: 'ถังกลาง', sub: '' });
     expect(routeMeta('/outreach', [])).toEqual({ key: 'outreach', title: 'ส่งข้อความ', sub: '' });
+    expect(routeMeta('/rfm', [])).toEqual({ key: 'rfm', title: 'กลุ่มลูกค้า RFM', sub: 'แตะกลุ่มในแผนที่เพื่อดูแนวทางและกรองรายชื่อ' });
   });
   it('counts the brand campaigns in the campaign sub', () => {
     expect(routeMeta('/campaigns/bebeplay', camps)).toEqual({ key: 'campaign-bebeplay', title: 'แคมเปญ Bebeplay', sub: '2 แคมเปญ' });

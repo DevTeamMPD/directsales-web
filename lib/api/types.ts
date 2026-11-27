@@ -187,3 +187,12 @@ export interface WorkerRoom { ms_id: number; customer: string | null; channel: s
 export interface OutreachDemo {
   templates: Template[]; batches: BatchRow[]; details: Record<string, BatchDetail>; worker: WorkerStatus; rooms: WorkerRoom[];
 }
+
+/** แถวของ dsales_rfm_config_get (20261126150000) — เรียงตาม sort */
+export interface RfmSegJson {
+  key: string; sort: number; f_min: number | null; f_max: number | null; r_min: number | null; r_max: number | null; fallback: boolean;
+  tone: string | null; behavior: string | null; action: string | null;
+  template_bebeplay: string | null; template_hosttail: string | null; no_outreach: boolean | null;
+}
+/** แถวของ dsales_rfm_map: segment '' = ยังไม่มีกลุ่ม · n = ทุกคนในขอบเขต · contactable = ไม่ซื้อมา ≥ 30 วัน (จอง/ทักได้) */
+export interface RfmMapRow { segment: string; n: number | string; contactable: number | string }

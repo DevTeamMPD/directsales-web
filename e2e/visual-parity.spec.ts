@@ -66,14 +66,15 @@ async function openLegacyShell(page: Page) {
   await page.goto(LEGACY);
   await page.locator('#l-demo').click();
   await expect(page.locator('#login')).toBeHidden();
-  // ส่วนที่เว็บใหม่ตั้งใจต่างจาก prototype: กลุ่มเมนู "ฐานลูกค้าเก่า" (+ ส่งข้อความ) และกล่อง me แบบล็อกอินแล้ว
-  await page.evaluate(({ person, list, send }) => {
+  // ส่วนที่เว็บใหม่ตั้งใจต่างจาก prototype: กลุ่มเมนู "ฐานลูกค้าเก่า" (+ กลุ่ม RFM, ส่งข้อความ) และกล่อง me แบบล็อกอินแล้ว
+  await page.evaluate(({ person, list, send, rfm }) => {
     const campaigns = Array.from(document.querySelectorAll('.nav-group')).find((g) => g.textContent === 'แคมเปญ');
     campaigns?.insertAdjacentHTML(
       'beforebegin',
       '<div class="nav-group">ฐานลูกค้าเก่า</div>' +
         `<a class="nav-item" href="#mine" data-route="mine"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${person}"></path></svg><span>ลูกค้าของฉัน</span></a>` +
         `<a class="nav-item" href="#pool" data-route="pool"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${list}"></path></svg><span>ถังกลาง</span></a>` +
+        `<a class="nav-item" href="#rfm" data-route="rfm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${rfm}"></path></svg><span>กลุ่ม RFM</span></a>` +
         `<a class="nav-item" href="#outreach" data-route="outreach"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${send}"></path></svg><span>ส่งข้อความ</span></a>`,
     );
     const label = document.querySelector('#me-label');
@@ -83,7 +84,7 @@ async function openLegacyShell(page: Page) {
       select.innerHTML = '<option>Dev MPD</option>';
       select.disabled = true;
     }
-  }, { person: PATHS.person, list: PATHS.list, send: PATHS.send });
+  }, { person: PATHS.person, list: PATHS.list, send: PATHS.send, rfm: PATHS.rfm });
   await settle(page);
 }
 

@@ -154,6 +154,12 @@ describe('/mine and /pool (dsales_base_customers, spec ข้อ 3)', () => {
     const old = demoBase(F.customers, F.leads, 'pool', { ...o, filters: { ...EMPTY_FILTERS, sort: 'dormant_desc' } });
     expect(old.rows[0].dormantDays).toBe(Math.max(...all.rows.map((r) => r.dormantDays ?? 0)));
   });
+  it('demoBase scope team = every customer, whoever owns it', () => {
+    const o = { brand: null, q: '', page: 0, today: F.today, meId: 'r4' };
+    const team = demoBase(F.customers, F.leads, 'team', o).total;
+    expect(team).toBe(F.customers.length);
+    expect(team).toBeGreaterThan(demoBase(F.customers, F.leads, 'pool', o).total);
+  });
 });
 
 describe('bulk "send to Direct Sale" from /mine', () => {

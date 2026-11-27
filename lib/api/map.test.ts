@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildReps, mapCampaign, mapChannel, mapChatRoom, mapLead, mapPoolRow, mapPurchase, metaInboxUrl, normProvider, rowsTotal, upsertLead } from './map';
+import { buildReps, mapCampaign, mapChannel, mapChatRoom, mapLead, mapPoolRow, mapPurchase, mapRfmConfig, metaInboxUrl, normProvider, rowsTotal, upsertLead } from './map';
+import { DEFAULT_RFM_CONFIG } from '@/lib/domain/rfm';
 import { leadJson } from './test-helpers';
 import type { CampaignRow, MeRow, PoolRowJson, TeamRow } from './types';
 
@@ -182,5 +183,25 @@ describe('mapLead system history', () => {
     }));
     expect(l.interactions).toEqual([]);
     expect(l.systemLog).toEqual([{ id: 'a1', date: '2026-11-25T10:00', rep: 'u9', note: 'ลูกค้าขอให้ติดต่อพรุ่งนี้', kind: 'ai', result: 'callback' }]);
+  });
+});
+
+describe('mapRfmConfig (dsales_rfm_config_get)', () => {
+  const row = (over: object) => ({
+    key: 'Hot', sort: 7, f_min: 1, f_max: 1, r_min: 0, r_max: 30, fallback: false, tone: 'ต้อนรับ', behavior: 'ใหม่', action: 'ทักทาย',
+    template_bebeplay: null, template_hosttail: 't-1', no_outreach: null, ...over,
+  });
+  it('maps the rows and sorts them by rule order', () => {
+    const out = mapRfmConfig([row({ key: 'Lost', sort: 10, f_min: null, f_max: null, r_min: null, r_max: null, fallback: true, tone: null }), row({})]);
+    expect(out.map((s) => s.key)).toEqual(['Hot', 'Lost']);
+    expect(out[0]).toEqual({
+      key: 'Hot', sort: 7, fMin: 1, fMax: 1, rMin: 0, rMax: 30, fallback: false, tone: 'ต้อนรับ', behavior: 'ใหม่', action: 'ทักทาย',
+      templateBebeplay: null, templateHosttail: 't-1', noOutreach: false,
+    });
+    expect(out[1]).toMatchObject({ fallback: true, fMin: null, tone: '' });
+  });
+  it('falls back to the built-in rules when the server has none', () => {
+    expect(mapRfmConfig(null)).toEqual([...DEFAULT_RFM_CONFIG]);
+    expect(mapRfmConfig([])).toEqual([...DEFAULT_RFM_CONFIG]);
   });
 });

@@ -1,8 +1,9 @@
 import { PLAT, type Brand } from '@/lib/constants';
 import { localStamp } from '@/lib/format';
+import { DEFAULT_RFM_CONFIG, type RfmSeg } from '@/lib/domain/rfm';
 import type {
   Campaign, CampaignRow, Channel, ChannelRowJson, ChatRoom, ChatRoomJson, Lead, LeadJson, MeRow, PoolRow, PoolRowJson, Purchase, PurchaseRowJson,
-  Rep, TeamRow,
+  Rep, RfmSegJson, TeamRow,
 } from './types';
 
 /** dsales_lead_json → Lead (prototype mapLead L943-946) + claimedAtIso สำหรับส่งกลับ server */
@@ -134,4 +135,16 @@ export function mapPurchase(x: PurchaseRowJson): Purchase {
 
 export function mapChannel(x: ChannelRowJson): Channel {
   return { platform: x.platform, shop: x.shop ?? '', chat: x.chat_name || '' };
+}
+
+/** dsales_rfm_config_get → RfmSeg เรียงตามลำดับกติกา · server ไม่มีกติกา (หรือโหลดไม่ได้ = null) → กติกาเริ่มต้นในโค้ด */
+export function mapRfmConfig(rows: ReadonlyArray<RfmSegJson> | null | undefined): RfmSeg[] {
+  if (!rows?.length) return [...DEFAULT_RFM_CONFIG];
+  return [...rows]
+    .sort((a, b) => a.sort - b.sort)
+    .map((r) => ({
+      key: r.key, sort: r.sort, fMin: r.f_min, fMax: r.f_max, rMin: r.r_min, rMax: r.r_max, fallback: !!r.fallback,
+      tone: r.tone || '', behavior: r.behavior || '', action: r.action || '',
+      templateBebeplay: r.template_bebeplay ?? null, templateHosttail: r.template_hosttail ?? null, noOutreach: !!r.no_outreach,
+    }));
 }

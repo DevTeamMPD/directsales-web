@@ -57,8 +57,10 @@ function initialFilter(): BaseFilter {
  *   หัวตารางติ๊กทุกแถวของหน้านี้, แถบลอยด้านล่าง "เลือก N คน · ส่งข้อความ" ส่งได้ไม่เกิน outreach_max_batch
  *   popup เริ่มที่แบรนด์ที่คนที่เลือกมีห้องแชตมากที่สุด แล้ว preview แสดงรายการที่ถูกข้าม
  */
-export function BasePage({ scope }: { scope: BaseScopeKey }) {
-  const { live, customers, leads, today, poolVersion, isAdmin, brand: scopeBrand } = useAppState();
+/** fixedRfm = ฝังในหน้า /rfm: ล็อกตัวกรองกลุ่มลูกค้าเป็นกลุ่มนี้ ซ่อนชิปกลุ่ม และไม่อ่าน/เขียนตัวกรองใน URL (URL เป็นของหน้า /rfm) */
+export function BasePage({ scope, fixedRfm }: { scope: BaseScopeKey; fixedRfm?: string }) {
+  const embedded = fixedRfm !== undefined;
+  const { live, customers, leads, today, poolVersion, isAdmin, brand: scopeBrand, rfmConfig } = useAppState();
   // โหมดหัวหน้าดูในมุมมองเซลล์: meId ของหน้านี้ = เซลล์ที่เลือก (ลูกค้าของฉัน = ของเซลล์คนนั้น, จอง/ส่ง = ในนามเซลล์)
   const { actorId: meId, forUser } = useActor();
   const { openModal, toast, handleAuthError, setBrand } = useActions();
@@ -67,7 +69,7 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
   const openJst = useJst();
   const claimRow = useCustomerClaim();
   const bulkFollow = useBulkFollow();
-  const [f, setF] = useState<BaseFilter>(initialFilter);
+  const [f, setF] = useState<BaseFilter>(() => (embedded ? { q: '', page: 0, filters: EMPTY_FILTERS } : initialFilter()));
   const [qKey, setQKey] = useState('');
   const [data, setData] = useState<{ rows: PoolRow[]; total: number | null; err: string }>({ rows: [], total: null, err: '' });
   const [loading, setLoading] = useState(live);
@@ -76,7 +78,7 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
   const headBox = useRef<HTMLInputElement>(null);
   const max = useOutreachMax(sel.size > 0);
   // ?brand= ของลิงก์เดิม → ตั้งแบรนด์ใหญ่ครั้งเดียว (ยังไม่โหลดจนกว่าแบรนด์ใหญ่จะตามลิงก์ — กันโหลดแบรนด์เก่าทิ้ง 1 รอบ)
-  const [linkBrand] = useState(() => urlState().brand);
+  const [linkBrand] = useState(() => (embedded ? '' : urlState().brand));
   const urlBrand = useRef<'' | Brand>(linkBrand);
   useEffect(() => {
     if (urlBrand.current) setBrand(urlBrand.current);
@@ -87,6 +89,14 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
     setPrevBrand(b);
     setF((x) => (x.page ? { ...x, page: 0 } : x));
   }
+  // เปลี่ยนกลุ่มที่ล็อกไว้ (กดกลุ่มอื่นในแผนที่) = กลับหน้าแรก
+  const [prevRfm, setPrevRfm] = useState(fixedRfm);
+  if (prevRfm !== fixedRfm) {
+    setPrevRfm(fixedRfm);
+    setF((x) => (x.page ? { ...x, page: 0 } : x));
+  }
+  /** ตัวกรองที่ใช้โหลดจริง: โหมดฝัง = ตัวกรองของผู้ใช้ + กลุ่มที่ล็อกไว้ */
+  const filters = useMemo<BaseFilters>(() => (embedded ? { ...f.filters, rfm: [fixedRfm ?? ''] } : f.filters), [embedded, fixedRfm, f.filters]);
 
   // รายชื่อ tag ของ JST สำหรับตัวกรอง Tag (หัวหน้าเท่านั้น; โหลดไม่ได้ = มีแค่ "ไม่มี tag")
   useEffect(() => {
@@ -110,7 +120,7 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
   const [liveCounts, setLiveCounts] = useState<{ key: string; map: Record<string, number> } | null>(null);
   const countKey = `${scope}|${b}|${poolVersion}|${forUser ?? ''}`;
   useEffect(() => {
-    if (!live) return;
+    if (!live || embedded) return;
     let alive = true;
     getBaseSegmentCounts(scope, b || null, scope === 'mine' ? forUser : null).then(
       (rows) => {
@@ -123,23 +133,24 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
     return () => {
       alive = false;
     };
-  }, [live, scope, b, countKey, forUser, handleAuthError]);
+  }, [live, embedded, scope, b, countKey, forUser, handleAuthError]);
   const demoCounts = useMemo(() => {
-    if (live) return null;
+    if (live || embedded) return null;
     const map: Record<string, number> = {};
     for (const o of RFM_OPTIONS) {
       map[o.value] = demoBase(customers, leads, scope, { brand: b || null, q: '', page: 0, today, meId, filters: { ...EMPTY_FILTERS, rfm: [o.value] } }).total;
     }
     return map;
-  }, [live, customers, leads, scope, b, today, meId]);
-  const counts = live ? (liveCounts?.key === countKey ? liveCounts.map : null) : demoCounts;
+  }, [live, embedded, customers, leads, scope, b, today, meId]);
+  const counts =live ? (liveCounts?.key === countKey ? liveCounts.map : null) : demoCounts;
 
   // ตัวกรองใน URL (รีเฟรช/ส่งลิงก์แล้วยังอยู่)
   useEffect(() => {
+    if (embedded) return;
     const qs = filtersToQuery(f.filters);
     if (qs === window.location.search.replace(/^\?/, '')) return;
     window.history.replaceState(window.history.state, '', qs ? `?${qs}` : window.location.pathname);
-  }, [f.filters]);
+  }, [embedded, f.filters]);
 
   useEffect(() => {
     if (f.q === qKey) return;
@@ -161,7 +172,7 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
     setData((d) => ({ ...d, err: '' }));
     getBaseCustomers(scope, {
       search: qKey, offset: f.page * PAGE, brand: b || null,
-      filters: { ...buildFilterJson(f.filters), ...(scope === 'mine' && forUser ? { as: forUser } : {}) },
+      filters: { ...buildFilterJson(filters), ...(scope === 'mine' && forUser ? { as: forUser } : {}) },
     })
       .then((rows) => {
         if (alive && clampPage(f.page, rows.length) !== f.page) {
@@ -179,11 +190,11 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
     return () => {
       alive = false;
     };
-  }, [live, scope, qKey, f.page, b, f.filters, poolVersion, meId, forUser, handleAuthError]);
+  }, [live, scope, qKey, f.page, b, filters, poolVersion, meId, forUser, handleAuthError]);
 
   const demo = useMemo(
-    () => (live ? null : demoBase(customers, leads, scope, { brand: b || null, q: qKey, page: f.page, today, meId, filters: f.filters })),
-    [live, customers, leads, scope, b, qKey, f.page, f.filters, today, meId],
+    () => (live ? null : demoBase(customers, leads, scope, { brand: b || null, q: qKey, page: f.page, today, meId, filters })),
+    [live, customers, leads, scope, b, qKey, f.page, filters, today, meId],
   );
   const rows = demo ? demo.rows : data.rows;
   const total = demo ? demo.total : data.total;
@@ -229,14 +240,14 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
       </div>
       <div id="base-filters" style={{ display: 'grid', gap: 8 }}>
         <div className="toolbar">
-          <span className="sub">กลุ่มลูกค้า</span>
-          {RFM_OPTIONS.map((o) => {
+          {embedded ? <span className="tag" id="base-fixed-rfm">กลุ่ม: {fixedRfm}</span> : <span className="sub">กลุ่มลูกค้า</span>}
+          {(embedded ? [] : RFM_OPTIONS).map((o) => {
             const on = f.filters.rfm.includes(o.value);
             const n = counts ? (counts[o.value] ?? 0) : null;
             if (!o.value && !on && !n) return null; // ยังไม่จัดกลุ่ม: แสดงเฉพาะเมื่อมีลูกค้า
             return (
               <button key={o.value || 'none'} type="button" className={`chip ${on ? 'active' : ''}`} data-rfm={o.value} aria-pressed={on}
-                title={rfmRule(o.value) || 'ไม่มีจำนวนออเดอร์หรือวันซื้อล่าสุด'} onClick={() => setFilters((x) => toggleRfm(x, o.value))}>
+                title={rfmRule(o.value, rfmConfig) || 'ไม่มีจำนวนออเดอร์หรือวันซื้อล่าสุด'} onClick={() => setFilters((x) => toggleRfm(x, o.value))}>
                 <span className="lbl">{o.label}</span>{n !== null ? <span className="count num">{n.toLocaleString('th-TH')}</span> : null}
               </button>
             );
@@ -278,7 +289,7 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
             {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
           <button type="button" className="btn sm" id="base-clear" disabled={!filtered} onClick={() => setFilters(() => EMPTY_FILTERS)}>ล้างตัวกรอง</button>
-          <span className="sub num" id="base-count">{busy ? '' : resultCountText(total)}</span>
+          <span className="sub num" id="base-count">{busy ? '' : embedded && total != null ? `ติดต่อได้ตอนนี้ ${total.toLocaleString('th-TH')} คน` : resultCountText(total)}</span>
         </div>
       </div>
       {data.err ? <div className="login-err">{data.err}</div> : null}
@@ -314,7 +325,7 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
                       <div>{dormantText(r.dormantDays)}</div>
                       {r.ownerTag ? <span className="tag">{r.ownerTag}</span> : null}
                     </td>
-                    <td>{r.segment ? <span className="tag" title={rfmRule(r.segment)}>{r.segment}</span> : <span className="sub">—</span>}</td>
+                    <td>{r.segment ? <span className="tag" title={rfmRule(r.segment, rfmConfig)}>{r.segment}</span> : <span className="sub">—</span>}</td>
                     <td className="r num">{r.ltv == null ? '—' : baht(Math.round(r.ltv))}</td>
                     <td className="r num">{r.orders ?? '—'}</td>
                     <td>{r.last ? fmtDate(r.last) : '—'}</td>
@@ -324,7 +335,7 @@ export function BasePage({ scope }: { scope: BaseScopeKey }) {
                 );
               })
             ) : (
-              <tr><td colSpan={10} className="empty">{busy ? 'กำลังโหลด…' : filtered ? 'ไม่พบลูกค้าที่ตรงกับตัวกรอง' : 'ไม่พบลูกค้าที่ตรงกับคำค้น'}</td></tr>
+              <tr><td colSpan={10} className="empty">{busy ? 'กำลังโหลด…' : embedded && !f.q && !filtered ? 'ยังไม่มีลูกค้าในกลุ่มนี้ที่ติดต่อได้ (ต้องไม่ซื้อมา 30 วันขึ้นไป)' : filtered ? 'ไม่พบลูกค้าที่ตรงกับตัวกรอง' : 'ไม่พบลูกค้าที่ตรงกับคำค้น'}</td></tr>
             )}
           </tbody>
         </table>

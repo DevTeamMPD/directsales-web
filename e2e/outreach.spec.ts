@@ -95,7 +95,7 @@ for (const s of SIZES) {
       await expect(page.locator('#base-count')).toHaveText('พบ 67 คน');
       await expect(page.locator('#base-clear')).toBeDisabled();
       // กลุ่ม RFM (20261125140000) + จำนวนคนบนชิป · "ยังไม่จัดกลุ่ม" แสดงเฉพาะเมื่อมีลูกค้า (ข้อมูลตัวอย่างมีประวัติซื้อทุกคน)
-      await expect(page.locator('[data-rfm] .lbl')).toHaveText(['Champion', 'Loyal', 'Promising', 'Need Attention', 'Warm', 'Cold', "Shouldn't Lose", 'Sleepers', 'Lost']);
+      await expect(page.locator('[data-rfm] .lbl')).toHaveText(['Champion', 'Loyal', 'Promising', 'Need Attention', 'Hot', 'Warm', 'Cold', "Shouldn't Lose", 'Sleepers', 'Lost']);
       await expect(page.locator('[data-rfm=Loyal]')).toHaveAttribute('title', 'ซื้อ 4 ครั้งขึ้นไป · ซื้อล่าสุดไม่เกิน 90 วัน');
       await expect(page.locator('#base-sort option')).toHaveText(['มูลค่าสูงสุด', 'หายนานสุด', 'เพิ่งหายไป', 'ซื้อล่าสุด', 'ซื้อบ่อยสุด']);
       await expect(page.locator('#base-tag')).toBeVisible(); // Dev MPD เป็นหัวหน้า
